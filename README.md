@@ -1,4 +1,39 @@
-# Fleet Watch
+# Fleet Watch & Fleet Console
+
+Two pages over one shared core.
+
+| | | |
+|---|---|---|
+| **`index.html`** | Fleet Watch | The board for the office wall. Rotates on its own, never touched. |
+| **`console.html`** | Fleet Console | The desk tool for sales and aftersales. Leads with what needs attention. |
+
+They share the fleet file, the store, the AIS and weather feeds, the chart
+renderer and the palette. What differs is the job — and, deliberately, what each
+one is allowed to show.
+
+## Which one shows what
+
+The reception screen and the desk tool have opposite defaults, and that is the
+point.
+
+Set **`discreetLocked: true`** in `config.js` on the office display. Discretion
+is then forced on at start-up and the `D` key stops working, so nobody passing
+the screen can reveal exact positions. It is deliberately *not* something
+somebody has to remember to switch on when guests arrive — that fails the first
+time it is forgotten, and the failure is showing a visitor exactly where a
+client's boat is.
+
+The console is the opposite: full detail by default, with a visible **Discreet**
+button and an unmissable banner for when somebody walks over. Crew contacts
+appear only there, never on the board.
+
+Redaction happens in the store, before anything reaches a view, so a withheld
+position cannot leak into a label. Hidden-but-present in the page is a
+screenshot away from being a problem.
+
+---
+
+# Fleet Watch — the office display
 
 A live fleet board for an office wall. It plots the yachts you look after on a
 chart, and rotates through vessel detail, fleet statistics and a service board so
@@ -31,8 +66,9 @@ node tools/build-single-file.js
 
 writes `dist/fleet-watch.html` with every script, style and the coastline data
 inlined — one file to email, drop on a USB stick, or open straight off disk.
-Add `--offline` to force demo mode and switch the weather lookup off, for
-sandboxes that block outbound requests.
+`--entry=console.html` bundles the desk tool the same way. Add `--offline` to
+force demo mode and switch the weather lookup off, for sandboxes that block
+outbound requests.
 
 ### Kiosk mode
 
@@ -69,6 +105,35 @@ after five idle minutes. A board that stops because someone brushed the mouse is
 worse than one that carries on.
 
 ---
+
+---
+
+# Fleet Console — the desk tool
+
+Open `console.html`. Three columns: the fleet on the left, work in the middle, a
+chart on the right that re-aims as you select.
+
+**It opens on what needs attention**, not on where everything is — overdue and
+imminent surveys, urgent jobs, and parts landing within the week, each against
+where that yacht actually is. A part due in Palma reads differently depending on
+whether the boat is already there.
+
+**Upgrade conversations** lists installed systems past the age at which they are
+worth a call, by service line. Thresholds are per line in `config.js`, because a
+network core dates faster than a control system, which dates faster than
+cameras. That single table serves both sides of the business: which boats are
+due a conversation, and what am I actually supporting on this one.
+
+- **Search** by name, IMO, MMSI, flag, call sign, nearest port, engineer, or an
+  installed product. `/` focuses it, `Esc` clears.
+- **Filter** by state, or by anything needing attention.
+- **Click** a vessel in the rail, on the chart, or in any list to open it.
+- `Esc` returns to the fleet.
+
+Everything it shows comes from `fleet.js` — the `service`, `systems` and
+`contacts` blocks. There is no separate database, which is the right call while
+the fleet grows by a handful a year: one file, edited in minutes, and no second
+place for the truth to disagree with itself.
 
 ## Branding
 
@@ -210,10 +275,13 @@ poor idea.
 ## How it is put together
 
 ```
-index.html            markup and script order
+index.html            the office display
+console.html          the desk tool
 config.js             settings          ← you edit this
 fleet.js              the fleet         ← and this
-css/screensaver.css   one palette, defined as custom properties
+css/tokens.css        the palette and faces, shared by both pages
+css/screensaver.css   layout for the display
+css/console.css       layout for the console
 assets/fonts/         the brand webfonts, self-hosted (SIL Open Font License)
 data/ports.js         279 ports and marinas, for "42 nm SSW of Palma"
 data/world-land.js    Natural Earth coastlines, encoded (218 KB)
@@ -224,8 +292,9 @@ js/ais.js             AISstream WebSocket client
 js/demo.js            the simulated fleet
 js/weather.js         Open-Meteo
 js/map.js             the chart renderer
-js/views.js           the four screens
-js/app.js             bootstrap, rotation, keyboard
+js/views.js           the display's four screens
+js/app.js             the display: bootstrap, rotation, keyboard
+js/console.js         the console: attention model, rail, detail, chart pane
 tools/test.js         browser-free checks — node tools/test.js
 tools/build-coastline.js    regenerates data/world-land.js
 tools/build-single-file.js  bundles everything into one .html

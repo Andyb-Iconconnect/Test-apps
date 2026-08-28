@@ -6,10 +6,12 @@
  * Useful when the board has to travel: one file to email, drop on a USB stick,
  * or open straight off disk with no server at all.
  *
- *   --offline    force demo mode and switch the weather lookup off, for
- *                sandboxes that block outbound requests
- *   --fragment   emit body content only (no doctype/html/head/body), for hosts
- *                that supply their own document shell
+ *   --offline       force demo mode and switch the weather lookup off, for
+ *                   sandboxes that block outbound requests
+ *   --fragment      emit body content only (no doctype/html/head/body), for
+ *                   hosts that supply their own document shell
+ *   --entry=FILE    which page to bundle (default index.html; console.html for
+ *                   the desk tool)
  * -------------------------------------------------------------------------- */
 
 const fs = require('fs');
@@ -20,6 +22,11 @@ const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));
 const outPath = args.find((a) => !a.startsWith('--')) || path.join(ROOT, 'dist', 'fleet-watch.html');
 
+// Which page to bundle. Both entry points share every script and stylesheet
+// they need, so the same inliner serves them.
+const entryFlag = args.find((a) => a.startsWith('--entry='));
+const entry = entryFlag ? entryFlag.split('=')[1] : 'index.html';
+
 const offline = flags.has('--offline');
 const fragment = flags.has('--fragment');
 
@@ -27,9 +34,9 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 
 // Script order matters and is defined once, in index.html. Read it from there
 // rather than keeping a second list in sync by hand.
-const html = read('index.html');
+const html = read(entry);
 const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
-if (!scripts.length) throw new Error('No <script src> tags found in index.html');
+if (!scripts.length) throw new Error(`No <script src> tags found in ${entry}`);
 
 const styles = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((m) => m[1]);
 
@@ -96,6 +103,6 @@ if (fragment) {
 
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, out);
-console.log(`${scripts.length} scripts + ${styles.length} stylesheet inlined -> ` +
+console.log(`${entry}: ${scripts.length} scripts + ${styles.length} stylesheets inlined -> ` +
             `${path.relative(process.cwd(), outPath)} (${Math.round(out.length / 1024)} KB)` +
             (offline ? ' [offline]' : '') + (fragment ? ' [fragment]' : ''));

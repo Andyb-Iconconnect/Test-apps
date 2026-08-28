@@ -24,6 +24,11 @@
  *   discreet      true → never show an exact position for this yacht, regardless
  *                 of the global discreetMode setting
  *   service       your own operational data — the part no tracking site can show
+ *   systems       what we have installed, by service line, with the date. Drives
+ *                 both the aftersales "what am I supporting" view and the sales
+ *                 "which boats are due an upgrade conversation" list
+ *   contacts      who to reach aboard. Shown in the console only, never on the
+ *                 office display
  *   demo          starting state for DEMO MODE only; ignored once live AIS is on
  * -------------------------------------------------------------------------- */
 
@@ -54,6 +59,18 @@ window.FLEET = [
       ],
       yardPeriod: null
     },
+    // What we have installed, along our own service lines. This is the table
+    // that answers both "what am I supporting on this boat" and "which boats
+    // are due a conversation" — the console flags anything past its age.
+    systems: [
+      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2024-06' },
+      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2024-06' },
+      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2019-04' }
+    ],
+    contacts: [
+      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
+      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
+    ],
     demo: {
       status: 'underway',
       speed: 12.4,
@@ -88,6 +105,18 @@ window.FLEET = [
       partsOnOrder: [],
       yardPeriod: null
     },
+    // What we have installed, along our own service lines. This is the table
+    // that answers both "what am I supporting on this boat" and "which boats
+    // are due a conversation" — the console flags anything past its age.
+    systems: [
+      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2021-03' },
+      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2021-03' },
+      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2021-03' }
+    ],
+    contacts: [
+      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
+      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
+    ],
     demo: {
       status: 'anchored',
       speed: 0.2,
@@ -126,6 +155,18 @@ window.FLEET = [
     },
     // Demonstrates the state you WILL see in real life: a yacht mid-ocean with
     // no terrestrial AIS coverage. The board shows its last known fix and ages it.
+    // What we have installed, along our own service lines. This is the table
+    // that answers both "what am I supporting on this boat" and "which boats
+    // are due a conversation" — the console flags anything past its age.
+    systems: [
+      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2023-09' },
+      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2016-02' },
+      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2023-09' }
+    ],
+    contacts: [
+      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
+      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
+    ],
     demo: {
       status: 'dark',
       speed: 15.1,
@@ -161,6 +202,18 @@ window.FLEET = [
       partsOnOrder: [],
       yardPeriod: null
     },
+    // What we have installed, along our own service lines. This is the table
+    // that answers both "what am I supporting on this boat" and "which boats
+    // are due a conversation" — the console flags anything past its age.
+    systems: [
+      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2022-05' },
+      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2022-05' },
+      { line: 'Security', product: null, installed: null }
+    ],
+    contacts: [
+      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
+      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
+    ],
     demo: {
       status: 'moored',
       speed: 0,
@@ -196,6 +249,18 @@ window.FLEET = [
       partsOnOrder: [],
       yardPeriod: null
     },
+    // What we have installed, along our own service lines. This is the table
+    // that answers both "what am I supporting on this boat" and "which boats
+    // are due a conversation" — the console flags anything past its age.
+    systems: [
+      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2025-04' },
+      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2025-04' },
+      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2018-07' }
+    ],
+    contacts: [
+      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
+      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
+    ],
     demo: {
       status: 'underway',
       speed: 10.8,
@@ -231,6 +296,18 @@ window.FLEET = [
       ],
       yardPeriod: { yard: 'Placeholder Refit Yard', from: '2026-06-15', to: '2026-10-10' }
     },
+    // What we have installed, along our own service lines. This is the table
+    // that answers both "what am I supporting on this boat" and "which boats
+    // are due a conversation" — the console flags anything past its age.
+    systems: [
+      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2026-07' },
+      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2014-11' },
+      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2026-07' }
+    ],
+    contacts: [
+      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
+      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
+    ],
     demo: {
       status: 'refit',
       speed: 0,
@@ -264,6 +341,18 @@ window.FLEET = [
       ],
       yardPeriod: null
     },
+    // What we have installed, along our own service lines. This is the table
+    // that answers both "what am I supporting on this boat" and "which boats
+    // are due a conversation" — the console flags anything past its age.
+    systems: [
+      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2020-08' },
+      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2020-08' },
+      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2020-08' }
+    ],
+    contacts: [
+      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
+      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
+    ],
     demo: {
       status: 'underway',
       speed: 8.9,
@@ -297,6 +386,18 @@ window.FLEET = [
       partsOnOrder: [],
       yardPeriod: null
     },
+    // What we have installed, along our own service lines. This is the table
+    // that answers both "what am I supporting on this boat" and "which boats
+    // are due a conversation" — the console flags anything past its age.
+    systems: [
+      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2023-02' },
+      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2023-02' },
+      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2023-02' }
+    ],
+    contacts: [
+      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
+      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
+    ],
     demo: {
       status: 'anchored',
       speed: 0.3,

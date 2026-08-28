@@ -100,6 +100,14 @@ window.CONFIG = {
   discreetMode: false,
   discreetRoundingNm: 60,
 
+  // For the machine in reception. When locked, discretion is permanent: it is
+  // forced on at start-up and the D key stops working, so nobody passing the
+  // screen can reveal exact positions — deliberately not something a person has
+  // to remember to switch on when guests arrive. Set this true on the office
+  // display; leave it false on the console, where there is somebody present to
+  // use the toggle and to switch it back.
+  discreetLocked: false,
+
   /* --- Demo mode --------------------------------------------------------- */
 
   // Only used while aisStreamApiKey is empty. Time is compressed so movement is
@@ -107,6 +115,18 @@ window.CONFIG = {
   // simulated passage. Set to 1 for true real-time (and near-motionless) demo.
   demo: {
     timeScale: 30
+  },
+
+  /* --- Console ----------------------------------------------------------- */
+
+  // Settings for console.html, the desk tool. The office display ignores these.
+  fleetConsole: {
+    // A system older than this is flagged as worth a conversation. Split by
+    // line because they do not age at the same rate — a network core dates
+    // faster than a control system, which dates faster than cameras.
+    systemAgeYears: { AV: 8, IT: 6, Security: 8 },
+    // Anything falling due inside this window counts as needing attention.
+    attentionDays: 21
   },
 
   /* --- Look -------------------------------------------------------------- */

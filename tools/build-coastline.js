@@ -90,8 +90,30 @@ function encodeVarint(n) {
 const topo = JSON.parse(fs.readFileSync(SOURCE, 'utf8'));
 const geo = topojson.feature(topo, topo.objects.land);
 
+// A ring that crosses the antimeridian arrives with its longitudes wrapping
+// from +180 to -180 mid-path. Drawn literally, that single step spans the whole
+// world and paints a horizontal bar across the chart — which is exactly what
+// Eurasia, Antarctica, a Russian island at 71 N and Fiji were doing. Unwrapping
+// makes each ring's longitudes continuous, running past +/-180 where it has to;
+// the renderer already draws the world repeatedly, so the overspill lands in the
+// neighbouring copy where it belongs.
+function unwrapLongitudes(ring) {
+  const out = [];
+  let offset = 0;
+  for (let i = 0; i < ring.length; i++) {
+    if (i > 0) {
+      const step = ring[i][0] - ring[i - 1][0];
+      if (step > 180) offset -= 360;
+      else if (step < -180) offset += 360;
+    }
+    out.push([ring[i][0] + offset, ring[i][1]]);
+  }
+  return out;
+}
+
 const rings = [];
 let droppedSpecks = 0;
+let unwrapped = 0;
 for (const feature of geo.features) {
   const polygons = feature.geometry.type === 'Polygon'
     ? [feature.geometry.coordinates]
@@ -103,9 +125,12 @@ for (const feature of geo.features) {
       // to see, skip the whole polygon rather than leaving orphan holes behind.
       if (i === 0 && ringArea(polygon[i]) < MIN_AREA_DEG2) { droppedSpecks++; break; }
 
+      const raw = unwrapLongitudes(polygon[i]);
+      if (raw.some(([x]) => x < -180.001 || x > 180.001)) unwrapped++;
+
       const points = [];
       let px = null, py = null;
-      for (const [x, y] of simplify(polygon[i], EPS)) {
+      for (const [x, y] of simplify(raw, EPS)) {
         const rx = Math.round(x * SCALE), ry = Math.round(y * SCALE);
         if (rx === px && ry === py) continue;    // rounding can collapse neighbours
         points.push([rx, ry]);
@@ -141,4 +166,5 @@ window.WORLD_LAND_SCALE = ${SCALE};
 
 const points = rings.reduce((sum, r) => sum + r.length, 0);
 console.log(`rings ${rings.length} · points ${points} · dropped specks ${droppedSpecks} · ` +
+            `unwrapped ${unwrapped} · ` +
             `${Math.round(fs.statSync(OUTPUT).size / 1024)} KB -> ${path.relative(process.cwd(), OUTPUT)}`);

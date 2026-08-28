@@ -1,0 +1,122 @@
+/* -----------------------------------------------------------------------------
+ * Shared design tokens — the Icon Connect palette and type, in one place.
+ *
+ * Loaded by both the office display (index.html) and the console
+ * (console.html), so retinting either retints both. Neither stylesheet
+ * redefines a colour; they only consume these.
+ *
+ * Type SIZE is deliberately not set here: the wall board scales with the
+ * viewport, the console does not.
+ * -------------------------------------------------------------------------- */
+
+/* -----------------------------------------------------------------------------
+ * Brand faces, served from assets/fonts/ rather than a font CDN.
+ *
+ * A board that runs sixteen hours a day on an office wall should not depend on
+ * a third party being up, and the single-file build inlines these so it works
+ * with no network at all.
+ *
+ * Lato is the brand's body face. Jost stands in for Century Gothic — both are
+ * Futura derivatives — and the display stack tries Century Gothic first, so a
+ * machine with the real licensed font uses it instead. Both are SIL Open Font
+ * License; see assets/fonts/LICENSE-*.txt.
+ * -------------------------------------------------------------------------- */
+
+@font-face { font-family: 'Jost'; font-style: normal; font-weight: 300;
+  font-display: swap; src: url('../assets/fonts/jost-latin-300-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Jost'; font-style: normal; font-weight: 400;
+  font-display: swap; src: url('../assets/fonts/jost-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Jost'; font-style: normal; font-weight: 500;
+  font-display: swap; src: url('../assets/fonts/jost-latin-500-normal.woff2') format('woff2'); }
+
+@font-face { font-family: 'Lato'; font-style: normal; font-weight: 300;
+  font-display: swap; src: url('../assets/fonts/lato-latin-300-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Lato'; font-style: normal; font-weight: 400;
+  font-display: swap; src: url('../assets/fonts/lato-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Lato'; font-style: normal; font-weight: 700;
+  font-display: swap; src: url('../assets/fonts/lato-latin-700-normal.woff2') format('woff2'); }
+
+/* -----------------------------------------------------------------------------
+ * Fleet Watch — a board meant to be read from across an office and ignored for
+ * hours at a time. Dark by design: this is one committed look, not a theme that
+ * follows the OS. Every colour is a custom property, so retinting to a house
+ * palette means editing this block and nothing else.
+ * -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  /* --------------------------------------------------------------------------
+   * Icon Connect, from the 2023 Brand Book.
+   *
+   * The brand's own dark applications — the digital wallpaper and the business
+   * cards — are a deep blue-slate ground with the logotype cyan on top, which is
+   * exactly the register a fleet board wants. Surfaces below are stepped from
+   * the wallpaper's own blues; the accent is the cyan the logo is actually
+   * printed in.
+   * ----------------------------------------------------------------------- */
+
+  /* Brand */
+  --brand-cyan:        #3CB4E4;   /* the logotype's applied colour */
+  --brand-cyan-bright: #00CCFF;   /* charter "Info" — used sparingly, for life */
+  --brand-silver:      #C0C0C0;   /* charter "Terms" */
+
+  /* Surfaces, stepped from the wallpaper's blue-slate */
+  --bg:            #070E16;
+  --surface-1:     #0C1723;
+  --surface-2:     #16283A;   /* the surface the state palette was validated against */
+  --surface-3:     #1E3446;
+  --scrim:         rgba(7, 14, 22, 0.94);
+  --border:        rgba(120, 180, 220, 0.13);
+  --border-strong: rgba(120, 180, 220, 0.26);
+
+  /* Ink, tinted toward the ground rather than a neutral grey */
+  --text-primary:   #EAF2F8;
+  --text-secondary: #9DB4C6;
+  --text-muted:     #67819A;
+
+  /* Chart. Land is stepped up from the wallpaper's blue-slate until it clears
+     the sea by luminance and not only by hue, measured both in daylight
+     (3.3:1) and under the night band (2.5:1) — at the wallpaper's own value the
+     two sat at 1.5:1 and the whole chart read as haze. The coastline is the
+     charter's IT steel blue, which is lighter again and draws the edge.
+     The night wash is deliberately light: it should say "these yachts are in
+     darkness", not hide half the chart. */
+  --map-ocean:      #0F2032;
+  --map-ocean-deep: #0A1826;
+  --map-land:       #4A7398;
+  --map-coast:      #64A0C8;
+  --map-graticule:  #1A3049;
+  --map-night:      rgba(0, 4, 10, 0.16);
+  --map-twilight:   rgba(0, 4, 10, 0.07);
+  --map-track:      #2E7FAE;
+
+  /* Vessel state. Stepped from the brand hues onto the dark ground and
+     validated as a categorical set against --surface-2: all three pass the
+     lightness band, chroma floor, CVD separation, the normal-vision floor and
+     3:1 contrast. The brand palette is entirely cool, so "at anchor" is the
+     charter's Security aqua walked toward green — the nearest step that clears
+     the separation floor against the cyan. None of them ever carries meaning
+     alone; every dot on this board sits beside its own word. */
+  --status-underway: #3596C8;   /* brand cyan, stepped into the dark band */
+  --status-anchored: #39A566;   /* Security aqua, stepped for separation */
+  --status-refit:    #9A55A6;   /* AV purple, stepped */
+  --status-moored:   #8FA3B5;   /* Terms silver, tinted to the ground */
+  --status-dark:     #5E7488;
+
+  /* Service urgency. Reserved status colours, deliberately not themed: they are
+     the only warm hues on the board, which is what makes them read as "look
+     here" against an entirely cool brand. */
+  --good:     #0ca30c;
+  --warning:  #fab219;
+  --critical: #d03b3b;
+
+  /* Type. Century Gothic and Lato are the brand's own faces; Century Gothic is
+     tried first so a licensed machine uses the real thing, with Jost — like
+     Century Gothic, a Futura derivative — as the web substitute. */
+  --font-display: 'Century Gothic', 'Jost', 'Questrial', 'Avant Garde', system-ui, sans-serif;
+  --font-body: 'Lato', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: var(--font-body);
+
+}
+

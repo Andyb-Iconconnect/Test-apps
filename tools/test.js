@@ -134,12 +134,27 @@ test('coastline decodes to sane geometry', () => {
   for (const r of rings) {
     assert.strictEqual(r.length % 2, 0, 'rings hold lon/lat pairs');
     for (let i = 0; i < r.length; i += 2) {
-      assert.ok(r[i] >= -180.5 && r[i] <= 180.5, 'longitude ' + r[i]);
       assert.ok(r[i + 1] >= -90.5 && r[i + 1] <= 90.5, 'latitude ' + r[i + 1]);
     }
     points += r.length / 2;
   }
   assert.ok(points > 40000, 'point count ' + points);
+});
+
+// Longitudes are deliberately NOT clamped to +/-180: rings that cross the
+// antimeridian are unwrapped at build time so they stay continuous. What must
+// hold is that no single step jumps the seam, because a step of ~360 degrees
+// draws a bar straight across the chart.
+test('no ring steps across the antimeridian', () => {
+  const rings = Geo.decodeLand(window.WORLD_LAND_ENCODED, window.WORLD_LAND_SCALE);
+  let worst = 0, offender = null;
+  for (const r of rings) {
+    for (let i = 2; i < r.length; i += 2) {
+      const step = Math.abs(r[i] - r[i - 2]);
+      if (step > worst) { worst = step; offender = r[i]; }
+    }
+  }
+  assert.ok(worst <= 180, `largest longitude step ${worst.toFixed(1)} deg near lon ${offender}`);
 });
 
 /* --- Formatting ---------------------------------------------------------- */

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet Console — Icon Connect</title>
+<meta name="description" content="Fleet positions, service and installed systems, for sales and aftersales.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#9875;</text></svg>">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/console.css">
+</head>
+<body>
+
+<div id="console">
+
+  <header class="bar">
+    <span class="brand-lockup">
+      <span class="brand" id="brand"></span>
+      <span class="brand-locations" id="brand-locations"></span>
+    </span>
+    <span class="bar-title">Fleet Console</span>
+
+    <span class="bar-spacer"></span>
+
+    <label class="search" for="search">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6"/><line x1="13.5" y1="13.5" x2="18" y2="18"/></svg>
+      <input id="search" type="search" placeholder="Search name, IMO, MMSI, flag, port, engineer"
+             autocomplete="off" spellcheck="false">
+    </label>
+
+    <button class="toggle" id="discreet-toggle" type="button" aria-pressed="false">
+      Discreet
+    </button>
+
+    <span class="status-pill" id="connection" data-state="starting">
+      <span class="dot"></span><span id="connection-label">Starting</span>
+    </span>
+
+    <span class="clock" id="clock">--:--</span>
+  </header>
+
+  <aside class="rail">
+    <div class="filters" id="filters"></div>
+    <div class="rail-list" id="rail-list"></div>
+    <div class="rail-foot" id="rail-foot"></div>
+  </aside>
+
+  <main class="work" id="work"></main>
+
+  <aside class="chartpane">
+    <div class="chartpane-head">
+      <span class="pane-title" id="chart-title">Fleet</span>
+      <button class="linkish" id="clear-selection" type="button" hidden>Show all vessels</button>
+    </div>
+    <div class="chart-holder">
+      <canvas id="chart-canvas"></canvas>
+    </div>
+    <div class="chart-readout" id="chart-readout"></div>
+  </aside>
+
+</div>
+
+<script src="config.js"></script>
+<script src="fleet.js"></script>
+<script src="data/ports.js"></script>
+<script src="data/world-land.js"></script>
+<script src="js/geo.js"></script>
+<script src="js/format.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ais.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/weather.js"></script>
+<script src="js/map.js"></script>
+<script src="js/console.js"></script>
+
+</body>
+</html>

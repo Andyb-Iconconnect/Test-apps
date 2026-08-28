@@ -16,6 +16,7 @@
   /* --- Boot -------------------------------------------------------------- */
 
   function boot() {
+    if (window.CONFIG.discreetLocked) window.CONFIG.discreetMode = true;
     window.Store.init(window.FLEET);
     window.FleetMap.init(el('chart-canvas'));
 
@@ -446,6 +447,8 @@
       case '3': jumpToView('stats'); break;
       case '4': jumpToView('schedule'); break;
       case 'd': case 'D':
+        // Locked installs cannot be talked out of discretion from the keyboard.
+        if (window.CONFIG.discreetLocked) break;
         window.CONFIG.discreetMode = !window.CONFIG.discreetMode;
         el('discreet-flag').textContent = window.CONFIG.discreetMode ? 'Discreet mode' : '';
         window.Store.recompute();
