@@ -198,7 +198,27 @@
     paintLabels(labels);
 
     ctx.restore();
+
+    // Kept so a pointer can be matched against the marks. The drift offset has
+    // to come with it: the markers are drawn through a translated context, so
+    // their screen position is the projected position plus the drift.
+    Map.lastFrame = { placed: placed, driftX: driftPx, driftY: driftPy };
     return placed;
+  };
+
+  // The vessel nearest a point on the canvas, within a comfortable finger's
+  // reach. Returns null when the click was on open sea.
+  Map.hitTest = function (x, y, radius) {
+    var frame = Map.lastFrame;
+    if (!frame) return null;
+    var limit = radius || 30;
+    var best = null, bestDistance = limit;
+    for (var i = 0; i < frame.placed.length; i++) {
+      var p = frame.placed[i];
+      var d = Math.hypot(x - (p.x + frame.driftX), y - (p.y + frame.driftY));
+      if (d < bestDistance) { bestDistance = d; best = p.vessel; }
+    }
+    return best;
   };
 
   function drawOcean() {

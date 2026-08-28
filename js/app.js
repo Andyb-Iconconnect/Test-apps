@@ -35,11 +35,22 @@
     window.addEventListener('resize', onResize);
     document.addEventListener('keydown', onKey);
     document.addEventListener('mousemove', onPointer);
+    document.addEventListener('keydown', noteActivity);
+    document.addEventListener('mousemove', noteActivity);
+    el('chart-canvas').addEventListener('click', onCanvasClick);
+    el('rail-list').addEventListener('click', onRailClick);
+    el('hint-close').addEventListener('click', function () {
+      el('hint').classList.remove('visible');
+    });
 
     setInterval(function () { window.Store.recompute(); }, RECOMPUTE_MS);
     setInterval(function () { window.Store.persist(); }, PERSIST_MS);
     setInterval(tickClock, 1000);
     setInterval(applyAmbientChrome, 60000);
+    setInterval(checkAutoResume, 15000);
+
+    // Shown once at start-up, then only when a pointer moves.
+    showHint();
 
     tickClock();
     applyAmbientChrome();
@@ -365,12 +376,60 @@
   /* --- Keyboard ----------------------------------------------------------- */
 
   var pointerTimer = null;
+  var hintTimer = null;
+
   function onPointer() {
     document.body.classList.add('interactive');
+    showHint();
     clearTimeout(pointerTimer);
     pointerTimer = setTimeout(function () {
       document.body.classList.remove('interactive');
     }, 4000);
+  }
+
+  // The shortcuts are invisible until something tells you about them. This costs
+  // nothing on a wall — the pointer never moves there and the board only ever
+  // shows it once, at boot — and it is the difference between someone opening a
+  // link and watching one view, or actually finding the other three.
+  function showHint() {
+    var hint = el('hint');
+    hint.classList.add('visible');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(function () { hint.classList.remove('visible'); }, 5000);
+  }
+
+  function onCanvasClick(event) {
+    var rect = el('chart-canvas').getBoundingClientRect();
+    var vessel = window.FleetMap.hitTest(event.clientX - rect.left, event.clientY - rect.top);
+    if (vessel) showVessel(vessel.yacht.id);
+  }
+
+  function onRailClick(event) {
+    var row = event.target.closest('.rail-row');
+    if (row && row.dataset.yachtId) showVessel(row.dataset.yachtId);
+  }
+
+  // A board paused by hand and then forgotten is a board showing yesterday. If
+  // nobody has touched it for a while, start moving again on its own.
+  var RESUME_AFTER_MS = 5 * 60 * 1000;
+  var lastActivity = Date.now();
+
+  function noteActivity() {
+    lastActivity = Date.now();
+  }
+
+  function checkAutoResume() {
+    if (App.paused && Date.now() - lastActivity > RESUME_AFTER_MS) {
+      App.paused = false;
+      App.sceneStartedAt = performance.now();
+      setViewTitle();
+    }
+  }
+
+  function setViewTitle() {
+    var scene = App.scenes[App.scene];
+    el('view-title').textContent =
+      (App.paused ? 'Paused · ' : '') + (VIEW_TITLES[scene.view] || '');
   }
 
   function onKey(event) {
@@ -378,8 +437,7 @@
       case ' ':
         event.preventDefault();
         App.paused = !App.paused;
-        el('view-title').textContent =
-          (App.paused ? 'Paused · ' : '') + (VIEW_TITLES[App.scenes[App.scene].view] || '');
+        setViewTitle();
         break;
       case 'ArrowRight': enterScene(App.scene + 1); break;
       case 'ArrowLeft': enterScene(App.scene - 1); break;
@@ -399,6 +457,30 @@
         break;
       case 'r': case 'R': location.reload(); break;
     }
+  }
+
+  // Show one yacht now. Used by both click paths. The rotation is not paused —
+  // a board that stops because somebody brushed the mouse is worse than one
+  // that moves on — but the scene timer restarts, so there is a full dwell to
+  // read it before the board carries on.
+  function showVessel(yachtId) {
+    for (var i = 0; i < App.scenes.length; i++) {
+      var scene = App.scenes[i];
+      if (scene.view === 'spotlight' && scene.vesselId === yachtId) {
+        enterScene(i);
+        return true;
+      }
+    }
+    // Spotlight is configured to show a single yacht per cycle, so there is no
+    // scene of its own to jump to — render it into the one that exists.
+    for (var j = 0; j < App.scenes.length; j++) {
+      if (App.scenes[j].view === 'spotlight') {
+        App.scenes[j].vesselId = yachtId;
+        enterScene(j);
+        return true;
+      }
+    }
+    return false;
   }
 
   function jumpToView(view) {

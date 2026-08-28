@@ -52,6 +52,7 @@
     window.Store.vessels.forEach(function (v) {
       var d = v.derived;
       var row = h('div', 'rail-row' + (highlightId === v.yacht.id ? ' is-highlight' : ''));
+      row.dataset.yachtId = v.yacht.id;
 
       var marker = h('span', 'marker');
       marker.style.background = statusVar(d.status);

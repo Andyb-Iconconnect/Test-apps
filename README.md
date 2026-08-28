@@ -55,6 +55,19 @@ chromium --kiosk --incognito http://localhost:8000
 
 The cursor hides itself after a few seconds of stillness.
 
+**Click a yacht** — on the chart or in the fleet rail — to jump straight to its
+detail. The rotation is not paused by the click; the scene timer restarts, so
+there is a full dwell to read it before the board moves on.
+
+A hint showing all of this appears once at start-up and whenever a pointer
+moves. On a wall display the pointer never moves, so after boot it is never seen
+again — which is the rule the interactive bits follow generally: nothing that
+costs anything when nobody is there to use it.
+
+If somebody pauses the board by hand and walks away, it starts again on its own
+after five idle minutes. A board that stops because someone brushed the mouse is
+worse than one that carries on.
+
 ---
 
 ## Branding

@@ -282,6 +282,86 @@ body.interactive { cursor: default; }
 
 .view.active { opacity: 1; visibility: visible; }
 
+/* --- The hint ---------------------------------------------------------------
+ * Only ever seen by somebody with a pointer: on the office display it appears
+ * once at boot and then never again.
+ * -------------------------------------------------------------------------- */
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 1.4rem;
+  transform: translate(-50%, 0.6rem);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.55rem 0.7rem 0.55rem 1.1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 500ms ease, transform 500ms ease, visibility 500ms;
+  z-index: 20;
+}
+
+.hint.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.hint-keys { display: inline-flex; align-items: center; gap: 0.75rem; }
+
+.hint-keys b {
+  display: inline-block;
+  min-width: 1.5em;
+  margin-right: 0.15rem;
+  padding: 0.12rem 0.3rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.25rem;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  font-weight: 400;
+  text-align: center;
+}
+
+.hint-note {
+  padding-left: 1rem;
+  border-left: 1px solid var(--border);
+  color: var(--brand-cyan);
+}
+
+.hint-close {
+  all: unset;
+  cursor: pointer;
+  padding: 0 0.45rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  border-radius: 0.25rem;
+}
+
+.hint-close:hover { color: var(--text-primary); }
+.hint-close:focus-visible { outline: 2px solid var(--brand-cyan); outline-offset: 2px; }
+
+/* What is clickable looks clickable — but only once there is a pointer to
+   click with, so the wall display never grows affordances nobody can use. */
+body.interactive #chart-canvas,
+body.interactive .rail-row { cursor: pointer; }
+
+body.interactive .rail-row:hover { background: rgba(60, 180, 228, 0.07); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hint { transition: none; }
+}
+
 /* --- Footer ---------------------------------------------------------------- */
 
 .footer {
