@@ -440,6 +440,13 @@ body.interactive { cursor: default; }
   margin-top: 0.3rem;
 }
 
+.card-note {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 34rem;
+}
+
 /* --- View: stats ----------------------------------------------------------- */
 
 #view-stats {

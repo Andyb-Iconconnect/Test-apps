@@ -293,8 +293,26 @@
     grid.textContent = '';
 
     if (!w) {
-      grid.appendChild(kv('Conditions', window.CONFIG.weather.enabled ? 'Loading…' : 'Disabled'));
+      // Distinguish "not fetched yet" from "you turned this off" — a card that
+      // just says "Disabled" reads like a fault rather than a setting.
+      if (!window.CONFIG.weather.enabled) {
+        var note = h('div', 'card-note',
+          'Weather lookup is switched off. Set weather.enabled in config.js to ' +
+          'show wind, sea state and sea temperature at each yacht.');
+        grid.parentNode.replaceChild(note, grid);
+        note.id = 'spot-weather';
+        note.className = 'card-note';
+      } else {
+        grid.appendChild(kv('Conditions', 'Loading…'));
+      }
       return;
+    }
+    // The element may have been swapped for the note above on a previous render.
+    if (!grid.classList.contains('kv-grid')) {
+      var replacement = h('div', 'kv-grid');
+      replacement.id = 'spot-weather';
+      grid.parentNode.replaceChild(replacement, grid);
+      grid = replacement;
     }
 
     var beaufort = window.Weather.beaufort(w.windSpeed);

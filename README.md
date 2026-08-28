@@ -23,6 +23,19 @@ then open `http://localhost:8000` and press **F** for full screen.
 Opening `index.html` directly from disk also works — everything loads with plain
 `<script>` tags rather than modules, precisely so that it does.
 
+### One file, no server
+
+```
+node tools/build-single-file.js
+```
+
+writes `dist/fleet-watch.html` with every script, style and the coastline data
+inlined — one file to email, drop on a USB stick, or open straight off disk.
+Add `--offline` to force demo mode and switch the weather lookup off, for
+sandboxes that block outbound requests.
+
+### Kiosk mode
+
 For a permanent display, point a browser at the page in kiosk mode:
 
 ```
@@ -165,7 +178,8 @@ js/map.js             the chart renderer
 js/views.js           the four screens
 js/app.js             bootstrap, rotation, keyboard
 tools/test.js         browser-free checks — node tools/test.js
-tools/build-coastline.js  regenerates data/world-land.js
+tools/build-coastline.js    regenerates data/world-land.js
+tools/build-single-file.js  bundles everything into one .html
 ```
 
 ### Why there is no map library
