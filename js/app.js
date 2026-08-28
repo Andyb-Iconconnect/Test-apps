@@ -20,6 +20,7 @@
     window.FleetMap.init(el('chart-canvas'));
 
     renderBrand();
+    el('brand-locations').textContent = window.CONFIG.brandLocations || '';
     el('brand-sub').textContent = window.CONFIG.subtitle || '';
     el('strapline').textContent = window.CONFIG.strapline || '';
 
@@ -84,14 +85,16 @@
     svg.setAttribute('aria-hidden', 'true');
 
     var ring = document.createElementNS(NS, 'path');
-    // Centre (50,55), radius 32; arc runs clockwise from 1 o'clock all the way
-    // round to just left of 12, leaving the gap the bar rises through.
-    ring.setAttribute('d', 'M 76.2 36.6 A 32 32 0 1 1 41.7 24.1');
+    // Centre (50,55), radius 32. The gap is narrow and sits square at twelve
+    // o'clock — just wide enough for the bar — so the O still reads as a letter.
+    // The arc therefore runs the long way: from -74 degrees clockwise to 254.
+    ring.setAttribute('d', 'M 59.1 22.9 A 33 33 0 1 1 40.9 22.9');
     svg.appendChild(ring);
 
     var bar = document.createElementNS(NS, 'line');
-    bar.setAttribute('x1', '50'); bar.setAttribute('y1', '14');
-    bar.setAttribute('x2', '50'); bar.setAttribute('y2', '50');
+    // Rises just clear of the ring and drops about a third of the way into it.
+    bar.setAttribute('x1', '50'); bar.setAttribute('y1', '8');
+    bar.setAttribute('x2', '50'); bar.setAttribute('y2', '42');
     svg.appendChild(bar);
 
     return svg;

@@ -141,7 +141,7 @@ body.interactive { cursor: default; }
 
 .masthead {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 1.5rem;
   padding: 1.15rem 1.6rem 0.9rem;
   border-bottom: 1px solid var(--border);
@@ -149,32 +149,52 @@ body.interactive { cursor: default; }
 }
 
 /* The logotype lockup, set the way the brand book sets it: uppercase Century
-   Gothic, widely letterspaced, in the logo cyan. */
+   Gothic, widely letterspaced, in the logo cyan, with the locations beneath.
+   The artwork sets that second line in black, which would vanish here, so it
+   takes the board's own muted ink instead. */
+.brand-lockup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.brand-locations {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 300;
+  letter-spacing: 0.2em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
   gap: 0.02em;
   font-family: var(--font-display);
-  font-size: 1.3rem;
-  font-weight: 400;
-  letter-spacing: 0.14em;
+  font-size: 1.32rem;
+  font-weight: 300;
+  letter-spacing: 0.17em;
   color: var(--brand-cyan);
   white-space: nowrap;
 }
 
 .brand img { height: 1.5rem; width: auto; display: block; }
 
-/* The power symbol standing in for the O of ICON, as the logo does. */
+/* The power symbol standing in for the O of ICON, as the logo does. Sized so
+   the ring matches the cap height of the letters beside it — a smaller ring
+   reads as a different glyph — and stroked to the same weight as the
+   letterforms, which at this weight are very thin. */
 .brand .power-o {
-  height: 0.94em;
-  width: 0.94em;
-  margin: 0 0.1em 0 0.04em;
+  height: 1.03em;
+  width: 1.03em;
+  margin: 0 0.11em 0 0.05em;
   fill: none;
   stroke: currentColor;
-  stroke-width: 11;
+  stroke-width: 6;
   stroke-linecap: round;
   position: relative;
-  top: 0.015em;
+  top: 0.012em;
 }
 
 .strapline {

@@ -76,10 +76,17 @@ The board is themed from the Icon Connect Brand Book 2023.
   substitute. Both webfonts are served from `assets/fonts/`, not a CDN: a board
   that runs sixteen hours a day should not depend on a third party being up.
 - **The wordmark.** `ICON CONNECT` is set in the display face with the power
-  symbol drawn as the O, as the logo does. To use the real artwork instead, drop
-  a transparent PNG of the horizontal logotype into `assets/` and point
-  `brandLogo` at it in `config.js` — that replaces the wordmark entirely, and
-  falls back to it if the file is missing.
+  symbol drawn as SVG in place of the O, sized to the cap height of the letters
+  beside it and stroked to the same weight. `London - Monaco` sits beneath, as
+  the lockup sets it — but in the board's own muted ink rather than the
+  artwork's black, which would disappear against a dark ground. Change it with
+  `brandLocations`, or set it empty to drop the line.
+
+  To use the real artwork instead, drop a transparent PNG of the horizontal
+  logotype into `assets/` and point `brandLogo` at it in `config.js`. That
+  replaces the drawn wordmark entirely and falls back to it if the file is
+  missing. Use a version with light or cyan artwork on transparency — a lockup
+  with black text in it will not read here.
 
 Everything is a CSS custom property in one block at the top of
 `css/screensaver.css`, so retinting for another brand means editing that block

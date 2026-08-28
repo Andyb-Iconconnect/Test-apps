@@ -17,6 +17,9 @@ window.CONFIG = {
   brand: 'ICON CONNECT',
   brandPowerMark: true,
   brandLogo: null,              // e.g. 'assets/logo-iconconnect.png'
+  // Set beneath the wordmark, as the lockup does. Left as board ink rather than
+  // the artwork's black, which would disappear against a dark ground.
+  brandLocations: 'London  -  Monaco',
   subtitle: 'Fleet Watch',
   strapline: 'Technologies to enhance your life',
 
