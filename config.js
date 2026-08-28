@@ -83,7 +83,6 @@ window.CONFIG = {
     chartSeconds: 75,
     spotlightSeconds: 24,       // per yacht
     statsSeconds: 40,
-    scheduleSeconds: 40,
     // Spotlight steps through every yacht before moving on. Set false to show
     // a single random yacht per rotation instead.
     spotlightAllYachts: true

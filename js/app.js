@@ -141,12 +141,11 @@
     }
 
     App.scenes.push({ view: 'stats', seconds: r.statsSeconds });
-    App.scenes.push({ view: 'schedule', seconds: r.scheduleSeconds });
 
     var dots = el('rotation-dots');
     dots.textContent = '';
     // One dot per view, not per yacht — eight spotlight dots would be noise.
-    ['chart', 'spotlight', 'stats', 'schedule'].forEach(function (name) {
+    ['chart', 'spotlight', 'stats'].forEach(function (name) {
       var dot = document.createElement('div');
       dot.className = 'rotation-dot';
       dot.dataset.view = name;
@@ -160,8 +159,7 @@
   var VIEW_TITLES = {
     chart: 'Fleet chart',
     spotlight: 'Vessel detail',
-    stats: 'Fleet summary',
-    schedule: 'Service & refit'
+    stats: 'Fleet summary'
   };
 
   function enterScene(index) {
@@ -169,7 +167,7 @@
     App.sceneStartedAt = performance.now();
     var scene = App.scenes[App.scene];
 
-    ['chart', 'spotlight', 'stats', 'schedule'].forEach(function (name) {
+    ['chart', 'spotlight', 'stats'].forEach(function (name) {
       el('view-' + name).classList.toggle('active', name === scene.view);
     });
     el('view-title').textContent = VIEW_TITLES[scene.view] || '';
@@ -188,8 +186,6 @@
       if (v) window.Views.renderSpotlight(v);
     } else if (scene.view === 'stats') {
       window.Views.renderStats();
-    } else if (scene.view === 'schedule') {
-      window.Views.renderSchedule();
     }
   }
 
@@ -445,7 +441,6 @@
       case '1': jumpToView('chart'); break;
       case '2': jumpToView('spotlight'); break;
       case '3': jumpToView('stats'); break;
-      case '4': jumpToView('schedule'); break;
       case 'd': case 'D':
         // Locked installs cannot be talked out of discretion from the keyboard.
         if (window.CONFIG.discreetLocked) break;

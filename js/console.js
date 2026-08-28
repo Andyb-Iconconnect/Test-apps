@@ -40,7 +40,13 @@
 
   /* --- Boot ---------------------------------------------------------------- */
 
+  // fleet.js as shipped, kept apart from anything added in this browser so the
+  // two never compound on a reload.
+  var BASE_FLEET = null;
+
   function boot() {
+    BASE_FLEET = window.FLEET.slice();
+    window.FLEET = window.Vessel.mergedFleet(BASE_FLEET);
     window.Store.init(window.FLEET);
     window.FleetMap.init(el('chart-canvas'));
     renderBrand();
@@ -59,6 +65,7 @@
     el('chart-canvas').addEventListener('click', onChartClick);
     el('clear-selection').addEventListener('click', function () { select(null); });
     el('discreet-toggle').addEventListener('click', toggleDiscreet);
+    wireAddDialog();
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', function () {
       window.FleetMap.resize();
@@ -302,7 +309,9 @@
         marker.style.boxShadow = 'inset 0 0 0 2px ' + statusVar('dark');
       }
       row.appendChild(marker);
-      row.appendChild(h('span', 'v-name', v.yacht.name));
+      var nameCell = h('span', 'v-name', v.yacht.name);
+      if (v.yacht.addedLocally) nameCell.appendChild(h('span', 'local-dot'));
+      row.appendChild(nameCell);
 
       if (attention.length) {
         row.appendChild(h('span', 'v-flagcount' + (urgent ? ' urgent' : ''), String(attention.length)));
@@ -491,6 +500,37 @@
       spec.appendChild(span);
     });
     host.appendChild(spec);
+
+    if (y.addedLocally) {
+      var localPanel = h('div', 'panel');
+      var localHead = h('div', 'pane-title');
+      localHead.appendChild(document.createTextNode('In this browser only '));
+      localHead.appendChild(h('span', 'local-flag', 'not in fleet.js'));
+      localPanel.appendChild(localHead);
+      localPanel.appendChild(h('div', 'sheet-note',
+        'This vessel was added here and is stored in this browser. It is not on ' +
+        'the office display and not on anyone else\'s console until its entry is ' +
+        'pasted into fleet.js.'));
+      var snippet = h('pre', 'snippet', window.Vessel.toSnippet(y) + ',');
+      localPanel.appendChild(snippet);
+      var actions = h('div', 'sheet-actions');
+      var copyButton = h('button', 'button-primary', 'Copy entry');
+      copyButton.type = 'button';
+      copyButton.addEventListener('click', function () {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(snippet.textContent);
+        }
+        copyButton.textContent = 'Copied';
+        setTimeout(function () { copyButton.textContent = 'Copy entry'; }, 2000);
+      });
+      var removeButton = h('button', 'button-quiet', 'Remove from this browser');
+      removeButton.type = 'button';
+      removeButton.addEventListener('click', function () { removeLocalVessel(y.id); });
+      actions.appendChild(copyButton);
+      actions.appendChild(removeButton);
+      localPanel.appendChild(actions);
+      host.appendChild(localPanel);
+    }
 
     // Attention for this vessel first — it is why you opened the record.
     var attention = attentionFor(v);
@@ -733,6 +773,144 @@
     renderRail(true);
     renderWork();
     renderReadout();
+  }
+
+  /* --- Adding a vessel ----------------------------------------------------- */
+
+  function wireAddDialog() {
+    var dialog = el('add-dialog');
+    el('add-vessel').addEventListener('click', function () { openAddDialog(); });
+    el('add-cancel').addEventListener('click', function () { dialog.close(); });
+    el('add-cancel-2').addEventListener('click', function () { dialog.close(); });
+    el('done-close').addEventListener('click', function () { dialog.close(); });
+    el('add-form').addEventListener('submit', onAddSubmit);
+    el('copy-snippet').addEventListener('click', onCopySnippet);
+
+    // Clear a field's error as soon as it is edited; nagging while someone types
+    // is worse than saying nothing.
+    ['imo', 'mmsi', 'name'].forEach(function (key) {
+      el('f-' + key).addEventListener('input', function () {
+        setFieldError(key, '');
+      });
+    });
+  }
+
+  function openAddDialog() {
+    var form = el('add-form');
+    form.reset();
+    ['imo', 'mmsi', 'name'].forEach(function (k) { setFieldError(k, ''); });
+    el('add-status').textContent = '';
+    form.hidden = false;
+    el('add-done').hidden = true;
+    el('add-dialog').showModal();
+    el('f-imo').focus();
+  }
+
+  function setFieldError(key, message) {
+    el('e-' + key).textContent = message || '';
+    el('f-' + key).setAttribute('aria-invalid', message ? 'true' : 'false');
+  }
+
+  function onAddSubmit(event) {
+    event.preventDefault();
+
+    var imo = window.Vessel.validateImo(el('f-imo').value);
+    var mmsi = window.Vessel.validateMmsi(el('f-mmsi').value);
+    var name = el('f-name').value.trim();
+
+    setFieldError('imo', imo.ok ? '' : imo.error);
+    setFieldError('mmsi', mmsi.ok ? '' : mmsi.error);
+    setFieldError('name', name ? '' : 'Give the vessel a name.');
+
+    if (!imo.ok) { el('f-imo').focus(); return; }
+    if (!mmsi.ok) { el('f-mmsi').focus(); return; }
+    if (!name) { el('f-name').focus(); return; }
+
+    // Refuse a duplicate rather than quietly shadowing an existing record.
+    var clash = window.FLEET.filter(function (y) {
+      return y.mmsi === mmsi.value || y.imo === imo.value;
+    })[0];
+    if (clash) {
+      setFieldError('mmsi', clash.name + ' is already on the list with that ' +
+        (clash.mmsi === mmsi.value ? 'MMSI' : 'IMO') + '.');
+      return;
+    }
+
+    var record = window.Vessel.buildRecord({
+      name: name,
+      prefix: el('f-prefix').value,
+      mmsi: mmsi.value,
+      imo: imo.value,
+      flag: el('f-flag').value.trim() || null,
+      builder: el('f-builder').value.trim() || null,
+      loa: numberOrNull(el('f-loa').value),
+      yearBuilt: numberOrNull(el('f-year').value),
+      discreet: el('f-discreet').checked
+    });
+
+    var stored = window.Vessel.addAddition(record);
+    reloadFleet(record.id);
+
+    el('done-name').textContent = window.Fmt.fullName(record);
+    el('done-snippet').textContent = window.Vessel.toSnippet(record) + ',';
+    el('copy-status').textContent = stored ? ''
+      : 'This browser is blocking storage, so the vessel will be gone on reload — the entry below is the only copy.';
+    el('add-form').hidden = true;
+    el('add-done').hidden = false;
+    el('done-close').focus();
+  }
+
+  function numberOrNull(value) {
+    var n = parseFloat(String(value).replace(',', '.'));
+    return isFinite(n) ? n : null;
+  }
+
+  // Rebuild the fleet from file plus local additions, and point the feeds at the
+  // new list — a vessel added mid-session has to be subscribed to.
+  function reloadFleet(selectId) {
+    window.FLEET = window.Vessel.mergedFleet(BASE_FLEET);
+    window.Store.init(window.FLEET);
+
+    if (window.Store.mode === 'demo') {
+      window.Demo.stop();
+      window.Demo.start(window.Store.vessels);
+    } else {
+      window.Ais.stop();
+      window.Ais.start((window.CONFIG.aisStreamApiKey || '').trim(),
+        window.FLEET.map(function (y) { return y.mmsi; }));
+    }
+
+    window.Store.recompute();
+    select(selectId || App.selected);
+    renderRail(true);
+  }
+
+  function onCopySnippet() {
+    var text = el('done-snippet').textContent;
+    var status = el('copy-status');
+    function fallback() {
+      // Clipboard access is refused in some embedded contexts; select it instead
+      // so the keyboard still works.
+      var range = document.createRange();
+      range.selectNodeContents(el('done-snippet'));
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      status.textContent = 'Selected — press Ctrl+C (or Cmd+C) to copy.';
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(function () { status.textContent = 'Copied. Paste it into fleet.js.'; })
+        .catch(fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function removeLocalVessel(id) {
+    window.Vessel.removeAddition(id);
+    App.selected = null;
+    reloadFleet(null);
   }
 
   function onKey(event) {

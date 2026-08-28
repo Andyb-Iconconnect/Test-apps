@@ -155,6 +155,13 @@
 
   Geo.solarPosition = solarPosition;
 
+  // Into (-pi, pi].
+  function normalise(rad) {
+    while (rad > Math.PI) rad -= 2 * Math.PI;
+    while (rad <= -Math.PI) rad += 2 * Math.PI;
+    return rad;
+  }
+
   // Sun altitude in degrees at a point, right now.
   Geo.solarAltitude = function (date, lon, lat) {
     var s = solarPosition(date);
@@ -163,8 +170,48 @@
     return Math.asin(Math.sin(p) * Math.sin(d) + Math.cos(p) * Math.cos(d) * Math.cos(ha)) * RAD;
   };
 
-  // The terminator as a latitude for each longitude: the great circle 90 degrees
-  // from the subsolar point. `nightAtNorthPole` says which side to shade.
+  // Latitude on one meridian where the sun sits at altitude h. For declination d
+  // and hour angle H:
+  //     sin(h) = sin(lat)sin(d) + cos(lat)cos(d)cos(H)
+  // With A = sin(d) and B = cos(d)cos(H) the right-hand side is a single
+  // sinusoid in lat, so it solves in closed form — but asin has two branches and
+  // both can be real latitudes, because near the poles a twilight contour closes
+  // into a ring. `reference` disambiguates: the answer must lie at or beyond it
+  // toward the dark pole, which is what keeps a stack of contours in order.
+  function contourLat(hourAngle, h, d, darkSign, reference) {
+    var A = Math.sin(d);
+    var B = Math.cos(d) * Math.cos(hourAngle);
+    var amplitude = Math.hypot(A, B);
+    if (amplitude < 1e-12) return reference;
+
+    var raw = Math.sin(h) / amplitude;
+    // No solution on this meridian: either the sun never climbs that high (so
+    // every latitude is darker than h) or never sinks that low (so every
+    // latitude is brighter). Both are real cases near the solstices.
+    if (raw > 1) return -darkSign * 90;
+    if (raw < -1) return darkSign * 90;
+
+    var base = Math.asin(raw);
+    var phase = Math.atan2(B, A);
+    var candidates = [];
+    [base - phase, Math.PI - base - phase].forEach(function (rad) {
+      var deg = normalise(rad) * RAD;
+      if (deg >= -90.001 && deg <= 90.001) candidates.push(deg);
+    });
+    if (!candidates.length) return reference;
+
+    // Keep only those at or beyond the reference, then take the nearest.
+    var beyond = candidates.filter(function (deg) {
+      return darkSign * (deg - reference) >= -0.001;
+    });
+    var pool = beyond.length ? beyond : candidates;
+    return pool.reduce(function (best, deg) {
+      return Math.abs(deg - reference) < Math.abs(best - reference) ? deg : best;
+    });
+  }
+
+  // The terminator: the altitude-0 contour, which has an unambiguous closed form
+  // and so needs no disambiguation.
   Geo.terminator = function (date, stepDeg) {
     var s = solarPosition(date);
     var step = stepDeg || 2;
@@ -172,11 +219,59 @@
     var pts = [];
     for (var lon = -180; lon <= 180; lon += step) {
       var ha = (lon - s.subsolarLon) * DEG;
-      // tan(lat) = -cos(hourAngle) / tan(declination)
-      var lat = Math.atan(-Math.cos(ha) / Math.tan(d === 0 ? 1e-9 : d)) * RAD;
-      pts.push([lon, lat]);
+      pts.push([lon, Math.atan(-Math.cos(ha) / Math.tan(d === 0 ? 1e-9 : d)) * RAD]);
     }
     return { points: pts, nightAtNorthPole: s.declination < 0 };
+  };
+
+  // A single contour at any altitude, taken nearest the terminator. Used for the
+  // narrow warm band just on the daylight side, which the ordered stack below
+  // cannot express because it only ever walks toward the dark.
+  Geo.altitudeContour = function (date, altitudeDeg, stepDeg) {
+    var s = solarPosition(date);
+    var d = s.declination * DEG;
+    var darkSign = s.declination < 0 ? 1 : -1;
+    var terminator = Geo.terminator(date, stepDeg || 2);
+    var pts = terminator.points.map(function (p) {
+      var ha = (p[0] - s.subsolarLon) * DEG;
+      // Reference is the terminator, and the direction constraint is dropped by
+      // passing the reference as its own bound: the nearest real solution wins.
+      var lat = contourLat(ha, altitudeDeg * DEG, d, darkSign, p[1]);
+      if (Math.abs(lat - p[1]) > 60) lat = p[1];   // reject a jump to the far branch
+      return [p[0], lat];
+    });
+    return { points: pts, nightAtNorthPole: s.declination < 0 };
+  };
+
+  // A stack of contours — 0, -6, -12, -18 gives the terminator and the ends of
+  // civil, nautical and astronomical twilight. They are solved together, each
+  // constrained to lie at or beyond the one before it toward the dark pole, so
+  // the bands drawn between them can never cross or invert.
+  Geo.twilightContours = function (date, altitudes, stepDeg) {
+    var s = solarPosition(date);
+    var step = stepDeg || 2;
+    var d = s.declination * DEG;
+    var darkSign = s.declination < 0 ? 1 : -1;      // +1 when the north is dark
+
+    var terminator = Geo.terminator(date, step);
+    var contours = [terminator.points];
+
+    for (var a = 0; a < altitudes.length; a++) {
+      var h = altitudes[a] * DEG;
+      var previous = contours[contours.length - 1];
+      var pts = [];
+      for (var i = 0; i < previous.length; i++) {
+        var lon = previous[i][0];
+        var ha = (lon - s.subsolarLon) * DEG;
+        pts.push([lon, contourLat(ha, h, d, darkSign, previous[i][1])]);
+      }
+      contours.push(pts);
+    }
+
+    return {
+      contours: contours,             // [terminator, ...one per altitude]
+      nightAtNorthPole: s.declination < 0
+    };
   };
 
   // Sunrise and sunset for a calendar day, as Date objects (UTC instants).

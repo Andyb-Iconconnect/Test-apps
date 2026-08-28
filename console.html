@@ -40,6 +40,10 @@
   </header>
 
   <aside class="rail">
+    <div class="rail-head">
+      <span class="pane-title">Fleet</span>
+      <button class="add-button" id="add-vessel" type="button">+ Add vessel</button>
+    </div>
     <div class="filters" id="filters"></div>
     <div class="rail-list" id="rail-list"></div>
     <div class="rail-foot" id="rail-foot"></div>
@@ -58,6 +62,106 @@
     <div class="chart-readout" id="chart-readout"></div>
   </aside>
 
+  <dialog class="sheet" id="add-dialog" aria-labelledby="add-title">
+    <form method="dialog" id="add-form" novalidate>
+      <header class="sheet-head">
+        <h2 id="add-title">Add a vessel</h2>
+        <button class="sheet-close" id="add-cancel" type="button" aria-label="Close">&times;</button>
+      </header>
+
+      <div class="sheet-body" id="add-body">
+        <p class="sheet-note">
+          The IMO number is checked against its own check digit, so a mistyped one
+          is caught here rather than three weeks later.
+        </p>
+
+        <div class="field-pair">
+          <label for="f-imo">IMO number</label>
+          <input id="f-imo" name="imo" inputmode="numeric" autocomplete="off" placeholder="7 digits" required>
+          <p class="field-error" id="e-imo" role="alert"></p>
+        </div>
+
+        <div class="field-pair">
+          <label for="f-mmsi">MMSI</label>
+          <input id="f-mmsi" name="mmsi" inputmode="numeric" autocomplete="off" placeholder="9 digits" required>
+          <p class="field-hint">
+            AIS broadcasts on MMSI, not IMO. There is no free way to look one up from
+            the other, so this has to come off the ship's radio licence or her AIS unit
+            — without it the vessel is on the list but cannot be tracked.
+          </p>
+          <p class="field-error" id="e-mmsi" role="alert"></p>
+        </div>
+
+        <div class="field-pair">
+          <label for="f-name">Name</label>
+          <input id="f-name" name="name" autocomplete="off" placeholder="Without the M/Y" required>
+          <p class="field-error" id="e-name" role="alert"></p>
+        </div>
+
+        <div class="field-grid">
+          <div class="field-pair">
+            <label for="f-prefix">Type</label>
+            <select id="f-prefix" name="prefix">
+              <option value="M/Y">M/Y — motor</option>
+              <option value="S/Y">S/Y — sailing</option>
+            </select>
+          </div>
+          <div class="field-pair">
+            <label for="f-loa">LOA (m)</label>
+            <input id="f-loa" name="loa" inputmode="decimal" autocomplete="off" placeholder="e.g. 48.5">
+          </div>
+          <div class="field-pair">
+            <label for="f-year">Year built</label>
+            <input id="f-year" name="yearBuilt" inputmode="numeric" autocomplete="off" placeholder="e.g. 2021">
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field-pair">
+            <label for="f-flag">Flag</label>
+            <input id="f-flag" name="flag" autocomplete="off" placeholder="e.g. Cayman Islands">
+          </div>
+          <div class="field-pair">
+            <label for="f-builder">Builder</label>
+            <input id="f-builder" name="builder" autocomplete="off">
+          </div>
+        </div>
+
+        <label class="checkline">
+          <input type="checkbox" id="f-discreet" name="discreet">
+          <span>Discreet — never show an exact position for this vessel</span>
+        </label>
+      </div>
+
+      <footer class="sheet-foot">
+        <span class="sheet-foot-note" id="add-status"></span>
+        <button class="button-quiet" id="add-cancel-2" type="button">Cancel</button>
+        <button class="button-primary" id="add-submit" type="submit">Add vessel</button>
+      </footer>
+    </form>
+
+    <!-- Shown after a successful add. -->
+    <div class="sheet-done" id="add-done" hidden>
+      <header class="sheet-head">
+        <h2 id="done-title">Added — now make it permanent</h2>
+        <button class="sheet-close" id="done-close" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="sheet-body">
+        <p class="sheet-note">
+          <b id="done-name"></b> is on your list and, with live AIS running, is being
+          tracked from now. But it lives in this browser only. Paste the entry below
+          into <code>fleet.js</code>, before the closing <code>];</code>, and it becomes
+          part of the fleet everybody sees — including the office display.
+        </p>
+        <pre class="snippet" id="done-snippet"></pre>
+        <div class="sheet-actions">
+          <button class="button-primary" id="copy-snippet" type="button">Copy entry</button>
+          <span class="sheet-foot-note" id="copy-status"></span>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
 </div>
 
 <script src="config.js"></script>
@@ -65,6 +169,7 @@
 <script src="data/ports.js"></script>
 <script src="data/world-land.js"></script>
 <script src="js/geo.js"></script>
+<script src="js/vessel.js"></script>
 <script src="js/format.js"></script>
 <script src="js/store.js"></script>
 <script src="js/ais.js"></script>

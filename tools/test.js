@@ -21,9 +21,9 @@ global.localStorage = {
 
 const load = (f) => require(path.join(__dirname, '..', f));
 ['config.js', 'fleet.js', 'data/ports.js', 'data/world-land.js',
- 'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js'].forEach(load);
+ 'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js'].forEach(load);
 
-const { Geo, Fmt, Store, Ais, PORTS, CONFIG, FLEET } = window;
+const { Geo, Fmt, Store, Ais, Vessel, PORTS, CONFIG, FLEET } = window;
 
 let passed = 0;
 function test(name, fn) {
@@ -105,6 +105,45 @@ test('the terminator spans the globe and picks the dark pole', () => {
   assert.strictEqual(june.points.length, 37);
   assert.strictEqual(june.nightAtNorthPole, false, 'northern midsummer');
   assert.strictEqual(Geo.terminator(new Date('2026-12-21T12:00:00Z'), 10).nightAtNorthPole, true);
+});
+
+/* --- Twilight ------------------------------------------------------------ */
+
+test('twilight contours stay ordered toward the dark pole', () => {
+  // Ordering is what lets the chart fill bands between them: if a lower contour
+  // ever crossed a higher one the band would invert and paint over daylight.
+  const dates = ['2026-03-20T18:00:00Z', '2026-06-21T00:00:00Z',
+                 '2026-08-28T12:00:00Z', '2026-09-22T09:00:00Z',
+                 '2026-12-21T06:00:00Z', '2026-01-15T21:00:00Z'];
+  for (const iso of dates) {
+    const date = new Date(iso);
+    const result = Geo.twilightContours(date, [-6, -12, -18], 5);
+    const darkSign = result.nightAtNorthPole ? 1 : -1;
+    for (let i = 0; i < result.contours[0].length; i++) {
+      for (let k = 1; k < result.contours.length; k++) {
+        const previous = result.contours[k - 1][i][1];
+        const current = result.contours[k][i][1];
+        assert.ok(darkSign * (current - previous) >= -0.01,
+          `${iso}: contour ${k} crosses back at lon ${result.contours[k][i][0]}`);
+      }
+    }
+  }
+});
+
+test('every twilight contour point is a real solution, a pole, or a closed band', () => {
+  const altitudes = [0, -6, -12, -18];
+  for (const iso of ['2026-08-28T12:00:00Z', '2026-09-22T09:00:00Z', '2026-12-21T06:00:00Z']) {
+    const date = new Date(iso);
+    const result = Geo.twilightContours(date, [-6, -12, -18], 5);
+    result.contours.forEach((contour, k) => {
+      contour.forEach(([lon, lat], i) => {
+        if (Math.abs(lat) > 89.5) return;                                   // pinned at a pole
+        if (k > 0 && Math.abs(lat - result.contours[k - 1][i][1]) < 0.001) return;  // zero-width band
+        close(Geo.solarAltitude(date, lon, lat), altitudes[k], 0.01,
+          `${iso} contour ${altitudes[k]} at lon ${lon}`);
+      });
+    });
+  }
 });
 
 /* --- Ports and discretion ------------------------------------------------ */
@@ -362,6 +401,91 @@ test('a hostile storage layer does not take the board down', () => {
   assert.doesNotThrow(() => s.clearCache());
 });
 
+/* --- Vessel records ------------------------------------------------------ */
+
+test('IMO check digits are computed the way the standard defines them', () => {
+  // Four real, published IMO numbers.
+  for (const imo of ['9074729', '9395044', '9247455', '8814275']) {
+    assert.strictEqual(Vessel.validateImo(imo).ok, true, imo + ' should be valid');
+  }
+});
+
+test('a mistyped IMO is rejected with the digit it should have been', () => {
+  const result = Vessel.validateImo('9074728');
+  assert.strictEqual(result.ok, false);
+  assert.ok(/check digit should be 9/.test(result.error), result.error);
+});
+
+test('IMO input is forgiving about formatting but strict about length', () => {
+  assert.strictEqual(Vessel.validateImo('IMO 9395044').value, 9395044);
+  assert.strictEqual(Vessel.validateImo('  9395044  ').value, 9395044);
+  assert.strictEqual(Vessel.validateImo('123').ok, false);
+  assert.strictEqual(Vessel.validateImo('90747290').ok, false);
+  assert.strictEqual(Vessel.validateImo('90747ab').ok, false);
+  assert.strictEqual(Vessel.validateImo('').ok, false);
+  assert.strictEqual(Vessel.validateImo(null).ok, false);
+});
+
+test('MMSI must be a ship station, not a coast station or a handheld', () => {
+  assert.strictEqual(Vessel.validateMmsi('319000001').value, 319000001);
+  assert.strictEqual(Vessel.validateMmsi('249123456').ok, true);
+  assert.strictEqual(Vessel.validateMmsi('991123456').ok, false, '99x is an aid to navigation');
+  assert.strictEqual(Vessel.validateMmsi('009123456').ok, false, '00x is a coast station');
+  assert.strictEqual(Vessel.validateMmsi('12345').ok, false);
+  assert.strictEqual(Vessel.validateMmsi('').ok, false);
+});
+
+test('a built record renders to JavaScript that actually parses', () => {
+  const record = Vessel.buildRecord({
+    name: "O'Brien's Folly", mmsi: 319123456, imo: 9074729,
+    loa: 52.5, yearBuilt: 2024, flag: 'Cayman Islands', prefix: 'S/Y'
+  });
+  const snippet = Vessel.toSnippet(record);
+  const parsed = new Function('return [' + snippet + '][0]')();
+  assert.strictEqual(parsed.mmsi, 319123456);
+  assert.strictEqual(parsed.imo, 9074729);
+  assert.strictEqual(parsed.name, "O'Brien's Folly", 'an apostrophe survives the round trip');
+  assert.strictEqual(parsed.prefix, 'S/Y');
+  assert.strictEqual(parsed.loa, 52.5);
+  assert.strictEqual(parsed.service.openJobs, 0);
+  assert.ok(Array.isArray(parsed.systems) && parsed.systems.length === 3);
+});
+
+test('unknown fields are left null rather than guessed', () => {
+  const record = Vessel.buildRecord({ name: 'Bare', mmsi: 319000999, imo: 9074729 });
+  assert.strictEqual(record.beam, null);
+  assert.strictEqual(record.grossTonnage, null);
+  assert.strictEqual(record.classSociety, null);
+  assert.strictEqual(record.yearBuilt, null);
+});
+
+test('storage being unavailable is survivable, not fatal', () => {
+  // The harness at the top of this file has localStorage throw on every call.
+  assert.doesNotThrow(() => Vessel.loadAdditions());
+  assert.deepStrictEqual(Vessel.loadAdditions(), []);
+  assert.strictEqual(Vessel.addAddition({ id: 'x', mmsi: 1 }), false, 'reports the failure');
+  assert.deepStrictEqual(Vessel.mergedFleet(FLEET).length, FLEET.length);
+});
+
+test('merging never shadows a vessel already in the file', () => {
+  const additions = [
+    { id: 'aurelia', name: 'Impostor', mmsi: 999999999 },
+    { id: 'brand-new', name: 'New', mmsi: 319555555 }
+  ];
+  const original = Vessel.loadAdditions;
+  Vessel.loadAdditions = () => additions;
+  try {
+    const merged = Vessel.mergedFleet(FLEET);
+    assert.strictEqual(merged.length, FLEET.length + 1, 'the id clash is dropped');
+    assert.ok(merged.some((y) => y.id === 'brand-new'));
+    assert.strictEqual(merged.filter((y) => y.id === 'aurelia').length, 1);
+    assert.strictEqual(merged.find((y) => y.id === 'aurelia').name, 'Aurelia');
+    assert.strictEqual(merged.find((y) => y.id === 'brand-new').addedLocally, true);
+  } finally {
+    Vessel.loadAdditions = original;
+  }
+});
+
 /* --- Fleet data ---------------------------------------------------------- */
 
 test('the fleet file is internally consistent', () => {
@@ -373,6 +497,10 @@ test('the fleet file is internally consistent', () => {
     assert.ok(!mmsis.has(y.mmsi), 'unique MMSI: ' + y.mmsi);
     mmsis.add(y.mmsi);
     assert.ok(/^\d{7}$/.test(String(y.imo)), 'IMO is seven digits: ' + y.imo);
+    assert.strictEqual(Vessel.validateImo(String(y.imo)).ok, true,
+      y.name + "'s IMO " + y.imo + ' must pass the same check the add form applies');
+    assert.strictEqual(Vessel.validateMmsi(String(y.mmsi)).ok, true,
+      y.name + "'s MMSI " + y.mmsi + ' must be a ship-station MMSI');
     assert.ok(y.loa > 0 && y.loa < 200, 'plausible LOA: ' + y.loa);
     if (y.demo && y.demo.position) {
       assert.ok(Math.abs(y.demo.position[0]) <= 180 && Math.abs(y.demo.position[1]) <= 90);

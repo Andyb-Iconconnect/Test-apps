@@ -87,8 +87,15 @@
   --map-land:       #4A7398;
   --map-coast:      #64A0C8;
   --map-graticule:  #1A3049;
-  --map-night:      rgba(0, 4, 10, 0.16);
-  --map-twilight:   rgba(0, 4, 10, 0.07);
+  /* Dusk, in the order it happens. The chart fills between successive
+     solar-altitude contours, so these read as a real gradient: a warm strip
+     while the sun is still just up, then civil twilight cooling through violet
+     and indigo into night. */
+  --twilight-dusk:      rgba(214, 122, 74, 0.10);   /* sun above the horizon */
+  --twilight-civil:     rgba(92, 74, 156, 0.17);    /* 0 to -6 degrees */
+  --twilight-nautical:  rgba(40, 54, 130, 0.19);    /* -6 to -12 */
+  --twilight-astro:     rgba(14, 28, 82, 0.20);     /* -12 to -18 */
+  --map-night:          rgba(3, 9, 30, 0.30);       /* below -18 */
   --map-track:      #2E7FAE;
 
   /* Vessel state. Stepped from the brand hues onto the dark ground and

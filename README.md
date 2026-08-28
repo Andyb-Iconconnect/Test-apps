@@ -36,8 +36,11 @@ screenshot away from being a problem.
 # Fleet Watch — the office display
 
 A live fleet board for an office wall. It plots the yachts you look after on a
-chart, and rotates through vessel detail, fleet statistics and a service board so
-it is worth glancing at as well as leaving on.
+chart, and rotates through vessel detail and fleet statistics so it is worth
+glancing at as well as leaving on.
+
+Service and refit detail lives in the console, not here — a board a visitor can
+see is not the place for a client's job list.
 
 Runs in any modern browser as plain static files. No build step, no framework, no
 tile server, no npm install to use it.
@@ -84,7 +87,7 @@ chromium --kiosk --incognito http://localhost:8000
 |---|---|
 | `Space` | pause / resume the rotation |
 | `←` `→` | previous / next view |
-| `1` `2` `3` `4` | chart · vessel detail · fleet summary · service board |
+| `1` `2` `3` | chart · vessel detail · fleet summary |
 | `D` | toggle discreet mode |
 | `F` | full screen |
 | `R` | reload |
@@ -127,10 +130,32 @@ due a conversation, and what am I actually supporting on this one.
 - **Search** by name, IMO, MMSI, flag, call sign, nearest port, engineer, or an
   installed product. `/` focuses it, `Esc` clears.
 - **Filter** by state, or by anything needing attention.
+- **Add a vessel** with the button above the fleet list — see below.
 - **Click** a vessel in the rail, on the chart, or in any list to open it.
 - `Esc` returns to the fleet.
 
-Everything it shows comes from `fleet.js` — the `service`, `systems` and
+### Adding a vessel
+
+`fleet.js` stays the source of truth — it is version-controlled, both pages read
+it, and at five new yachts a year hand-editing costs minutes. The form exists so
+that editing does not mean hand-writing JavaScript.
+
+It asks for the **IMO number** and checks it against its own check digit, so a
+transposed digit is caught at the desk rather than three weeks later. It also
+asks for the **MMSI**, and this is the part worth knowing: *AIS broadcasts on
+MMSI, not IMO*. There is no free way to look one up from the other — it has to
+come off the ship's radio licence or her AIS unit. Without it a vessel appears on
+the list but cannot be tracked, and the form says so rather than letting you find
+out later. The MMSI is checked too: the first three digits identify the flag and
+must be a ship station, not a coast station or a handheld.
+
+A vessel added this way is held in **that browser only**, and the console says so
+plainly wherever it appears. To make it permanent and shared — including with the
+office display — the form hands you the finished `fleet.js` entry to paste in,
+with a copy button. Until then it is marked "not in fleet.js" on its own record,
+with the snippet and a remove button.
+
+Everything else it shows comes from `fleet.js` — the `service`, `systems` and
 `contacts` blocks. There is no separate database, which is the right call while
 the fleet grows by a handful a year: one file, edited in minutes, and no second
 place for the truth to disagree with itself.
@@ -202,6 +227,17 @@ Until you do, the spotlight draws a small locator chart of where that yacht is
 instead, which is more use than a grey box.
 
 ---
+
+## Day and night
+
+The chart shades the night side as it actually falls: a warm strip while the sun
+is still just above the horizon, then civil, nautical and astronomical twilight
+cooling through violet and indigo into night. Each band is filled between two
+solar-altitude contours, computed for the moment and recomputed once a minute.
+
+It reads as dusk rather than as a grey wash, and it is genuinely informative —
+you can see at a glance which yachts are in darkness. The five colours are
+`--twilight-*` and `--map-night` in `css/tokens.css`.
 
 ## Live positions
 
@@ -295,6 +331,7 @@ js/map.js             the chart renderer
 js/views.js           the display's four screens
 js/app.js             the display: bootstrap, rotation, keyboard
 js/console.js         the console: attention model, rail, detail, chart pane
+js/vessel.js          IMO and MMSI validation, local additions, fleet.js snippets
 tools/test.js         browser-free checks — node tools/test.js
 tools/build-coastline.js    regenerates data/world-land.js
 tools/build-single-file.js  bundles everything into one .html

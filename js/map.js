@@ -52,8 +52,11 @@
       land: v('--map-land', '#1b2632'),
       coast: v('--map-coast', '#31435a'),
       graticule: v('--map-graticule', '#16222f'),
-      night: v('--map-night', 'rgba(0, 4, 10, 0.30)'),
-      twilight: v('--map-twilight', 'rgba(0, 6, 14, 0.18)'),
+      night: v('--map-night', 'rgba(3, 9, 30, 0.30)'),
+      duskWarm: v('--twilight-dusk', 'rgba(214, 122, 74, 0.10)'),
+      civil: v('--twilight-civil', 'rgba(92, 74, 156, 0.17)'),
+      nautical: v('--twilight-nautical', 'rgba(40, 54, 130, 0.19)'),
+      astro: v('--twilight-astro', 'rgba(14, 28, 82, 0.20)'),
       track: v('--map-track', '#2f6ea8'),
       underway: v('--status-underway', '#3987e5'),
       anchored: v('--status-anchored', '#199e70'),
@@ -320,36 +323,62 @@
 
   /* --- Night ------------------------------------------------------------- */
 
-  // The day/night terminator. Recomputed once a minute — the sun does not move
-  // fast enough to justify doing this every frame.
+  // Dusk, drawn as it happens: a narrow warm band on the daylight side of the
+  // terminator, then civil, nautical and astronomical twilight cooling through
+  // violet into deep blue, then night. Bands are filled between successive
+  // solar-altitude contours, so the gradient is the real one rather than a wash
+  // with a hard edge.
+  // Colours come from the token stylesheet, like every other colour on the board.
+  var DUSK_ALTITUDE = 5;
+
   function drawNight(now) {
     if (!nightPath || now - nightComputedAt > 60000) {
-      nightPath = window.Geo.terminator(new Date(), 2);
+      nightPath = window.Geo.twilightContours(new Date(), [-6, -12, -18], 2);
+      nightPath.dusk = window.Geo.altitudeContour(new Date(), DUSK_ALTITUDE, 2).points;
       nightComputedAt = now;
     }
-    // Two bands: civil twilight offset a few degrees ahead of true night, so the
-    // boundary reads as dusk falling rather than as a hard seam across the sea.
-    fillTerminatorBand(nightPath.points, 6, theme.twilight);
-    fillTerminatorBand(nightPath.points, 0, theme.night);
+
+    var c = nightPath.contours;              // [terminator, -6, -12, -18]
+    fillBetween(nightPath.dusk, c[0], theme.duskWarm);
+    fillBetween(c[0], c[1], theme.civil);
+    fillBetween(c[1], c[2], theme.nautical);
+    fillBetween(c[2], c[3], theme.astro);
+    fillBeyond(c[3], theme.night);
   }
 
-  function fillTerminatorBand(pts, offsetDeg, fill) {
+  // The strip between two contours: out along the first, back along the second.
+  function fillBetween(upper, lower, fill) {
     var repeats = worldRepeats();
-    // Close the shaded band off the top or bottom edge of the canvas, whichever
-    // pole is currently in darkness. These two corners are screen coordinates,
-    // not world ones — the terminator itself is what gets projected.
-    var northIsNight = nightPath.nightAtNorthPole;
-    var edgeY = northIsNight ? -1000 : height + 1000;
-    // Offsetting toward the lit side widens the band into the daylight hemisphere.
-    var shift = northIsNight ? offsetDeg : -offsetDeg;
-
     ctx.save();
     ctx.beginPath();
     for (var r = -repeats; r <= repeats; r++) {
-      var firstX = sx(window.Geo.worldX(pts[0][0]) + r);
-      ctx.moveTo(firstX, sy(window.Geo.worldY(pts[0][1] + shift)));
-      for (var i = 1; i < pts.length; i++) {
-        ctx.lineTo(sx(window.Geo.worldX(pts[i][0]) + r), sy(window.Geo.worldY(pts[i][1] + shift)));
+      for (var i = 0; i < upper.length; i++) {
+        var x = sx(window.Geo.worldX(upper[i][0]) + r);
+        var y = sy(window.Geo.worldY(upper[i][1]));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      for (var j = lower.length - 1; j >= 0; j--) {
+        ctx.lineTo(sx(window.Geo.worldX(lower[j][0]) + r), sy(window.Geo.worldY(lower[j][1])));
+      }
+      ctx.closePath();
+    }
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Everything darker than the last contour, closed off the edge of the canvas
+  // at whichever pole is currently in darkness.
+  function fillBeyond(contour, fill) {
+    var repeats = worldRepeats();
+    var edgeY = nightPath.nightAtNorthPole ? -1000 : height + 1000;
+    ctx.save();
+    ctx.beginPath();
+    for (var r = -repeats; r <= repeats; r++) {
+      var firstX = sx(window.Geo.worldX(contour[0][0]) + r);
+      ctx.moveTo(firstX, sy(window.Geo.worldY(contour[0][1])));
+      for (var i = 1; i < contour.length; i++) {
+        ctx.lineTo(sx(window.Geo.worldX(contour[i][0]) + r), sy(window.Geo.worldY(contour[i][1])));
       }
       ctx.lineTo(sx(window.Geo.worldX(180) + r), edgeY);
       ctx.lineTo(firstX, edgeY);
