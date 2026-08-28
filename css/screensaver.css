@@ -1,0 +1,729 @@
+/* -----------------------------------------------------------------------------
+ * Fleet Watch — a board meant to be read from across an office and ignored for
+ * hours at a time. Dark by design: this is one committed look, not a theme that
+ * follows the OS. Every colour is a custom property, so retinting to a house
+ * palette means editing this block and nothing else.
+ * -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg:            #070d14;
+  --surface-1:     #0d151e;
+  --surface-2:     #111820;   /* the surface the palette was validated against */
+  --surface-3:     #17212d;
+  --border:        rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  /* Ink */
+  --text-primary:   #f2f5f8;
+  --text-secondary: #9fb0c2;
+  --text-muted:     #67788b;
+
+  /* Chart. Land sits lighter than the sea, the way it does on a paper chart, and
+     the two are separated by enough luminance to read from the far side of a
+     room rather than only from a desk. */
+  --map-ocean:      #12222f;
+  --map-ocean-deep: #0d1b26;
+  --map-land:       #33434f;
+  --map-coast:      #5c778f;
+  --map-graticule:  #1b3043;
+  --map-night:      rgba(0, 3, 9, 0.22);
+  --map-twilight:   rgba(0, 5, 12, 0.10);
+  --map-track:      #2f6ea8;
+
+  /* Vessel state. Validated as a categorical set against --surface-2:
+     all three pass the lightness band, chroma floor, CVD separation and 3:1
+     contrast. They are never the only cue — every dot carries a text label. */
+  --status-underway: #3987e5;
+  --status-anchored: #199e70;
+  --status-moored:   #8b98a8;
+  --status-refit:    #d95926;
+  --status-dark:     #6c7a8c;
+
+  /* Service state. Reserved: never reused as a series colour. */
+  --good:     #0ca30c;
+  --warning:  #fab219;
+  --critical: #d03b3b;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* One knob for the whole board's type size, so it reads correctly on a 24"
+     desk monitor and a 65" wall panel alike. */
+  font-size: clamp(13px, 0.78vw, 21px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+body { cursor: none; }              /* it's a display, not a desktop */
+body.interactive { cursor: default; }
+
+/* Burn-in insurance and the after-hours dim, both applied to the whole board. */
+#board {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  transition: opacity 4s ease, transform 2.5s ease;
+}
+
+/* --- Header ---------------------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  padding: 1.15rem 1.6rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface-1), transparent);
+}
+
+.brand {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.brand-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.masthead-spacer { flex: 1; }
+
+.view-title {
+  font-size: 0.82rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.clock {
+  font-size: 1.35rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.clock-zone {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 0.4rem;
+}
+
+/* Connection state. The dot is never the only signal — it always sits beside
+   its own word, so the state survives both colour blindness and a glance. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.status-pill .dot {
+  width: 0.5rem; height: 0.5rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.status-pill[data-state="open"]  .dot { background: var(--good); }
+.status-pill[data-state="demo"]  .dot { background: var(--status-underway); }
+.status-pill[data-state="retrying"] .dot,
+.status-pill[data-state="connecting"] .dot { background: var(--warning); }
+.status-pill[data-state="closed"] .dot { background: var(--critical); }
+
+.status-pill[data-state="open"] .dot,
+.status-pill[data-state="demo"] .dot { animation: breathe 3.2s ease-in-out infinite; }
+
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* --- Stage and view transitions -------------------------------------------- */
+
+#stage { position: relative; overflow: hidden; }
+
+.view {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 900ms ease;
+}
+
+.view.active { opacity: 1; visibility: visible; }
+
+/* --- Footer ---------------------------------------------------------------- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 0.7rem 1.6rem 0.9rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.rotation-dots { display: flex; gap: 0.4rem; align-items: center; }
+
+.rotation-dot {
+  width: 1.9rem; height: 0.2rem;
+  border-radius: 999px;
+  background: var(--border-strong);
+  overflow: hidden;
+}
+
+.rotation-dot.current { background: rgba(255, 255, 255, 0.16); }
+
+.rotation-dot .fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--text-secondary);
+}
+
+.footer-spacer { flex: 1; }
+
+.footer .discreet-flag {
+  color: var(--warning);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* --- View: chart ----------------------------------------------------------- */
+
+#view-chart { display: block; }
+
+#chart-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.rail {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 21rem;
+  padding: 1.2rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: linear-gradient(90deg, rgba(7, 13, 20, 0.94) 0%, rgba(7, 13, 20, 0.86) 62%, transparent 100%);
+  overflow: hidden;
+}
+
+.rail-heading {
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.rail-row {
+  display: grid;
+  grid-template-columns: 0.55rem 1fr auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.5rem 0.1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.rail-row:last-child { border-bottom: none; }
+
+.rail-row .marker {
+  width: 0.55rem; height: 0.55rem;
+  border-radius: 50%;
+  align-self: center;
+}
+
+.rail-row .name {
+  font-size: 0.98rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail-row .state {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.rail-row .where {
+  grid-column: 2 / -1;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail-row.is-highlight { background: rgba(57, 135, 229, 0.08); }
+
+/* --- View: spotlight ------------------------------------------------------- */
+
+#view-spotlight {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 1.4rem;
+  padding: 1.5rem 1.6rem;
+}
+
+.spot-left { display: flex; flex-direction: column; gap: 1.1rem; min-height: 0; }
+
+.spot-identity .eyebrow {
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.spot-identity .name {
+  font-size: 3.1rem;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 0.15rem 0 0.5rem;
+}
+
+.spot-identity .spec {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+}
+
+.spot-identity .spec b { font-weight: 500; color: var(--text-primary); }
+
+.spot-visual {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.spot-visual img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.spot-visual canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* The placeholder shown until a photo is dropped into assets/photos/. */
+.photo-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--surface-1);
+}
+
+.photo-placeholder svg { opacity: 0.35; }
+
+/* Cards hug their content and the leftover height is shared out between them,
+   rather than four equal rows each holding a pool of empty space. */
+.spot-right {
+  display: grid;
+  grid-template-rows: repeat(4, auto);
+  align-content: space-between;
+  gap: 0.9rem;
+  min-height: 0;
+}
+
+.card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  padding: 1.05rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+
+/* The title stays pinned to the top of the card; the content centres in
+   whatever height is left, so a short card and a full one both look composed. */
+.card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+.card-title {
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.75rem 1.3rem;
+}
+
+.kv { min-width: 0; }
+
+.kv .k {
+  font-size: 0.7rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.kv .v {
+  font-size: 1.12rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* The qualifier sits on its own line so a long value can never overprint the
+   next column of the grid. */
+.kv .v small {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  margin-top: 0.1rem;
+  font-variant-numeric: normal;
+}
+
+.position-line {
+  font-size: 1.5rem;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.position-context { font-size: 0.95rem; color: var(--text-secondary); }
+
+.fix-age { font-size: 0.78rem; color: var(--text-muted); }
+.fix-age.stale { color: var(--warning); }
+.fix-age.dark { color: var(--critical); }
+
+/* Sunrise/sunset arc */
+/* A fixed aspect ratio so the arc scales uniformly — stretching the viewBox
+   turns the sun into an ellipse. */
+.sun-arc {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+  margin-top: 0.3rem;
+}
+
+/* --- View: stats ----------------------------------------------------------- */
+
+#view-stats {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 1.1rem;
+  padding: 1.5rem 1.6rem;
+}
+
+.tile-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.9rem;
+}
+
+.tile {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  padding: 1.15rem 1.25rem 1.25rem;
+}
+
+.tile .label {
+  font-size: 0.72rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tile .label .swatch { width: 0.5rem; height: 0.5rem; border-radius: 50%; }
+
+.tile .figure {
+  font-size: 3.6rem;
+  font-weight: 300;
+  line-height: 1.15;
+  margin-top: 0.3rem;
+  letter-spacing: -0.02em;
+}
+
+.tile .figure small {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+  margin-left: 0.3rem;
+  letter-spacing: 0;
+}
+
+.tile .note { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+.stats-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 0.9rem;
+  min-height: 0;
+}
+
+/* A column of panels that share the height between them. */
+.stats-column {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 0.9rem;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-height: 0;
+}
+
+.panel-title {
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.panel-title .sub { text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+
+/* Horizontal bars. Thin marks, 4px rounded data-end, anchored to a common
+   baseline, values direct-labelled rather than on an axis. */
+.bars { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; justify-content: space-evenly; }
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr) 5.5rem;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.bar-row .bar-name {
+  font-size: 1.12rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-track { height: 1.15rem; background: rgba(255, 255, 255, 0.045); border-radius: 0.2rem; }
+
+.bar-fill {
+  height: 100%;
+  border-radius: 0 0.25rem 0.25rem 0;
+  background: var(--status-underway);
+  transition: width 1.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+  min-width: 2px;
+}
+
+.bar-row .bar-value {
+  font-size: 1.12rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.bar-row .bar-value.zero { color: var(--text-muted); }
+
+/* Region breakdown */
+.region-list { display: flex; flex-direction: column; gap: 0.7rem; flex: 1; justify-content: space-evenly; }
+
+.region-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.region-row:last-child { border-bottom: none; }
+.region-row .r-name { font-size: 0.95rem; }
+.region-row .r-detail { font-size: 0.78rem; color: var(--text-muted); grid-column: 1 / -1; }
+.region-row .r-count { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
+/* Fleet at a glance: a label, a value, and the qualifier that makes the value
+   mean something. */
+.glance-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: space-evenly;
+}
+
+.glance-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.5rem 0.9rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.glance-row:last-child { border-bottom: none; }
+
+.glance-row .g-label {
+  font-size: 0.76rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.glance-row .g-value {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.glance-row .g-detail {
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* --- View: schedule -------------------------------------------------------- */
+
+#view-schedule {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 1.1rem;
+  padding: 1.5rem 1.6rem;
+}
+
+.timeline { display: flex; flex-direction: column; flex: 1; overflow: hidden; justify-content: space-evenly; }
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 4.6rem 1fr auto;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 0.62rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline-row:last-child { border-bottom: none; }
+
+.timeline-row .when {
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.timeline-row .what { min-width: 0; }
+.timeline-row .what .headline { font-size: 0.98rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.timeline-row .what .vessel { font-size: 0.78rem; color: var(--text-muted); }
+
+/* Status chips carry an icon glyph and a word — never colour alone. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.3rem;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.chip.due    { color: var(--warning); }
+.chip.overdue{ color: var(--critical); }
+.chip.ok     { color: var(--text-muted); }
+.chip.yard   { color: var(--status-refit); }
+.chip.part   { color: var(--status-anchored); }
+
+.jobs-list { display: flex; flex-direction: column; flex: 1; justify-content: space-evenly; }
+
+.job-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.55rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.job-row:last-child { border-bottom: none; }
+.job-row .j-name { font-size: 0.95rem; }
+.job-row .j-count { font-size: 0.95rem; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.job-row .j-count.none { color: var(--text-muted); }
+
+.parts-list { display: flex; flex-direction: column; flex: 1; justify-content: space-evenly; }
+
+.part-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.3rem 0.8rem;
+  padding: 0.55rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.part-row:last-child { border-bottom: none; }
+.part-row .p-item { font-size: 0.98rem; }
+.part-row .p-vessel { grid-column: 1 / 2; font-size: 0.78rem; color: var(--text-muted); }
+
+/* --- Utility --------------------------------------------------------------- */
+
+.muted { color: var(--text-muted); }
+.tabular { font-variant-numeric: tabular-nums; }
+.dimmed { opacity: 0.55; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.legend .item { display: inline-flex; align-items: center; gap: 0.4rem; }
+.legend .swatch { width: 0.55rem; height: 0.55rem; border-radius: 50%; }
+
+/* Respect a viewer who has asked for less motion, even on a wall display. */
+@media (prefers-reduced-motion: reduce) {
+  .view { transition: none; }
+  .status-pill .dot { animation: none; }
+  .bar-fill { transition: none; }
+}

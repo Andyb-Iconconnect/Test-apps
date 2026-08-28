@@ -1,0 +1,306 @@
+/* -----------------------------------------------------------------------------
+ * THE FLEET — this is the file you swap.
+ *
+ * Every yacht below is INVENTED. The IMO and MMSI numbers are deliberately
+ * sequential placeholders (9900001+, 3190000xx) so they cannot collide with a
+ * real vessel. Replace them with your own boats and the board becomes yours.
+ *
+ * The only field live tracking actually needs is `mmsi` — that is the identity
+ * AIS broadcasts on. IMO is carried in the slower static message and is useful
+ * as your own reference, but you cannot subscribe to a feed by IMO alone.
+ * Everything else is display detail you control.
+ *
+ * FIELDS
+ *   id            unique short slug, used internally
+ *   name          without the M/Y/S/Y prefix
+ *   prefix        'M/Y' or 'S/Y'
+ *   mmsi          9-digit Maritime Mobile Service Identity  ← required for live AIS
+ *   imo           7-digit IMO number
+ *   callSign, flag, flagCode
+ *   loa, beam     metres
+ *   grossTonnage
+ *   builder, yearBuilt, lastRefit, classSociety
+ *   photo         path to an image, e.g. 'assets/photos/aurelia.jpg' (null = crest)
+ *   discreet      true → never show an exact position for this yacht, regardless
+ *                 of the global discreetMode setting
+ *   service       your own operational data — the part no tracking site can show
+ *   demo          starting state for DEMO MODE only; ignored once live AIS is on
+ * -------------------------------------------------------------------------- */
+
+window.FLEET = [
+  {
+    id: 'aurelia',
+    name: 'Aurelia',
+    prefix: 'M/Y',
+    mmsi: 319000001,
+    imo: 9900001,
+    callSign: 'ZGAA1',
+    flag: 'Cayman Islands',
+    flagCode: 'KY',
+    loa: 62.4, beam: 11.2, grossTonnage: 1180,
+    builder: 'Placeholder Yard',
+    yearBuilt: 2019, lastRefit: 2024,
+    classSociety: "Lloyd's Register",
+    photo: null,
+    discreet: false,
+    service: {
+      nextEvent: 'Annual class survey',
+      nextEventDate: '2026-10-14',
+      engineer: 'A. Placeholder',
+      openJobs: 3,
+      urgentJobs: 0,
+      partsOnOrder: [
+        { item: 'Stabiliser seal kit', eta: '2026-09-04', port: 'Palma' }
+      ],
+      yardPeriod: null
+    },
+    demo: {
+      status: 'underway',
+      speed: 12.4,
+      destination: 'IBIZA',
+      etaHours: 5,
+      // Palma → Ibiza, roughly
+      route: [[2.65, 39.55], [2.35, 39.42], [1.90, 39.20], [1.44, 38.98], [1.26, 38.91]]
+    }
+  },
+
+  {
+    id: 'northern-light',
+    name: 'Northern Light',
+    prefix: 'M/Y',
+    mmsi: 319000002,
+    imo: 9900002,
+    callSign: 'ZGAA2',
+    flag: 'Cayman Islands',
+    flagCode: 'KY',
+    loa: 48.0, beam: 9.1, grossTonnage: 495,
+    builder: 'Placeholder Yard',
+    yearBuilt: 2021, lastRefit: null,
+    classSociety: 'RINA',
+    photo: null,
+    discreet: false,
+    service: {
+      nextEvent: 'Warranty inspection',
+      nextEventDate: '2026-09-08',
+      engineer: 'B. Placeholder',
+      openJobs: 1,
+      urgentJobs: 0,
+      partsOnOrder: [],
+      yardPeriod: null
+    },
+    demo: {
+      status: 'anchored',
+      speed: 0.2,
+      destination: 'FORMENTERA',
+      etaHours: 0,
+      position: [1.44, 38.68]        // off Formentera
+    }
+  },
+
+  {
+    id: 'sea-ember',
+    name: 'Sea Ember',
+    prefix: 'M/Y',
+    mmsi: 319000003,
+    imo: 9900003,
+    callSign: 'ZGAA3',
+    flag: 'Cayman Islands',
+    flagCode: 'KY',
+    loa: 75.2, beam: 12.8, grossTonnage: 1980,
+    builder: 'Placeholder Yard',
+    yearBuilt: 2016, lastRefit: 2023,
+    classSociety: "Lloyd's Register",
+    photo: null,
+    discreet: false,
+    service: {
+      nextEvent: 'Five-yearly special survey',
+      nextEventDate: '2026-11-30',
+      engineer: 'C. Placeholder',
+      openJobs: 6,
+      urgentJobs: 1,
+      partsOnOrder: [
+        { item: 'Main engine injector set', eta: '2026-09-12', port: 'Antigua' },
+        { item: 'Tender davit ram', eta: '2026-09-19', port: 'Antigua' }
+      ],
+      yardPeriod: null
+    },
+    // Demonstrates the state you WILL see in real life: a yacht mid-ocean with
+    // no terrestrial AIS coverage. The board shows its last known fix and ages it.
+    demo: {
+      status: 'dark',
+      speed: 15.1,
+      destination: 'ANTIGUA',
+      etaHours: 96,
+      position: [-38.4, 28.9],       // mid-Atlantic
+      lastSeenHoursAgo: 62,
+      course: 262
+    }
+  },
+
+  {
+    id: 'corvina',
+    name: 'Corvina',
+    prefix: 'M/Y',
+    mmsi: 319000004,
+    imo: 9900004,
+    callSign: 'ZGAA4',
+    flag: 'Malta',
+    flagCode: 'MT',
+    loa: 38.6, beam: 8.0, grossTonnage: 299,
+    builder: 'Placeholder Yard',
+    yearBuilt: 2022, lastRefit: null,
+    classSociety: 'Bureau Veritas',
+    photo: null,
+    discreet: false,
+    service: {
+      nextEvent: 'Tender service',
+      nextEventDate: '2026-09-02',
+      engineer: 'A. Placeholder',
+      openJobs: 2,
+      urgentJobs: 0,
+      partsOnOrder: [],
+      yardPeriod: null
+    },
+    demo: {
+      status: 'moored',
+      speed: 0,
+      destination: 'MONACO',
+      etaHours: 0,
+      position: [7.4256, 43.7350]    // Port Hercule, Monaco
+    }
+  },
+
+  {
+    id: 'halcyon-blue',
+    name: 'Halcyon Blue',
+    prefix: 'M/Y',
+    mmsi: 249000005,
+    imo: 9900005,
+    callSign: 'ZGAA5',
+    flag: 'Malta',
+    flagCode: 'MT',
+    loa: 55.0, beam: 10.4, grossTonnage: 812,
+    builder: 'Placeholder Yard',
+    yearBuilt: 2018, lastRefit: 2025,
+    classSociety: 'RINA',
+    photo: null,
+    // Marked discreet: this one is never shown at an exact position, even when
+    // the rest of the board is in full-detail mode.
+    discreet: true,
+    service: {
+      nextEvent: 'Interim survey',
+      nextEventDate: '2027-01-22',
+      engineer: 'D. Placeholder',
+      openJobs: 0,
+      urgentJobs: 0,
+      partsOnOrder: [],
+      yardPeriod: null
+    },
+    demo: {
+      status: 'underway',
+      speed: 10.8,
+      destination: 'CAPRI',
+      etaHours: 3,
+      route: [[14.60, 40.63], [14.48, 40.60], [14.32, 40.57], [14.24, 40.55]]  // Amalfi → Capri
+    }
+  },
+
+  {
+    id: 'silver-meridian',
+    name: 'Silver Meridian',
+    prefix: 'M/Y',
+    mmsi: 538000006,
+    imo: 9900006,
+    callSign: 'ZGAA6',
+    flag: 'Marshall Islands',
+    flagCode: 'MH',
+    loa: 88.0, beam: 14.2, grossTonnage: 2890,
+    builder: 'Placeholder Yard',
+    yearBuilt: 2014, lastRefit: 2026,
+    classSociety: 'DNV',
+    photo: null,
+    discreet: false,
+    service: {
+      nextEvent: 'Refit — sea trials',
+      nextEventDate: '2026-10-03',
+      engineer: 'E. Placeholder',
+      openJobs: 24,
+      urgentJobs: 2,
+      partsOnOrder: [
+        { item: 'Bow thruster bearing', eta: '2026-09-01', port: 'Rotterdam' }
+      ],
+      yardPeriod: { yard: 'Placeholder Refit Yard', from: '2026-06-15', to: '2026-10-10' }
+    },
+    demo: {
+      status: 'refit',
+      speed: 0,
+      position: [4.3900, 51.9050]    // Rotterdam
+    }
+  },
+
+  {
+    id: 'wind-verity',
+    name: 'Wind Verity',
+    prefix: 'S/Y',
+    mmsi: 319000007,
+    imo: 9900007,
+    callSign: 'ZGAA7',
+    flag: 'Cayman Islands',
+    flagCode: 'KY',
+    loa: 45.3, beam: 9.6, grossTonnage: 388,
+    builder: 'Placeholder Yard',
+    yearBuilt: 2020, lastRefit: null,
+    classSociety: 'Bureau Veritas',
+    photo: null,
+    discreet: false,
+    service: {
+      nextEvent: 'Rig inspection',
+      nextEventDate: '2026-09-26',
+      engineer: 'C. Placeholder',
+      openJobs: 4,
+      urgentJobs: 0,
+      partsOnOrder: [
+        { item: 'Furler bearing set', eta: '2026-09-05', port: 'St Barths' }
+      ],
+      yardPeriod: null
+    },
+    demo: {
+      status: 'underway',
+      speed: 8.9,
+      destination: 'ST BARTHS',
+      etaHours: 9,
+      route: [[-61.75, 17.12], [-62.10, 17.35], [-62.55, 17.65], [-62.83, 17.90]]  // Antigua → St Barths
+    }
+  },
+
+  {
+    id: 'petrel',
+    name: 'Petrel',
+    prefix: 'M/Y',
+    mmsi: 319000008,
+    imo: 9900008,
+    callSign: 'ZGAA8',
+    flag: 'Cayman Islands',
+    flagCode: 'KY',
+    loa: 42.1, beam: 8.4, grossTonnage: 340,
+    builder: 'Placeholder Yard',
+    yearBuilt: 2023, lastRefit: null,
+    classSociety: 'RINA',
+    photo: null,
+    discreet: false,
+    service: {
+      nextEvent: 'Annual class survey',
+      nextEventDate: '2026-08-31',
+      engineer: 'B. Placeholder',
+      openJobs: 5,
+      urgentJobs: 1,
+      partsOnOrder: [],
+      yardPeriod: null
+    },
+    demo: {
+      status: 'anchored',
+      speed: 0.3,
+      position: [-62.85, 17.90]      // St Barths
+    }
+  }
+];

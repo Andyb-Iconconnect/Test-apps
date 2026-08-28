@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet Watch</title>
+<meta name="description" content="Live fleet positions for an office display.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#9875;</text></svg>">
+<link rel="stylesheet" href="css/screensaver.css">
+</head>
+<body>
+
+<div id="board">
+
+  <header class="masthead">
+    <span class="brand" id="brand">Fleet Watch</span>
+    <span class="brand-sub" id="brand-sub"></span>
+    <span class="masthead-spacer"></span>
+    <span class="view-title" id="view-title"></span>
+    <span class="masthead-spacer"></span>
+    <span class="status-pill" id="connection" data-state="starting">
+      <span class="dot"></span><span id="connection-label">Starting</span>
+    </span>
+    <span>
+      <span class="clock" id="clock">--:--</span>
+      <span class="clock-zone" id="clock-zone"></span>
+    </span>
+  </header>
+
+  <main id="stage">
+
+    <!-- View 1 — the chart -->
+    <section class="view" id="view-chart">
+      <canvas id="chart-canvas"></canvas>
+      <aside class="rail">
+        <div class="rail-heading">Fleet</div>
+        <div id="rail-list"></div>
+      </aside>
+    </section>
+
+    <!-- View 2 — one yacht at a time -->
+    <section class="view" id="view-spotlight">
+      <div class="spot-left">
+        <div class="spot-identity">
+          <div class="eyebrow" id="spot-eyebrow"></div>
+          <h1 class="name" id="spot-name"></h1>
+          <div class="spec" id="spot-spec"></div>
+        </div>
+        <div class="spot-visual" id="spot-visual"></div>
+      </div>
+
+      <div class="spot-right">
+        <div class="card">
+          <div class="card-title">Position</div>
+          <div class="card-body">
+            <div class="position-line" id="spot-position">—</div>
+            <div class="position-context" id="spot-position-context"></div>
+            <div class="fix-age" id="spot-fix-age"></div>
+            <div class="kv-grid" id="spot-position-extra"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Conditions on scene</div>
+          <div class="card-body">
+            <div class="kv-grid" id="spot-weather"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Local time &amp; daylight</div>
+          <div class="card-body">
+            <div id="spot-daylight"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Service</div>
+          <div class="card-body">
+            <div id="spot-service"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View 3 — the fleet in numbers -->
+    <section class="view" id="view-stats">
+      <div class="tile-row" id="stat-tiles"></div>
+      <div class="stats-body">
+        <div class="panel">
+          <div class="panel-title">Distance run &middot; last 7 days</div>
+          <div class="bars" id="distance-bars"></div>
+          <div class="panel-title sub" id="distance-note"></div>
+        </div>
+        <div class="stats-column">
+          <div class="panel">
+            <div class="panel-title">Where the fleet is</div>
+            <div class="region-list" id="region-list"></div>
+            <div class="panel-title sub" id="region-note"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Fleet at a glance</div>
+            <div class="glance-list" id="glance-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View 4 — the operations board -->
+    <section class="view" id="view-schedule">
+      <div class="panel">
+        <div class="panel-title">Coming up</div>
+        <div class="timeline" id="timeline"></div>
+      </div>
+      <div class="stats-column">
+        <div class="panel">
+          <div class="panel-title">Open work</div>
+          <div class="jobs-list" id="jobs-list"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Parts on order</div>
+          <div class="parts-list" id="parts-list"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="rotation-dots" id="rotation-dots"></div>
+    <span class="footer-spacer"></span>
+    <span class="discreet-flag" id="discreet-flag"></span>
+    <span>Coastline: Natural Earth &middot; Weather: Open-Meteo &middot; Positions: AIS</span>
+  </footer>
+
+</div>
+
+<!-- Settings and fleet: the two files you edit -->
+<script src="config.js"></script>
+<script src="fleet.js"></script>
+
+<!-- Reference data -->
+<script src="data/ports.js"></script>
+<script src="data/world-land.js"></script>
+
+<!-- Application -->
+<script src="js/geo.js"></script>
+<script src="js/format.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ais.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/weather.js"></script>
+<script src="js/map.js"></script>
+<script src="js/views.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

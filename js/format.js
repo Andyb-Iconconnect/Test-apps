@@ -1,0 +1,178 @@
+/* -----------------------------------------------------------------------------
+ * format.js — turning numbers into things a person reads from across a room.
+ * -------------------------------------------------------------------------- */
+
+(function () {
+  'use strict';
+
+  var Fmt = {};
+  var U = function () { return window.CONFIG.units; };
+
+  /* --- Units ------------------------------------------------------------- */
+
+  Fmt.distance = function (nm) {
+    if (nm == null || !isFinite(nm)) return '—';
+    if (U().distance === 'km') {
+      var km = nm * 1.852;
+      return (km < 10 ? km.toFixed(1) : Math.round(km).toLocaleString()) + ' km';
+    }
+    return (nm < 10 ? nm.toFixed(1) : Math.round(nm).toLocaleString()) + ' nm';
+  };
+
+  Fmt.speed = function (knots) {
+    if (knots == null || !isFinite(knots)) return '—';
+    if (U().speed === 'kmh') return (knots * 1.852).toFixed(1) + ' km/h';
+    return knots.toFixed(1) + ' kn';
+  };
+
+  Fmt.windSpeed = function (knots) {
+    if (knots == null || !isFinite(knots)) return '—';
+    var u = U().windSpeed;
+    if (u === 'ms') return (knots * 0.514444).toFixed(1) + ' m/s';
+    if (u === 'kmh') return Math.round(knots * 1.852) + ' km/h';
+    return Math.round(knots) + ' kn';
+  };
+
+  Fmt.temperature = function (celsius) {
+    if (celsius == null || !isFinite(celsius)) return '—';
+    if (U().temperature === 'F') return Math.round(celsius * 9 / 5 + 32) + '°F';
+    return Math.round(celsius) + '°C';
+  };
+
+  Fmt.waveHeight = function (metres) {
+    if (metres == null || !isFinite(metres)) return '—';
+    return metres.toFixed(1) + ' m';
+  };
+
+  /* --- Position ---------------------------------------------------------- */
+
+  // Degrees and decimal minutes, the convention on a bridge.
+  Fmt.latitude = function (lat) {
+    return dm(Math.abs(lat), 2) + ' ' + (lat >= 0 ? 'N' : 'S');
+  };
+
+  Fmt.longitude = function (lon) {
+    return dm(Math.abs(lon), 3) + ' ' + (lon >= 0 ? 'E' : 'W');
+  };
+
+  function dm(value, degDigits) {
+    var deg = Math.floor(value);
+    var min = (value - deg) * 60;
+    if (min >= 59.995) { deg += 1; min = 0; }
+    return pad(deg, degDigits) + '° ' + (min < 10 ? '0' : '') + min.toFixed(2) + "'";
+  }
+
+  Fmt.bearing = function (deg) {
+    if (deg == null || !isFinite(deg)) return '—';
+    return pad(Math.round(deg) % 360, 3) + '°';
+  };
+
+  function pad(n, width) {
+    var s = String(Math.abs(Math.round(n)));
+    while (s.length < width) s = '0' + s;
+    return s;
+  }
+  Fmt.pad = pad;
+
+  /* --- Time -------------------------------------------------------------- */
+
+  Fmt.clock = function (date, timeZone) {
+    try {
+      return new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: timeZone
+      }).format(date);
+    } catch (e) {
+      // An invalid IANA zone in config shouldn't take the whole board down.
+      return new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit', minute: '2-digit', hour12: false
+      }).format(date);
+    }
+  };
+
+  // Local time at a longitude, when we have no IANA zone for a position at sea.
+  // Nautical time is longitude/15 rounded to the nearest hour — which is exactly
+  // how a ship's clock is actually set.
+  Fmt.nauticalTime = function (date, lon) {
+    return Fmt.timeAtOffset(date, Math.round(lon / 15) * 3600, true);
+  };
+
+  // Preferred when we know the real zone: Open-Meteo returns the shore offset for
+  // the position, which is what a yacht alongside in Palma actually runs on.
+  // Falls back to nautical time out at sea where no shore zone applies.
+  Fmt.timeAtOffset = function (date, offsetSeconds, nautical) {
+    var shifted = new Date(date.getTime() + offsetSeconds * 1000);
+    var hours = offsetSeconds / 3600;
+    var whole = Math.trunc(hours);
+    var minutes = Math.round(Math.abs(hours - whole) * 60);
+    var label = 'UTC' + (hours >= 0 ? '+' : '−') + Math.abs(whole) +
+                (minutes ? ':' + pad(minutes, 2) : '');
+    return {
+      text: pad(shifted.getUTCHours(), 2) + ':' + pad(shifted.getUTCMinutes(), 2),
+      offsetHours: hours,
+      nautical: !!nautical,
+      label: label + (nautical ? ' (ship)' : '')
+    };
+  };
+
+  Fmt.date = function (dateish) {
+    var d = dateish instanceof Date ? dateish : new Date(dateish);
+    if (isNaN(d)) return '—';
+    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+  };
+
+  Fmt.shortDate = function (dateish) {
+    var d = dateish instanceof Date ? dateish : new Date(dateish);
+    if (isNaN(d)) return '—';
+    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(d);
+  };
+
+  // "4 min ago", "3 h ago", "2 days ago" — the age of a fix is as important as
+  // the fix, so this is used everywhere a position is shown.
+  Fmt.age = function (fromDate, now) {
+    if (!fromDate) return 'no fix';
+    var ms = (now || new Date()) - fromDate;
+    if (ms < 0) ms = 0;
+    var mins = ms / 60000;
+    if (mins < 1) return 'just now';
+    if (mins < 60) return Math.round(mins) + ' min ago';
+    var hours = mins / 60;
+    if (hours < 24) return Math.round(hours) + ' h ago';
+    var days = hours / 24;
+    if (days < 14) return Math.round(days) + (Math.round(days) === 1 ? ' day ago' : ' days ago');
+    return Math.round(days / 7) + ' weeks ago';
+  };
+
+  // Countdown to a service date: "in 6 days", "overdue by 2 days".
+  Fmt.until = function (dateish, now) {
+    var d = dateish instanceof Date ? dateish : new Date(dateish);
+    if (isNaN(d)) return { text: '—', overdue: false, days: null };
+    var today = now || new Date();
+    var days = Math.round((d - today) / 86400000);
+    if (days < 0) return { text: 'overdue by ' + Math.abs(days) + (days === -1 ? ' day' : ' days'), overdue: true, days: days };
+    if (days === 0) return { text: 'today', overdue: false, days: 0 };
+    if (days === 1) return { text: 'tomorrow', overdue: false, days: 1 };
+    if (days < 60) return { text: 'in ' + days + ' days', overdue: false, days: days };
+    return { text: 'in ' + Math.round(days / 30) + ' months', overdue: false, days: days };
+  };
+
+  /* --- Vessel state ------------------------------------------------------ */
+
+  var STATUS_LABELS = {
+    underway: 'Underway',
+    anchored: 'At anchor',
+    moored: 'Alongside',
+    refit: 'In refit',
+    dark: 'No signal',
+    unknown: 'Unknown'
+  };
+
+  Fmt.statusLabel = function (status) {
+    return STATUS_LABELS[status] || STATUS_LABELS.unknown;
+  };
+
+  Fmt.fullName = function (yacht) {
+    return yacht.prefix ? yacht.prefix + ' ' + yacht.name : yacht.name;
+  };
+
+  window.Fmt = Fmt;
+})();
