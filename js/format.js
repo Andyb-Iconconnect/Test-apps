@@ -39,6 +39,28 @@
     return Math.round(celsius) + '°C';
   };
 
+  // Optional numeric fields — a vessel added with only its identifiers has most
+  // of these empty, and every view must render that as a dash rather than
+  // crashing on null.
+  Fmt.metres = function (value, digits) {
+    if (value == null || !isFinite(value)) return '—';
+    return value.toFixed(digits == null ? 1 : digits) + ' m';
+  };
+
+  Fmt.tonnage = function (value) {
+    if (value == null || !isFinite(value)) return '—';
+    return Math.round(value).toLocaleString() + ' GT';
+  };
+
+  Fmt.year = function (value) {
+    if (value == null || !isFinite(value)) return '—';
+    return String(Math.round(value));
+  };
+
+  Fmt.text = function (value) {
+    return value == null || value === '' ? '—' : String(value);
+  };
+
   Fmt.waveHeight = function (metres) {
     if (metres == null || !isFinite(metres)) return '—';
     return metres.toFixed(1) + ' m';

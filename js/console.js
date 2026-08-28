@@ -475,7 +475,8 @@
 
     var head = h('div', 'detail-head');
     var titleBlock = h('div');
-    titleBlock.appendChild(h('div', 'eyebrow', y.prefix + ' · ' + y.flag));
+    titleBlock.appendChild(h('div', 'eyebrow',
+      window.Fmt.text(y.prefix) + ' · ' + window.Fmt.text(y.flag)));
     titleBlock.appendChild(h('h1', null, y.name));
     head.appendChild(titleBlock);
 
@@ -488,11 +489,11 @@
     host.appendChild(head);
 
     var spec = h('div', 'detail-spec');
-    [[y.loa.toFixed(1) + ' m', 'LOA'], [y.beam ? y.beam.toFixed(1) + ' m' : '—', 'beam'],
-     [y.grossTonnage ? y.grossTonnage.toLocaleString() + ' GT' : '—', ''],
-     [String(y.yearBuilt), 'built'], [y.lastRefit ? String(y.lastRefit) : '—', 'refit'],
-     ['IMO ' + y.imo, ''], ['MMSI ' + y.mmsi, ''], [y.classSociety || '—', ''],
-     [y.builder || '—', '']
+    [[window.Fmt.metres(y.loa), 'LOA'], [window.Fmt.metres(y.beam), 'beam'],
+     [window.Fmt.tonnage(y.grossTonnage), ''],
+     [window.Fmt.year(y.yearBuilt), 'built'], [window.Fmt.year(y.lastRefit), 'refit'],
+     ['IMO ' + window.Fmt.text(y.imo), ''], ['MMSI ' + window.Fmt.text(y.mmsi), ''],
+     [window.Fmt.text(y.classSociety), ''], [window.Fmt.text(y.builder), '']
     ].forEach(function (pair) {
       var span = h('span');
       span.appendChild(h('b', null, pair[0]));

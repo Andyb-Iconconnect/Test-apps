@@ -88,18 +88,18 @@
   Views.renderSpotlight = function (v) {
     var y = v.yacht, d = v.derived;
 
-    el('spot-eyebrow').textContent = y.prefix + ' · ' + y.flag;
+    el('spot-eyebrow').textContent = window.Fmt.text(y.prefix) + ' · ' + window.Fmt.text(y.flag);
     el('spot-name').textContent = y.name;
 
     var spec = el('spot-spec');
     spec.textContent = '';
     [
-      [y.loa.toFixed(1) + ' m', 'LOA'],
-      [String(y.yearBuilt), 'built'],
-      [y.lastRefit ? String(y.lastRefit) : '—', 'refit'],
-      [y.grossTonnage ? y.grossTonnage.toLocaleString() + ' GT' : '—', ''],
-      ['IMO ' + y.imo, ''],
-      [y.classSociety || '—', '']
+      [window.Fmt.metres(y.loa), 'LOA'],
+      [window.Fmt.year(y.yearBuilt), 'built'],
+      [window.Fmt.year(y.lastRefit), 'refit'],
+      [window.Fmt.tonnage(y.grossTonnage), ''],
+      ['IMO ' + window.Fmt.text(y.imo), ''],
+      [window.Fmt.text(y.classSociety), '']
     ].forEach(function (pair) {
       var span = h('span');
       var b = h('b', null, pair[0]);

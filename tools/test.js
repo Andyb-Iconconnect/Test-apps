@@ -221,6 +221,22 @@ test('units convert on demand', () => {
   CONFIG.units.temperature = 'C';
 });
 
+test('optional vessel fields render as a dash when empty', () => {
+  // A vessel added through the console's form carries only its identifiers;
+  // every view has to survive that, which it did not before the form existed.
+  assert.strictEqual(Fmt.metres(null), '—');
+  assert.strictEqual(Fmt.metres(undefined), '—');
+  assert.strictEqual(Fmt.metres(NaN), '—');
+  assert.strictEqual(Fmt.metres(52.5), '52.5 m');
+  assert.strictEqual(Fmt.tonnage(null), '—');
+  assert.strictEqual(Fmt.tonnage(1180), '1,180 GT');
+  assert.strictEqual(Fmt.year(null), '—');
+  assert.strictEqual(Fmt.year(2024), '2024');
+  assert.strictEqual(Fmt.text(null), '—');
+  assert.strictEqual(Fmt.text(''), '—');
+  assert.strictEqual(Fmt.text('Lloyd\'s Register'), "Lloyd's Register");
+});
+
 test('missing values render as a dash, never as NaN', () => {
   ['distance', 'speed', 'windSpeed', 'temperature', 'waveHeight', 'bearing'].forEach((fn) => {
     assert.strictEqual(Fmt[fn](null), '—', fn + '(null)');
