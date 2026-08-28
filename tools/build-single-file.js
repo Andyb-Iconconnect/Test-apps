@@ -45,7 +45,25 @@ if (offline) {
   if (!/enabled: false/.test(config)) throw new Error('--offline could not disable the weather block');
 }
 
-const inlinedStyles = styles.map((f) => `<style>\n${read(f)}\n</style>`).join('\n');
+// Fonts are referenced from the stylesheet by relative path, which means
+// nothing once the CSS is inlined into a file that may live anywhere. Embed
+// them, so the bundle really is one self-contained file.
+function inlineFonts(css, cssFile) {
+  const cssDir = path.dirname(path.join(ROOT, cssFile));
+  return css.replace(/url\(['"]?([^'")]+\.woff2?)['"]?\)/g, (whole, ref) => {
+    const file = path.resolve(cssDir, ref);
+    if (!fs.existsSync(file)) {
+      console.warn(`  ! font not found, left as a URL: ${ref}`);
+      return whole;
+    }
+    const mime = file.endsWith('.woff2') ? 'font/woff2' : 'font/woff';
+    return `url(data:${mime};base64,${fs.readFileSync(file).toString('base64')})`;
+  });
+}
+
+const inlinedStyles = styles
+  .map((f) => `<style>\n${inlineFonts(read(f), f)}\n</style>`)
+  .join('\n');
 
 const inlinedScripts = scripts.map((f) => {
   const source = f === 'config.js' ? config : read(f);

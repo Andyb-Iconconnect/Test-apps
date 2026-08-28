@@ -57,6 +57,34 @@ The cursor hides itself after a few seconds of stillness.
 
 ---
 
+## Branding
+
+The board is themed from the Icon Connect Brand Book 2023.
+
+- **Colour.** Surfaces are stepped from the digital wallpaper's blue-slate; the
+  accent is `#3CB4E4`, the cyan the logotype is actually printed in, with the
+  charter's `#00CCFF` kept for the one live element. Vessel-state colours are
+  stepped from the charter hues onto the dark ground and validated as a
+  categorical set — lightness band, chroma floor, colour-blind separation and
+  3:1 contrast all pass. Because the brand palette is entirely cool, "at anchor"
+  is the Security aqua walked toward green: the nearest step that stays
+  distinguishable from the cyan.
+- **Type.** Century Gothic for titles and Lato for body, as the graphic charter
+  specifies. The display stack tries Century Gothic first, so a machine with the
+  licensed font uses the real thing; [Jost](https://indestructibletype.com/Jost.html)
+  — like Century Gothic, a Futura derivative — ships with the board as the
+  substitute. Both webfonts are served from `assets/fonts/`, not a CDN: a board
+  that runs sixteen hours a day should not depend on a third party being up.
+- **The wordmark.** `ICON CONNECT` is set in the display face with the power
+  symbol drawn as the O, as the logo does. To use the real artwork instead, drop
+  a transparent PNG of the horizontal logotype into `assets/` and point
+  `brandLogo` at it in `config.js` — that replaces the wordmark entirely, and
+  falls back to it if the file is missing.
+
+Everything is a CSS custom property in one block at the top of
+`css/screensaver.css`, so retinting for another brand means editing that block
+and nothing else. The chart reads its colours from the same properties.
+
 ## Making it yours
 
 ### 1. The fleet — `fleet.js`
@@ -166,6 +194,7 @@ index.html            markup and script order
 config.js             settings          ← you edit this
 fleet.js              the fleet         ← and this
 css/screensaver.css   one palette, defined as custom properties
+assets/fonts/         the brand webfonts, self-hosted (SIL Open Font License)
 data/ports.js         279 ports and marinas, for "42 nm SSW of Palma"
 data/world-land.js    Natural Earth coastlines, encoded (218 KB)
 js/geo.js             projection, navigation, sun position, coastline decoding

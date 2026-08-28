@@ -19,8 +19,9 @@
     window.Store.init(window.FLEET);
     window.FleetMap.init(el('chart-canvas'));
 
-    el('brand').textContent = window.CONFIG.brand;
-    el('brand-sub').textContent = window.CONFIG.subtitle;
+    renderBrand();
+    el('brand-sub').textContent = window.CONFIG.subtitle || '';
+    el('strapline').textContent = window.CONFIG.strapline || '';
 
     buildScenes();
     window.FleetMap.fit(fleetPoints(), 90, null, chartInset());
@@ -43,6 +44,57 @@
     applyAmbientChrome();
     enterScene(0);
     requestAnimationFrame(frame);
+  }
+
+  // The wordmark, with the power symbol standing in for the first O the way the
+  // logo does. Falls back to plain text if the name has no O, and is skipped
+  // entirely when a logo image is configured.
+  function renderBrand() {
+    var host = el('brand');
+    var cfg = window.CONFIG;
+    host.textContent = '';
+
+    if (cfg.brandLogo) {
+      var img = document.createElement('img');
+      img.src = cfg.brandLogo;
+      img.alt = cfg.brand || '';
+      // If the file isn't there, fall back to the wordmark rather than a broken image.
+      img.onerror = function () { cfg.brandLogo = null; renderBrand(); };
+      host.appendChild(img);
+      return;
+    }
+
+    var name = cfg.brand || '';
+    var split = cfg.brandPowerMark ? name.indexOf('O') : -1;
+    if (split < 0) { host.textContent = name; return; }
+
+    host.appendChild(document.createTextNode(name.slice(0, split)));
+    host.appendChild(powerMark());
+    host.appendChild(document.createTextNode(name.slice(split + 1)));
+  }
+
+  // A ring open at the top with a bar rising through the gap — the mark from the
+  // logo, drawn rather than embedded so it stays crisp at any panel size and
+  // takes its colour from the stylesheet.
+  function powerMark() {
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'power-o');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('aria-hidden', 'true');
+
+    var ring = document.createElementNS(NS, 'path');
+    // Centre (50,55), radius 32; arc runs clockwise from 1 o'clock all the way
+    // round to just left of 12, leaving the gap the bar rises through.
+    ring.setAttribute('d', 'M 76.2 36.6 A 32 32 0 1 1 41.7 24.1');
+    svg.appendChild(ring);
+
+    var bar = document.createElementNS(NS, 'line');
+    bar.setAttribute('x1', '50'); bar.setAttribute('y1', '14');
+    bar.setAttribute('x2', '50'); bar.setAttribute('y2', '50');
+    svg.appendChild(bar);
+
+    return svg;
   }
 
   function startFeed() {

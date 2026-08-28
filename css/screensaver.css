@@ -1,4 +1,31 @@
 /* -----------------------------------------------------------------------------
+ * Brand faces, served from assets/fonts/ rather than a font CDN.
+ *
+ * A board that runs sixteen hours a day on an office wall should not depend on
+ * a third party being up, and the single-file build inlines these so it works
+ * with no network at all.
+ *
+ * Lato is the brand's body face. Jost stands in for Century Gothic — both are
+ * Futura derivatives — and the display stack tries Century Gothic first, so a
+ * machine with the real licensed font uses it instead. Both are SIL Open Font
+ * License; see assets/fonts/LICENSE-*.txt.
+ * -------------------------------------------------------------------------- */
+
+@font-face { font-family: 'Jost'; font-style: normal; font-weight: 300;
+  font-display: swap; src: url('../assets/fonts/jost-latin-300-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Jost'; font-style: normal; font-weight: 400;
+  font-display: swap; src: url('../assets/fonts/jost-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Jost'; font-style: normal; font-weight: 500;
+  font-display: swap; src: url('../assets/fonts/jost-latin-500-normal.woff2') format('woff2'); }
+
+@font-face { font-family: 'Lato'; font-style: normal; font-weight: 300;
+  font-display: swap; src: url('../assets/fonts/lato-latin-300-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Lato'; font-style: normal; font-weight: 400;
+  font-display: swap; src: url('../assets/fonts/lato-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Lato'; font-style: normal; font-weight: 700;
+  font-display: swap; src: url('../assets/fonts/lato-latin-700-normal.woff2') format('woff2'); }
+
+/* -----------------------------------------------------------------------------
  * Fleet Watch — a board meant to be read from across an office and ignored for
  * hours at a time. Dark by design: this is one committed look, not a theme that
  * follows the OS. Every colour is a custom property, so retinting to a house
@@ -8,50 +35,83 @@
 :root {
   color-scheme: dark;
 
-  /* Surfaces */
-  --bg:            #070d14;
-  --surface-1:     #0d151e;
-  --surface-2:     #111820;   /* the surface the palette was validated against */
-  --surface-3:     #17212d;
-  --border:        rgba(255, 255, 255, 0.075);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  /* --------------------------------------------------------------------------
+   * Icon Connect, from the 2023 Brand Book.
+   *
+   * The brand's own dark applications — the digital wallpaper and the business
+   * cards — are a deep blue-slate ground with the logotype cyan on top, which is
+   * exactly the register a fleet board wants. Surfaces below are stepped from
+   * the wallpaper's own blues; the accent is the cyan the logo is actually
+   * printed in.
+   * ----------------------------------------------------------------------- */
 
-  /* Ink */
-  --text-primary:   #f2f5f8;
-  --text-secondary: #9fb0c2;
-  --text-muted:     #67788b;
+  /* Brand */
+  --brand-cyan:        #3CB4E4;   /* the logotype's applied colour */
+  --brand-cyan-bright: #00CCFF;   /* charter "Info" — used sparingly, for life */
+  --brand-silver:      #C0C0C0;   /* charter "Terms" */
 
-  /* Chart. Land sits lighter than the sea, the way it does on a paper chart, and
-     the two are separated by enough luminance to read from the far side of a
-     room rather than only from a desk. */
-  --map-ocean:      #12222f;
-  --map-ocean-deep: #0d1b26;
-  --map-land:       #33434f;
-  --map-coast:      #5c778f;
-  --map-graticule:  #1b3043;
-  --map-night:      rgba(0, 3, 9, 0.22);
-  --map-twilight:   rgba(0, 5, 12, 0.10);
-  --map-track:      #2f6ea8;
+  /* Surfaces, stepped from the wallpaper's blue-slate */
+  --bg:            #070E16;
+  --surface-1:     #0C1723;
+  --surface-2:     #16283A;   /* the surface the state palette was validated against */
+  --surface-3:     #1E3446;
+  --scrim:         rgba(7, 14, 22, 0.94);
+  --border:        rgba(120, 180, 220, 0.13);
+  --border-strong: rgba(120, 180, 220, 0.26);
 
-  /* Vessel state. Validated as a categorical set against --surface-2:
-     all three pass the lightness band, chroma floor, CVD separation and 3:1
-     contrast. They are never the only cue — every dot carries a text label. */
-  --status-underway: #3987e5;
-  --status-anchored: #199e70;
-  --status-moored:   #8b98a8;
-  --status-refit:    #d95926;
-  --status-dark:     #6c7a8c;
+  /* Ink, tinted toward the ground rather than a neutral grey */
+  --text-primary:   #EAF2F8;
+  --text-secondary: #9DB4C6;
+  --text-muted:     #67819A;
 
-  /* Service state. Reserved: never reused as a series colour. */
+  /* Chart. Land is stepped up from the wallpaper's blue-slate until it clears
+     the sea by luminance and not only by hue, measured both in daylight
+     (3.3:1) and under the night band (2.5:1) — at the wallpaper's own value the
+     two sat at 1.5:1 and the whole chart read as haze. The coastline is the
+     charter's IT steel blue, which is lighter again and draws the edge.
+     The night wash is deliberately light: it should say "these yachts are in
+     darkness", not hide half the chart. */
+  --map-ocean:      #0F2032;
+  --map-ocean-deep: #0A1826;
+  --map-land:       #4A7398;
+  --map-coast:      #64A0C8;
+  --map-graticule:  #1A3049;
+  --map-night:      rgba(0, 4, 10, 0.16);
+  --map-twilight:   rgba(0, 4, 10, 0.07);
+  --map-track:      #2E7FAE;
+
+  /* Vessel state. Stepped from the brand hues onto the dark ground and
+     validated as a categorical set against --surface-2: all three pass the
+     lightness band, chroma floor, CVD separation, the normal-vision floor and
+     3:1 contrast. The brand palette is entirely cool, so "at anchor" is the
+     charter's Security aqua walked toward green — the nearest step that clears
+     the separation floor against the cyan. None of them ever carries meaning
+     alone; every dot on this board sits beside its own word. */
+  --status-underway: #3596C8;   /* brand cyan, stepped into the dark band */
+  --status-anchored: #39A566;   /* Security aqua, stepped for separation */
+  --status-refit:    #9A55A6;   /* AV purple, stepped */
+  --status-moored:   #8FA3B5;   /* Terms silver, tinted to the ground */
+  --status-dark:     #5E7488;
+
+  /* Service urgency. Reserved status colours, deliberately not themed: they are
+     the only warm hues on the board, which is what makes them read as "look
+     here" against an entirely cool brand. */
   --good:     #0ca30c;
   --warning:  #fab219;
   --critical: #d03b3b;
 
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Type. Century Gothic and Lato are the brand's own faces; Century Gothic is
+     tried first so a licensed machine uses the real thing, with Jost — like
+     Century Gothic, a Futura derivative — as the web substitute. */
+  --font-display: 'Century Gothic', 'Jost', 'Questrial', 'Avant Garde', system-ui, sans-serif;
+  --font-body: 'Lato', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: var(--font-body);
 
   /* One knob for the whole board's type size, so it reads correctly on a 24"
-     desk monitor and a 65" wall panel alike. */
-  font-size: clamp(13px, 0.78vw, 21px);
+     desk monitor and a 65" wall panel alike. It answers to height as well as
+     width: a short, wide panel has just as little room as a narrow one, and
+     sizing on vw alone left the type too big to fit. */
+  font-size: clamp(11px, min(0.82vw, 1.5vh), 21px);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -88,14 +148,45 @@ body.interactive { cursor: default; }
   background: linear-gradient(180deg, var(--surface-1), transparent);
 }
 
+/* The logotype lockup, set the way the brand book sets it: uppercase Century
+   Gothic, widely letterspaced, in the logo cyan. */
 .brand {
-  font-size: 1.35rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.02em;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  color: var(--brand-cyan);
+  white-space: nowrap;
+}
+
+.brand img { height: 1.5rem; width: auto; display: block; }
+
+/* The power symbol standing in for the O of ICON, as the logo does. */
+.brand .power-o {
+  height: 0.94em;
+  width: 0.94em;
+  margin: 0 0.1em 0 0.04em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 11;
+  stroke-linecap: round;
+  position: relative;
+  top: 0.015em;
+}
+
+.strapline {
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
 }
 
 .brand-sub {
-  font-size: 0.82rem;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
   color: var(--text-muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -104,13 +195,15 @@ body.interactive { cursor: default; }
 .masthead-spacer { flex: 1; }
 
 .view-title {
-  font-size: 0.82rem;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-secondary);
 }
 
 .clock {
+  font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -126,6 +219,7 @@ body.interactive { cursor: default; }
 /* Connection state. The dot is never the only signal — it always sits beside
    its own word, so the state survives both colour blindness and a glance. */
 .status-pill {
+  font-family: var(--font-display);
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -144,7 +238,7 @@ body.interactive { cursor: default; }
   background: var(--text-muted);
 }
 .status-pill[data-state="open"]  .dot { background: var(--good); }
-.status-pill[data-state="demo"]  .dot { background: var(--status-underway); }
+.status-pill[data-state="demo"]  .dot { background: var(--brand-cyan-bright); }
 .status-pill[data-state="retrying"] .dot,
 .status-pill[data-state="connecting"] .dot { background: var(--warning); }
 .status-pill[data-state="closed"] .dot { background: var(--critical); }
@@ -220,11 +314,12 @@ body.interactive { cursor: default; }
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  background: linear-gradient(90deg, rgba(7, 13, 20, 0.94) 0%, rgba(7, 13, 20, 0.86) 62%, transparent 100%);
+  background: linear-gradient(90deg, var(--scrim) 0%, rgba(7, 14, 22, 0.88) 62%, transparent 100%);
   overflow: hidden;
 }
 
 .rail-heading {
+  font-family: var(--font-display);
   font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -250,7 +345,8 @@ body.interactive { cursor: default; }
 }
 
 .rail-row .name {
-  font-size: 0.98rem;
+  font-family: var(--font-display);
+  font-size: 1.0rem;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -272,7 +368,7 @@ body.interactive { cursor: default; }
   text-overflow: ellipsis;
 }
 
-.rail-row.is-highlight { background: rgba(57, 135, 229, 0.08); }
+.rail-row.is-highlight { background: rgba(60, 180, 228, 0.09); }
 
 /* --- View: spotlight ------------------------------------------------------- */
 
@@ -286,6 +382,7 @@ body.interactive { cursor: default; }
 .spot-left { display: flex; flex-direction: column; gap: 1.1rem; min-height: 0; }
 
 .spot-identity .eyebrow {
+  font-family: var(--font-display);
   font-size: 0.78rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -293,7 +390,8 @@ body.interactive { cursor: default; }
 }
 
 .spot-identity .name {
-  font-size: 3.1rem;
+  font-family: var(--font-display);
+  font-size: 2.9rem;
   font-weight: 300;
   letter-spacing: -0.02em;
   line-height: 1.05;
@@ -308,7 +406,7 @@ body.interactive { cursor: default; }
   gap: 0.35rem 0.9rem;
 }
 
-.spot-identity .spec b { font-weight: 500; color: var(--text-primary); }
+.spot-identity .spec b { font-family: var(--font-display); font-weight: 500; color: var(--text-primary); }
 
 .spot-visual {
   flex: 1;
@@ -342,12 +440,13 @@ body.interactive { cursor: default; }
 
 .photo-placeholder svg { opacity: 0.35; }
 
-/* Cards hug their content and the leftover height is shared out between them,
-   rather than four equal rows each holding a pool of empty space. */
+/* Rows share the spare height between them, and `min-content` stops any row
+   being squeezed under its own content. `align-content: space-between` was
+   wrong here: when the cards are taller than the column the free space goes
+   negative and the browser dutifully overlaps them. */
 .spot-right {
   display: grid;
-  grid-template-rows: repeat(4, auto);
-  align-content: space-between;
+  grid-template-rows: repeat(4, minmax(min-content, 1fr));
   gap: 0.9rem;
   min-height: 0;
 }
@@ -370,11 +469,16 @@ body.interactive { cursor: default; }
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* `safe` degrades to start alignment when the content is taller than the box.
+     Plain `center` overflows in both directions, which puts the first line on
+     top of the card title. The unprefixed value stays first as the fallback. */
   justify-content: center;
+  justify-content: safe center;
   gap: 0.55rem;
 }
 
 .card-title {
+  font-family: var(--font-display);
   font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -390,6 +494,7 @@ body.interactive { cursor: default; }
 .kv { min-width: 0; }
 
 .kv .k {
+  font-family: var(--font-display);
   font-size: 0.7rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -417,7 +522,8 @@ body.interactive { cursor: default; }
 }
 
 .position-line {
-  font-size: 1.5rem;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
   font-weight: 300;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
@@ -470,6 +576,7 @@ body.interactive { cursor: default; }
 }
 
 .tile .label {
+  font-family: var(--font-display);
   font-size: 0.72rem;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -482,7 +589,8 @@ body.interactive { cursor: default; }
 .tile .label .swatch { width: 0.5rem; height: 0.5rem; border-radius: 50%; }
 
 .tile .figure {
-  font-size: 3.6rem;
+  font-family: var(--font-display);
+  font-size: 3.4rem;
   font-weight: 300;
   line-height: 1.15;
   margin-top: 0.3rem;
@@ -509,7 +617,7 @@ body.interactive { cursor: default; }
 /* A column of panels that share the height between them. */
 .stats-column {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: minmax(min-content, auto) minmax(min-content, 1fr);
   gap: 0.9rem;
   min-height: 0;
 }
@@ -526,6 +634,7 @@ body.interactive { cursor: default; }
 }
 
 .panel-title {
+  font-family: var(--font-display);
   font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -536,7 +645,7 @@ body.interactive { cursor: default; }
 
 /* Horizontal bars. Thin marks, 4px rounded data-end, anchored to a common
    baseline, values direct-labelled rather than on an axis. */
-.bars { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; justify-content: space-evenly; }
+.bars { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; justify-content: safe space-evenly; }
 
 .bar-row {
   display: grid;
@@ -573,7 +682,7 @@ body.interactive { cursor: default; }
 .bar-row .bar-value.zero { color: var(--text-muted); }
 
 /* Region breakdown */
-.region-list { display: flex; flex-direction: column; gap: 0.7rem; flex: 1; justify-content: space-evenly; }
+.region-list { display: flex; flex-direction: column; gap: 0.7rem; flex: 1; justify-content: safe space-evenly; }
 
 .region-row {
   display: grid;
@@ -610,6 +719,7 @@ body.interactive { cursor: default; }
 .glance-row:last-child { border-bottom: none; }
 
 .glance-row .g-label {
+  font-family: var(--font-display);
   font-size: 0.76rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -637,7 +747,7 @@ body.interactive { cursor: default; }
   padding: 1.5rem 1.6rem;
 }
 
-.timeline { display: flex; flex-direction: column; flex: 1; overflow: hidden; justify-content: space-evenly; }
+.timeline { display: flex; flex-direction: column; flex: 1; overflow: hidden; justify-content: safe space-evenly; }
 
 .timeline-row {
   display: grid;
@@ -663,6 +773,7 @@ body.interactive { cursor: default; }
 
 /* Status chips carry an icon glyph and a word — never colour alone. */
 .chip {
+  font-family: var(--font-display);
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -680,7 +791,7 @@ body.interactive { cursor: default; }
 .chip.yard   { color: var(--status-refit); }
 .chip.part   { color: var(--status-anchored); }
 
-.jobs-list { display: flex; flex-direction: column; flex: 1; justify-content: space-evenly; }
+.jobs-list { display: flex; flex-direction: column; flex: 1; justify-content: safe space-evenly; }
 
 .job-row {
   display: grid;
@@ -696,7 +807,7 @@ body.interactive { cursor: default; }
 .job-row .j-count { font-size: 0.95rem; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .job-row .j-count.none { color: var(--text-muted); }
 
-.parts-list { display: flex; flex-direction: column; flex: 1; justify-content: space-evenly; }
+.parts-list { display: flex; flex-direction: column; flex: 1; justify-content: safe space-evenly; }
 
 .part-row {
   display: grid;

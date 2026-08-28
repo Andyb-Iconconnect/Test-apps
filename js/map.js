@@ -278,13 +278,15 @@
     }
     ctx.fillStyle = theme.land;
     ctx.fill('evenodd');          // interior rings punch out lakes and inland seas
-    // The coast stroke is a second pass over every vertex. At world scale it adds
-    // nothing but cost, so it earns its place only once the chart is zoomed in.
-    if (cam.scale > 1100) {
-      ctx.strokeStyle = theme.coast;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
+    // A hairline coast is what separates land from sea at world scale, where the
+    // fill alone reads as haze. It costs a second pass over the path, which the
+    // 30fps budget can absorb; it fades in as the chart zooms so it never turns
+    // the continents into outlines.
+    ctx.strokeStyle = theme.coast;
+    ctx.globalAlpha = cam.scale > 1800 ? 1 : 0.55;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   function traceRing(ring, worldOffset, stride) {
@@ -580,7 +582,7 @@
       var name = v.yacht.name;
       var sub = labelSub(v);
 
-      ctx.font = '600 ' + nameSize + 'px ' + FONT;
+      ctx.font = '500 ' + nameSize + 'px ' + FONT_DISPLAY;
       var nameWidth = ctx.measureText(name).width;
       ctx.font = '400 ' + subSize + 'px ' + FONT;
       var subWidth = sub ? ctx.measureText(sub).width : 0;
@@ -622,8 +624,8 @@
     labels.forEach(function (l) {
       ctx.textAlign = l.align;
 
-      ctx.font = '600 ' + l.nameSize + 'px ' + FONT;
-      ctx.strokeStyle = 'rgba(4, 10, 17, 0.92)';
+      ctx.font = '500 ' + l.nameSize + 'px ' + FONT_DISPLAY;
+      ctx.strokeStyle = HALO;
       ctx.lineWidth = 4;
       ctx.strokeText(l.name, l.x, l.box.y);
       ctx.fillStyle = theme.label;
@@ -631,7 +633,7 @@
 
       if (l.sub) {
         ctx.font = '400 ' + l.subSize + 'px ' + FONT;
-        ctx.strokeStyle = 'rgba(4, 10, 17, 0.92)';
+        ctx.strokeStyle = HALO;
         ctx.lineWidth = 4;
         ctx.strokeText(l.sub, l.x, l.box.y + l.nameSize + 3);
         ctx.fillStyle = l.color;
@@ -640,7 +642,14 @@
     });
   }
 
-  var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  // Canvas cannot read a CSS custom property, so the brand stacks are repeated
+  // here. Vessel names take the display face, as headings do everywhere else;
+  // the data beneath them takes the body face.
+  // The halo behind chart labels sits on the page ground, so it tracks --bg.
+  var HALO = 'rgba(7, 14, 22, 0.92)';
+
+  var FONT_DISPLAY = '"Century Gothic", Jost, Questrial, system-ui, sans-serif';
+  var FONT = 'Lato, system-ui, -apple-system, "Segoe UI", sans-serif';
 
   function labelSub(v) {
     var d = v.derived;

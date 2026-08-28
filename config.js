@@ -9,9 +9,16 @@ window.CONFIG = {
 
   /* --- Identity ---------------------------------------------------------- */
 
-  // Shown top-left. Your company or fleet name.
-  brand: 'Fleet Watch',
-  subtitle: 'Live fleet positions',
+  // Shown top-left. The O is drawn as the power symbol from the logo when
+  // `brandPowerMark` is on, matching the way the wordmark is set in the brand
+  // book. Set `brandLogo` to an image path to use the real artwork instead —
+  // a transparent PNG of the horizontal logotype, light or cyan on transparent,
+  // sized around 600 px wide. That replaces the wordmark entirely.
+  brand: 'ICON CONNECT',
+  brandPowerMark: true,
+  brandLogo: null,              // e.g. 'assets/logo-iconconnect.png'
+  subtitle: 'Fleet Watch',
+  strapline: 'Technologies to enhance your life',
 
   /* --- Live AIS ---------------------------------------------------------- */
 
@@ -110,9 +117,11 @@ window.CONFIG = {
     // Draw the last N hours of each yacht's track behind it.
     trackHours: 24,
     // Dim the whole board outside office hours so it isn't glaring at night.
+    // This is an evening dim, not a blackout: it should take the edge off a
+    // bright panel in a dark room while leaving the board perfectly readable.
     nightDimming: true,
     nightDimFrom: 19,          // local hour
     nightDimTo: 7,
-    nightDimOpacity: 0.55
+    nightDimOpacity: 0.78
   }
 };
