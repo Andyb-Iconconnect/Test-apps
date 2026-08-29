@@ -506,6 +506,21 @@
     });
     host.appendChild(spec);
 
+    // Where she is, in the record itself. The chart pane carries this too, but
+    // narrow layouts drop that pane entirely, and a vessel record with no
+    // position in it is not much of a record.
+    var whereLine = h('div', 'detail-where');
+    whereLine.appendChild(h('span', 'w-main', whereText(v)));
+    var whereAge = h('span', 'w-age' + (d.dark ? ' dark' : d.stale ? ' stale' : ''));
+    var bits = [window.Fmt.statusLabel(d.status)];
+    if (d.status === 'underway' && v.fix && !d.discreet) {
+      bits.push(window.Fmt.speed(v.fix.sog) + ' · ' + window.Fmt.bearing(v.fix.cog));
+    }
+    bits.push('fix ' + window.Fmt.age(v.fix && v.fix.at));
+    whereAge.textContent = bits.join('  ·  ');
+    whereLine.appendChild(whereAge);
+    host.appendChild(whereLine);
+
     if (y.addedLocally) {
       var localPanel = h('div', 'panel');
       var localHead = h('div', 'pane-title');

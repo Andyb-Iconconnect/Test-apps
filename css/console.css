@@ -40,11 +40,6 @@ html, body {
     "rail work  chart";
 }
 
-@media (max-width: 1200px) {
-  #console { grid-template-columns: 17rem minmax(0, 1fr); grid-template-areas: "bar bar" "rail work"; }
-  .chartpane { display: none; }
-}
-
 /* --- Top bar --------------------------------------------------------------- */
 
 .bar {
@@ -343,6 +338,19 @@ html, body {
   font-size: 2.1rem; font-weight: 300; letter-spacing: -0.01em; line-height: 1.1;
 }
 .detail-spec { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; font-size: 0.85rem; color: var(--text-secondary); }
+.detail-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.9rem;
+  margin-top: -0.35rem;
+}
+
+.detail-where .w-main { font-size: 0.98rem; color: var(--text-primary); }
+.detail-where .w-age { font-size: 0.8rem; color: var(--text-muted); }
+.detail-where .w-age.stale { color: var(--warning); }
+.detail-where .w-age.dark { color: var(--critical); }
+
 .detail-spec b { font-family: var(--font-display); font-weight: 500; color: var(--text-primary); }
 
 .state-pill {
@@ -723,4 +731,38 @@ html, body {
   width: 0.4rem; height: 0.4rem; border-radius: 50%;
   background: var(--warning);
   margin-left: 0.3rem;
+}
+
+/* --- Responsive -------------------------------------------------------------
+ * Last in the file on purpose. A media query does not outrank anything by being
+ * a media query — it is ordinary specificity plus source order. Sitting at the
+ * top, `.chartpane { display: none }` here lost to `.chartpane { display: grid }`
+ * four hundred lines below it, so the pane stayed visible, was auto-placed into
+ * an implicit grid column the template never declared, and turned up as a narrow
+ * stray box wedged against the edge of the layout.
+ * -------------------------------------------------------------------------- */
+
+/* Tighter, but all three columns. The chart is worth keeping down to here. */
+@media (max-width: 1400px) {
+  #console { grid-template-columns: 16rem minmax(0, 1fr) 21rem; }
+  .search { min-width: 15rem; }
+}
+
+@media (max-width: 1180px) {
+  #console { grid-template-columns: 14.5rem minmax(0, 1fr) 18rem; }
+  .search { min-width: 11rem; }
+  .bar-title { display: none; }
+}
+
+/* Below this the chart cannot earn its width. Drop to two columns and take the
+   area out of the template, so there is nothing left for the browser to place. */
+@media (max-width: 960px) {
+  #console {
+    grid-template-columns: 14rem minmax(0, 1fr);
+    grid-template-areas:
+      "bar  bar"
+      "rail work";
+  }
+  .chartpane { display: none; }
+  .brand-locations { display: none; }
 }

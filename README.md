@@ -120,7 +120,10 @@ worse than one that carries on.
 # Fleet Console — the desk tool
 
 Open `console.html`. Three columns: the fleet on the left, work in the middle, a
-chart on the right that re-aims as you select.
+chart on the right that re-aims as you select. Below about 1400px the columns
+tighten; below 960px the chart pane drops and it becomes two. The vessel record
+carries its own position line, so the chart going is never the difference
+between knowing where a yacht is and not.
 
 **It opens on what needs attention**, not on where everything is — overdue and
 imminent surveys, urgent jobs, and parts landing within the week, each against
