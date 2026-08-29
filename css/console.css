@@ -26,6 +26,11 @@ html, body {
      height, the rows stop stretching, and everything bunches at the top. */
   height: 100vh;
   height: 100dvh;
+  /* And a floor in real pixels. A host that sizes its frame to the content it
+     reports gets nothing useful from a page whose only height is 100dvh — that
+     is circular, so the frame never grows and the whole tool ends up squeezed
+     into whatever height it happened to start at. */
+  min-height: 780px;
   overflow: hidden;
   display: grid;
   grid-template-columns: 19rem minmax(0, 1fr) 26rem;
@@ -680,6 +685,10 @@ html, body {
 }
 .button-quiet:hover { color: var(--text-primary); }
 .button-quiet:focus-visible { outline: 2px solid var(--brand-cyan); outline-offset: 2px; }
+
+.rail-head-actions { display: inline-flex; gap: 0.35rem; }
+
+.snippet-tall { max-height: 32rem; }
 
 .snippet {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

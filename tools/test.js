@@ -308,7 +308,7 @@ test('impossible coordinates are rejected', () => {
 test('an out-of-order message cannot drag a yacht backwards', () => {
   const s = freshStore();
   const mmsi = FLEET[0].mmsi;
-  const now = new Date('2026-08-28T12:00:00Z');
+  const now = new Date();
   s.applyFix(mmsi, { lon: 2, lat: 39, at: now });
   assert.strictEqual(s.applyFix(mmsi, { lon: 9, lat: 44, at: new Date(now - 60000) }), false);
   assert.strictEqual(s.byMmsi[String(mmsi)].fix.lon, 2);
@@ -317,11 +317,24 @@ test('an out-of-order message cannot drag a yacht backwards', () => {
 test('a vessel alongside does not accumulate track points', () => {
   const s = freshStore();
   const mmsi = FLEET[0].mmsi;
-  const t0 = new Date('2026-08-28T12:00:00Z').getTime();
+  // Relative to now, not a fixed date: the store trims anything older than
+  // CONFIG.display.trackHours, so a pinned timestamp quietly stops testing what
+  // it says once the calendar moves past it.
+  const t0 = Date.now() - 10 * 60 * 1000;
   for (let i = 0; i < 50; i++) {
     s.applyFix(mmsi, { lon: 2.0, lat: 39.0, at: new Date(t0 + i * 10000) });
   }
   assert.strictEqual(s.byMmsi[String(mmsi)].track.length, 1);
+});
+
+test('the track window drops fixes older than it', () => {
+  const s = freshStore();
+  const mmsi = FLEET[0].mmsi;
+  const beyond = CONFIG.display.trackHours + 2;
+  s.applyFix(mmsi, { lon: 2.0, lat: 39.0, at: new Date(Date.now() - beyond * 3600000) });
+  s.applyFix(mmsi, { lon: 2.5, lat: 39.5, at: new Date() });
+  s.recompute();
+  assert.strictEqual(s.byMmsi[String(mmsi)].track.length, 1, 'only the recent fix survives');
 });
 
 test('status derives from navigational status, speed and yard period', () => {
@@ -500,6 +513,54 @@ test('merging never shadows a vessel already in the file', () => {
   } finally {
     Vessel.loadAdditions = original;
   }
+});
+
+test('the generated fleet.js is valid and carries every change', () => {
+  // Removing a vessel for good means changing the file, so what the console
+  // writes out has to be loadable as fleet.js — nested records and all.
+  const additions = [Vessel.buildRecord({
+    name: "Hal's Folly", mmsi: 319123456, imo: 9074729, loa: 44.2, yearBuilt: 2025
+  })];
+  const originalAdditions = Vessel.loadAdditions;
+  const originalHidden = Vessel.hiddenIds;
+  Vessel.loadAdditions = () => additions;
+  Vessel.hiddenIds = () => ['corvina'];
+  try {
+    const merged = Vessel.mergedFleet(FLEET);
+    const file = Vessel.toFleetFile(merged);
+
+    // Run in a fresh realm, then normalise: objects built there carry that
+    // realm's prototypes, which deepStrictEqual compares by identity.
+    const sandbox = { window: {} };
+    require('vm').runInNewContext(file, sandbox);
+    const out = JSON.parse(JSON.stringify(sandbox.window.FLEET));
+
+    assert.strictEqual(out.length, FLEET.length, 'one out, one in');
+    assert.ok(!out.some((y) => y.id === 'corvina'), 'the removed vessel is gone');
+    assert.ok(out.some((y) => y.name === "Hal's Folly"), 'the added one is there, apostrophe intact');
+    assert.ok(!out.some((y) => 'addedLocally' in y), 'the local marker is not written out');
+
+    // A full record must survive with its nesting.
+    const aurelia = out.find((y) => y.id === 'aurelia');
+    const source = JSON.parse(JSON.stringify(FLEET.find((y) => y.id === 'aurelia')));
+    assert.deepStrictEqual(aurelia.systems, source.systems);
+    assert.deepStrictEqual(aurelia.contacts, source.contacts);
+    assert.deepStrictEqual(aurelia.service, source.service);
+    assert.deepStrictEqual(aurelia.demo.route, source.demo.route);
+    assert.strictEqual(aurelia.classSociety, source.classSociety);
+  } finally {
+    Vessel.loadAdditions = originalAdditions;
+    Vessel.hiddenIds = originalHidden;
+  }
+});
+
+test('writing the file out and reading it back is stable', () => {
+  // Round-tripping twice must not drift, or repeated edits would rot the file.
+  const once = Vessel.toFleetFile(FLEET);
+  const sandbox = { window: {} };
+  require('vm').runInNewContext(once, sandbox);
+  const twice = Vessel.toFleetFile(sandbox.window.FLEET);
+  assert.strictEqual(once, twice, 'a second pass produces identical output');
 });
 
 /* --- Fleet data ---------------------------------------------------------- */

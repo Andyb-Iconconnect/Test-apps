@@ -40,6 +40,19 @@
   };
 
   // The palette lives in CSS so there is exactly one place to retint the board.
+  // A twilight tint is stored as one rgba token but used as two things: the hue
+  // goes in fillStyle and the strength on globalAlpha, because `multiply` takes
+  // its weight from globalAlpha.
+  function splitAlpha(rgba) {
+    var m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+))?\s*\)/.exec(rgba);
+    if (!m) return { colour: rgba, alpha: 1 };
+    return {
+      colour: 'rgb(' + Math.round(+m[1]) + ',' + Math.round(+m[2]) + ',' + Math.round(+m[3]) + ')',
+      alpha: m[4] === undefined ? 1 : +m[4]
+    };
+  }
+  Map._splitAlpha = splitAlpha;
+
   function readTheme() {
     var s = getComputedStyle(document.documentElement);
     function v(name, fallback) {
@@ -52,11 +65,11 @@
       land: v('--map-land', '#1b2632'),
       coast: v('--map-coast', '#31435a'),
       graticule: v('--map-graticule', '#16222f'),
-      night: v('--map-night', 'rgba(3, 9, 30, 0.30)'),
-      duskWarm: v('--twilight-dusk', 'rgba(214, 122, 74, 0.10)'),
-      civil: v('--twilight-civil', 'rgba(92, 74, 156, 0.17)'),
-      nautical: v('--twilight-nautical', 'rgba(40, 54, 130, 0.19)'),
-      astro: v('--twilight-astro', 'rgba(14, 28, 82, 0.20)'),
+      night: v('--map-night', 'rgba(40, 55, 150, 0.78)'),
+      duskWarm: v('--twilight-dusk', 'rgba(255, 205, 165, 0.265)'),
+      civil: v('--twilight-civil', 'rgba(170, 150, 235, 0.406)'),
+      nautical: v('--twilight-nautical', 'rgba(105, 120, 215, 0.546)'),
+      astro: v('--twilight-astro', 'rgba(60, 78, 180, 0.679)'),
       track: v('--map-track', '#2f6ea8'),
       underway: v('--status-underway', '#3987e5'),
       anchored: v('--status-anchored', '#199e70'),
@@ -339,11 +352,14 @@
     }
 
     var c = nightPath.contours;              // [terminator, -6, -12, -18]
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
     fillBetween(nightPath.dusk, c[0], theme.duskWarm);
     fillBetween(c[0], c[1], theme.civil);
     fillBetween(c[1], c[2], theme.nautical);
     fillBetween(c[2], c[3], theme.astro);
     fillBeyond(c[3], theme.night);
+    ctx.restore();
   }
 
   // The strip between two contours: out along the first, back along the second.
@@ -362,7 +378,9 @@
       }
       ctx.closePath();
     }
-    ctx.fillStyle = fill;
+    var tint = splitAlpha(fill);
+    ctx.fillStyle = tint.colour;
+    ctx.globalAlpha = tint.alpha;
     ctx.fill();
     ctx.restore();
   }
@@ -384,7 +402,9 @@
       ctx.lineTo(firstX, edgeY);
       ctx.closePath();
     }
-    ctx.fillStyle = fill;
+    var tint = splitAlpha(fill);
+    ctx.fillStyle = tint.colour;
+    ctx.globalAlpha = tint.alpha;
     ctx.fill();
     ctx.restore();
   }

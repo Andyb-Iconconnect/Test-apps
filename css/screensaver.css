@@ -16,8 +16,11 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  height: 100%;
-  overflow: hidden;
+  /* Deliberately not `height: 100%; overflow: hidden` here. Both clamp what the
+     document reports as its height, which leaves a host that sizes its frame to
+     the content with nothing to grow to. #board carries the height and the
+     clipping instead. */
+  min-height: 100%;
   background: var(--bg);
   color: var(--text-primary);
   font-family: var(--font);
@@ -28,9 +31,17 @@ body { cursor: none; }              /* it's a display, not a desktop */
 body.interactive { cursor: default; }
 
 /* Burn-in insurance and the after-hours dim, both applied to the whole board. */
+/* Laid out in flow rather than fixed, so the page has a real height for a host
+   that sizes its frame to the content. Fixed positioning contributes nothing to
+   the document, which leaves such a frame with nothing to measure. `body` keeps
+   the overflow hidden, so the board still never scrolls. */
 #board {
-  position: fixed;
-  inset: 0;
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 720px;
+  overflow: hidden;
   display: grid;
   grid-template-rows: auto 1fr auto;
   transition: opacity 4s ease, transform 2.5s ease;

@@ -206,6 +206,65 @@
     };
   };
 
+  /* --- The whole file ------------------------------------------------------ */
+
+  // Hiding a vessel only takes it off this browser. Truly removing one means
+  // changing fleet.js, so the console can hand over the entire file with every
+  // local change already applied — additions in, removals out. Save it over
+  // fleet.js and the change is real for the office display and everyone else.
+  var INDENT = '  ';
+
+  function literal(value, depth) {
+    var pad = new Array(depth + 1).join(INDENT);
+    var padInner = pad + INDENT;
+
+    if (value === null || value === undefined) return 'null';
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (typeof value === 'string') {
+      return "'" + value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n') + "'";
+    }
+    if (Array.isArray(value)) {
+      if (!value.length) return '[]';
+      // Keep short, flat records on one line; they read better that way.
+      var flat = value.every(function (v) { return v === null || typeof v !== 'object'; });
+      if (flat) return '[' + value.map(function (v) { return literal(v, depth); }).join(', ') + ']';
+      return '[\n' + value.map(function (v) {
+        return padInner + literal(v, depth + 1);
+      }).join(',\n') + '\n' + pad + ']';
+    }
+    var keys = Object.keys(value).filter(function (k) { return k !== 'addedLocally'; });
+    if (!keys.length) return '{}';
+    var inline = keys.every(function (k) {
+      var v = value[k];
+      return v === null || typeof v !== 'object';
+    }) && keys.length <= 4;
+    if (inline) {
+      return '{ ' + keys.map(function (k) { return k + ': ' + literal(value[k], depth); }).join(', ') + ' }';
+    }
+    return '{\n' + keys.map(function (k) {
+      return padInner + k + ': ' + literal(value[k], depth + 1);
+    }).join(',\n') + '\n' + pad + '}';
+  }
+
+  Vessel.toFleetFile = function (fleet) {
+    var header = [
+      '/* ---------------------------------------------------------------------------',
+      ' * THE FLEET — this is the file you swap.',
+      ' *',
+      ' * Written out by the Fleet Console with every local change applied. Save it',
+      ' * over fleet.js and the change reaches the office display and every other',
+      ' * console. See the console for what each field means.',
+      ' *',
+      ' * Generated ' + new Date().toISOString().slice(0, 10) + '.',
+      ' * ------------------------------------------------------------------------ */',
+      '',
+      'window.FLEET = ['
+    ].join('\n');
+
+    var entries = fleet.map(function (y) { return INDENT + literal(y, 1); }).join(',\n\n');
+    return header + '\n' + entries + '\n];\n';
+  };
+
   /* --- fleet.js snippet ---------------------------------------------------- */
 
   function js(value) {

@@ -67,6 +67,7 @@
     el('discreet-toggle').addEventListener('click', toggleDiscreet);
     wireAddDialog();
     wireRemoveDialog();
+    wireFileDialog();
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', function () {
       window.FleetMap.resize();
@@ -82,6 +83,7 @@
     renderFilters();
     renderRail(true);
     renderHiddenNote();
+    renderSaveButton();
     renderWork();
     aimChart();
     window.FleetMap.snap();
@@ -893,6 +895,7 @@
     select(selectId || App.selected);
     renderRail(true);
     renderHiddenNote();
+    renderSaveButton();
   }
 
   function onCopySnippet() {
@@ -935,12 +938,11 @@
       // Be plain about what a browser can and cannot do to a file.
       el('remove-body').textContent =
         window.Fmt.fullName(y) + ' comes from fleet.js, which this page cannot edit. ' +
-        'Removing it hides the vessel here, on this browser, straight away. To take ' +
-        'it off the office display and everyone else\'s console, delete its entry ' +
-        'from fleet.js — the one that starts with the line below. It can be restored ' +
-        'from the bottom of the fleet list at any time.';
-      snippet.textContent = "id: '" + y.id + "',";
-      snippet.hidden = false;
+        'Removing it takes the vessel off this browser straight away, and then ' +
+        'hands you the whole of fleet.js with it gone — save that over the file ' +
+        'and it is off the office display and every other console too. Until you ' +
+        'do, it can be restored from the bottom of the fleet list.';
+      snippet.hidden = true;
     }
     el('remove-dialog').showModal();
     el('remove-cancel').focus();
@@ -951,10 +953,88 @@
     var y = pendingRemoval.yacht;
     if (y.addedLocally) window.Vessel.removeAddition(y.id);
     else window.Vessel.hideVessel(y.id);
+    var wasFromFile = !y.addedLocally;
     pendingRemoval = null;
     el('remove-dialog').close();
     App.selected = null;
     reloadFleet(null);
+    // Hiding is half the job; offer the half that makes it stick.
+    if (wasFromFile) openFileDialog();
+  }
+
+  /* --- Writing fleet.js back out ------------------------------------------- */
+
+  // Hiding takes a vessel off this browser; only the file takes it off
+  // everything. So whenever there are local changes the console offers the whole
+  // file with them applied, which is the one action that actually removes a
+  // vessel for good.
+  function localChangeCount() {
+    return window.Vessel.loadAdditions().length + window.Vessel.hiddenIds().length;
+  }
+
+  function renderSaveButton() {
+    var count = localChangeCount();
+    var button = el('save-file');
+    button.hidden = count === 0;
+    button.textContent = count === 1 ? 'Save fleet.js (1 change)' : 'Save fleet.js (' + count + ')';
+  }
+
+  function openFileDialog() {
+    var added = window.Vessel.loadAdditions().length;
+    var hidden = window.Vessel.hiddenIds().length;
+    var parts = [];
+    if (added) parts.push(added + (added === 1 ? ' vessel added' : ' vessels added'));
+    if (hidden) parts.push(hidden + (hidden === 1 ? ' vessel removed' : ' vessels removed'));
+    el('file-summary').textContent = parts.length
+      ? parts.join(' and ') + ' in this browser.'
+      : 'No local changes — this is the fleet exactly as the file already has it.';
+    el('file-content').textContent = window.Vessel.toFleetFile(window.FLEET);
+    el('file-status').textContent = '';
+    el('file-dialog').showModal();
+    el('file-close').focus();
+  }
+
+  function wireFileDialog() {
+    el('save-file').addEventListener('click', openFileDialog);
+    el('file-close').addEventListener('click', function () { el('file-dialog').close(); });
+    el('file-copy').addEventListener('click', function () {
+      var text = el('file-content').textContent;
+      var status = el('file-status');
+      function selectInstead() {
+        var range = document.createRange();
+        range.selectNodeContents(el('file-content'));
+        var selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        status.textContent = 'Selected — press Ctrl+C (or Cmd+C).';
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+          .then(function () { status.textContent = 'Copied. Save it over fleet.js.'; })
+          .catch(selectInstead);
+      } else {
+        selectInstead();
+      }
+    });
+    el('file-download').addEventListener('click', function () {
+      var status = el('file-status');
+      try {
+        var blob = new Blob([el('file-content').textContent], { type: 'text/javascript' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'fleet.js';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+        // Some embedded viewers block downloads outright and do so silently,
+        // so point at the copy button rather than leaving nothing to try.
+        status.textContent = 'Saving… if nothing arrives, use Copy file instead.';
+      } catch (e) {
+        status.textContent = 'This viewer blocks downloads — use Copy file instead.';
+      }
+    });
   }
 
   function wireRemoveDialog() {

@@ -76,27 +76,28 @@
   --text-muted:     #67819A;
 
   /* Chart. Land is stepped up from the wallpaper's blue-slate until it clears
-     the sea by luminance and not only by hue, measured both in daylight
-     (3.3:1) and under the night band (2.5:1) — at the wallpaper's own value the
-     two sat at 1.5:1 and the whole chart read as haze. The coastline is the
-     charter's IT steel blue, which is lighter again and draws the edge.
-     The night wash is deliberately light: it should say "these yachts are in
-     darkness", not hide half the chart. */
+     the sea in daylight (5.4:1) and still reads under full night (1.9:1). */
   --map-ocean:      #0F2032;
   --map-ocean-deep: #0A1826;
-  --map-land:       #4A7398;
-  --map-coast:      #64A0C8;
-  --map-graticule:  #1A3049;
-  /* Dusk, in the order it happens. The chart fills between successive
-     solar-altitude contours, so these read as a real gradient: a warm strip
-     while the sun is still just up, then civil twilight cooling through violet
-     and indigo into night. */
-  --twilight-dusk:      rgba(214, 122, 74, 0.10);   /* sun above the horizon */
-  --twilight-civil:     rgba(92, 74, 156, 0.17);    /* 0 to -6 degrees */
-  --twilight-nautical:  rgba(40, 54, 130, 0.19);    /* -6 to -12 */
-  --twilight-astro:     rgba(14, 28, 82, 0.20);     /* -12 to -18 */
-  --map-night:          rgba(3, 9, 30, 0.30);       /* below -18 */
-  --map-track:      #2E7FAE;
+  --map-land:       #6899BE;
+  --map-coast:      #9CC8E4;
+  --map-graticule:  #1E3752;
+
+  /* Dusk, in the order it happens, filled between successive solar-altitude
+     contours and composited with `multiply`.
+     
+     Multiply matters. Laid over the top in the ordinary way, a tinted wash
+     BRIGHTENS anything darker than the tint — and the sea here is very dark, so
+     a violet twilight was lightening the ocean it was meant to be darkening.
+     The night side came out the same brightness as the day side, which is
+     exactly what it looked like. Multiplying can only ever darken, so the ramp
+     below is monotonic by construction: land under full night sits 3.4:1 away
+     from the same land in daylight, and the alpha is the strength. */
+  --twilight-dusk:      rgba(255, 205, 165, 0.265);  /* sun still above the horizon */
+  --twilight-civil:     rgba(170, 150, 235, 0.406);  /* 0 to -6 degrees */
+  --twilight-nautical:  rgba(105, 120, 215, 0.546);  /* -6 to -12 */
+  --twilight-astro:     rgba( 60,  78, 180, 0.679);  /* -12 to -18 */
+  --map-night:          rgba( 40,  55, 150, 0.780);  /* below -18: full night */
 
   /* Vessel state. Stepped from the brand hues onto the dark ground and
      validated as a categorical set against --surface-2: all three pass the

@@ -161,18 +161,21 @@ office display — the form hands you the finished `fleet.js` entry to paste in,
 with a copy button. Until then it is marked "not in fleet.js" on its own record,
 with the snippet and a remove button.
 
-### Removing a vessel
+### Removing a vessel, and saving fleet.js
 
-Every record has a **Remove vessel** button, and what it does depends on where
-the vessel came from.
+Every record has a **Remove vessel** button. One **added in this browser** is
+deleted outright. One **from `fleet.js`** disappears from your console straight
+away — but a web page cannot edit a file, so that alone is only half the job.
 
-A vessel **added in this browser** is deleted outright — nothing else has a copy.
+The other half is **Save fleet.js**. Whenever there are local changes, a button
+appears above the fleet list, and removing a vessel opens it for you. It writes
+out the *entire* file with every change applied — additions in, removals out,
+every existing record intact — to copy or download. Save that over `fleet.js`
+and the vessel is gone for good: off the office display, off everyone else's
+console. That is the only complete removal there is.
 
-A vessel **from `fleet.js`** cannot be deleted by a web page, so it is hidden
-here instead, immediately, and the dialog gives you the `id:` line to find and
-delete in the file. Until you do, the fleet list footer says how many vessels are
-hidden and offers them straight back. Same bargain as adding: it takes effect at
-your desk at once, and the file is what makes it true for everybody.
+Until you do, nothing is lost silently: the fleet list footer says how many
+vessels are hidden locally and offers them straight back.
 
 Everything else it shows comes from `fleet.js` — the `service`, `systems` and
 `contacts` blocks. There is no separate database, which is the right call while
@@ -254,9 +257,17 @@ is still just above the horizon, then civil, nautical and astronomical twilight
 cooling through violet and indigo into night. Each band is filled between two
 solar-altitude contours, computed for the moment and recomputed once a minute.
 
-It reads as dusk rather than as a grey wash, and it is genuinely informative —
-you can see at a glance which yachts are in darkness. The five colours are
-`--twilight-*` and `--map-night` in `css/tokens.css`.
+The bands are composited with **multiply**, which matters more than it sounds.
+Laid over the top the ordinary way, a tinted wash *brightens* anything darker
+than the tint — and the sea here is very dark, so a violet twilight was lightening
+the ocean it was meant to be darkening, and the night side came out the same
+brightness as the day side. Multiplying can only ever darken, so the ramp is
+monotonic by construction. Measured on the rendered pixels: daylight untouched,
+full night at half the brightness, and land under night sitting 3.4:1 away from
+the same land in daylight while staying 1.9:1 clear of the sea beside it.
+
+The five colours are `--twilight-*` and `--map-night` in `css/tokens.css`; the
+alpha on each is the strength of that band.
 
 ## Live positions
 
