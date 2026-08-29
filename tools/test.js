@@ -598,4 +598,132 @@ test('the port list is well formed', () => {
   });
 });
 
+
+/* --- Vessel profiles ------------------------------------------------------ */
+
+// profile.js draws into SVG elements. This is enough of a document for it: the
+// nodes only need to remember their tag, attributes and children so the drawing
+// can be read back and checked.
+(function () {
+  function stubNode(name) {
+    return {
+      tagName: name, attrs: {}, children: [],
+      setAttribute(k, v) { this.attrs[k] = String(v); },
+      getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
+      appendChild(c) { this.children.push(c); return c; }
+    };
+  }
+  global.document = { createElementNS: (ns, name) => stubNode(name) };
+  require(path.join(__dirname, '..', 'js/profile.js'));
+  const { Profile } = window;
+
+  // Every coordinate pair in a path's `d`, and the corners of a rect.
+  function pointsOf(node) {
+    if (node.tagName === 'path') {
+      const n = (node.attrs.d.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+      const pts = [];
+      for (let i = 0; i + 1 < n.length; i += 2) pts.push([n[i], n[i + 1]]);
+      return pts;
+    }
+    if (node.tagName === 'rect') {
+      const x = +node.attrs.x, y = +node.attrs.y;
+      return [[x, y], [x + +node.attrs.width, y + +node.attrs.height]];
+    }
+    if (node.tagName === 'circle') {
+      const cx = +node.attrs.cx, cy = +node.attrs.cy, r = +node.attrs.r;
+      return [[cx - r, cy - r], [cx + r, cy + r]];
+    }
+    return [];
+  }
+
+  function drawing(yacht) {
+    const svg = Profile.create(yacht);
+    const vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    // Everything the vessel is made of lives in the transformed group.
+    const g = svg.children.find((c) => c.tagName === 'g');
+    const scale = +/scale\(([\d.]+)\)/.exec(g.attrs.transform)[1];
+    const shift = /translate\((-?[\d.]+) (-?[\d.]+)\)/.exec(g.attrs.transform);
+    const parts = {};
+    g.children.forEach((c) => {
+      const cls = c.attrs.class;
+      (parts[cls] = parts[cls] || []).push(pointsOf(c).map(
+        ([x, y]) => [+shift[1] + scale * x, +shift[2] + scale * y]
+      ));
+    });
+    return { width: vb[2], height: vb[3], parts };
+  }
+
+  const box = (groups) => {
+    const all = [].concat(...groups);
+    return {
+      x0: Math.min(...all.map((p) => p[0])), x1: Math.max(...all.map((p) => p[0])),
+      y0: Math.min(...all.map((p) => p[1])), y1: Math.max(...all.map((p) => p[1]))
+    };
+  };
+
+  test('every vessel in the fleet draws a profile that fits its frame', () => {
+    FLEET.forEach((y) => {
+      const d = drawing(y);
+      assert.ok(d.height > 0, y.name + ': the frame has height');
+      Object.keys(d.parts).forEach((cls) => {
+        const b = box(d.parts[cls]);
+        assert.ok(b.y0 >= -1, y.name + ': ' + cls + ' stays below the top edge (' + b.y0 + ')');
+        assert.ok(b.y1 <= d.height + 1, y.name + ': ' + cls + ' stays above the bottom edge');
+        assert.ok(b.x0 >= -1 && b.x1 <= d.width + 1, y.name + ': ' + cls + ' stays within the sides');
+      });
+    });
+  });
+
+  test('a motor yacht is drawn bow forward, not stern forward', () => {
+    // The regression this guards: stepping the deck levels the other way puts
+    // the bridge at the stern and draws the boat backwards.
+    const big = FLEET.find((y) => !Profile.isSail(y) && y.loa >= 70);
+    const d = drawing(big);
+    const hull = box(d.parts['p-hull']);
+    const house = box(d.parts['p-house']);
+
+    assert.ok(house.x0 > hull.x0 && house.x1 < hull.x1,
+      'the superstructure sits inside the hull');
+    // The foredeck — hull forward of the bridge front — is longer than the
+    // after deck. On a motor yacht it is the other way about only if she is
+    // drawn facing the wrong way.
+    const foredeck = hull.x1 - house.x1;
+    const afterdeck = house.x0 - hull.x0;
+    assert.ok(foredeck > afterdeck * 1.3,
+      'the foredeck is the long one: fore ' + foredeck.toFixed(0) + ' vs aft ' + afterdeck.toFixed(0));
+    // And the topmost level is the forward one.
+    const tops = d.parts['p-house'][0];
+    const highest = Math.min(...tops.map((p) => p[1]));
+    const atTop = tops.filter((p) => p[1] < highest + 1).map((p) => p[0]);
+    const bridge = (Math.min(...atTop) + Math.max(...atTop)) / 2;
+    assert.ok(bridge > (hull.x0 + hull.x1) / 2,
+      'the bridge deck sits forward of amidships');
+  });
+
+  test('a sailing yacht is drawn with a rig and a keel', () => {
+    const sloop = FLEET.find((y) => Profile.isSail(y));
+    assert.ok(sloop, 'the placeholder fleet still carries a sailing yacht');
+    const d = drawing(sloop);
+    const hull = box(d.parts['p-hull']);
+    const mast = box(d.parts['p-mast']);
+    const keel = box(d.parts['p-keel']);
+
+    assert.ok(mast.y1 - mast.y0 > (hull.x1 - hull.x0) * 0.7,
+      'the mast is tall against her length');
+    assert.ok(mast.y0 < hull.y0, 'the masthead is above the sheer');
+    assert.ok(keel.y1 > hull.y1, 'the keel hangs below the hull');
+    assert.strictEqual(d.parts['p-keel'].length, 2, 'keel and rudder both drawn');
+  });
+
+  test('a drawn profile is never wider than the frame it is cut for', () => {
+    // frameAspect is what the console sizes its band from; if it disagreed with
+    // the viewBox the band would be the wrong shape.
+    FLEET.forEach((y) => {
+      const d = drawing(y);
+      close(Profile.frameAspect(y), d.width / d.height, 0.001, y.name + ': frame aspect matches');
+    });
+  });
+})();
+
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

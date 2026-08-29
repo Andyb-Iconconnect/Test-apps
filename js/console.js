@@ -474,6 +474,31 @@
 
   /* --- Vessel detail ------------------------------------------------------- */
 
+  // Her photograph if fleet.js carries one, otherwise a drawn profile. The band
+  // is proportioned to the rig, because a sloop's profile is a tall picture
+  // where a motor yacht's is a wide one.
+  function vesselVisual(y) {
+    var band = h('div', 'detail-profile');
+    band.style.aspectRatio = String(window.Profile.frameAspect(y));
+
+    function drawn() {
+      band.textContent = '';
+      band.appendChild(window.Profile.create(y));
+      band.appendChild(h('div', 'detail-profile-note', 'Illustration — add a photo in fleet.js'));
+    }
+
+    if (y.photo) {
+      var img = document.createElement('img');
+      img.src = y.photo;
+      img.alt = window.Fmt.text(y.prefix) + ' ' + y.name;
+      img.addEventListener('error', drawn);
+      band.appendChild(img);
+    } else {
+      drawn();
+    }
+    return band;
+  }
+
   function renderDetail(host, v) {
     var y = v.yacht, d = v.derived, s = y.service || {};
 
@@ -505,6 +530,7 @@
       spec.appendChild(span);
     });
     host.appendChild(spec);
+    host.appendChild(vesselVisual(y));
 
     // Where she is, in the record itself. The chart pane carries this too, but
     // narrow layouts drop that pane entirely, and a vessel record with no

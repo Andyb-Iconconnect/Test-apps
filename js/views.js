@@ -123,25 +123,32 @@
       img.src = v.yacht.photo;
       img.alt = window.Fmt.fullName(v.yacht);
       // If the file isn't there, fall back rather than showing a broken image.
-      img.onerror = function () { host.textContent = ''; host.appendChild(locator(v)); };
+      img.onerror = function () { host.textContent = ''; host.appendChild(placeholderVisual(v)); };
       host.appendChild(img);
     } else {
-      host.appendChild(locator(v));
+      host.appendChild(placeholderVisual(v));
     }
   }
 
-  // A small regional chart drawn straight onto a canvas — stands in for a photo
-  // until one is dropped into assets/photos/, and is more use than a grey box.
-  function locator(v) {
-    var wrap = h('div');
-    wrap.style.position = 'absolute';
-    wrap.style.inset = '0';
-    var canvas = document.createElement('canvas');
-    wrap.appendChild(canvas);
+  // No photograph: a drawn profile of the vessel, with a small locator chart
+  // inset in the corner so the panel still answers "where is she".
+  function placeholderVisual(v) {
+    var wrap = h('div', 'visual-stack');
+    var art = h('div', 'visual-profile');
+    art.appendChild(window.Profile.create(v.yacht));
+    wrap.appendChild(art);
 
-    requestAnimationFrame(function () {
-      drawLocator(canvas, v);
-    });
+    // Just 'Illustration' here: the board faces the room, and how to swap the
+    // drawing for a photograph is the console's business, not a visitor's.
+    var caption = h('div', 'visual-caption', 'Illustration');
+    wrap.appendChild(caption);
+
+    var inset = h('div', 'visual-inset');
+    var canvas = document.createElement('canvas');
+    inset.appendChild(canvas);
+    wrap.appendChild(inset);
+    requestAnimationFrame(function () { drawLocator(canvas, v); });
+
     return wrap;
   }
 

@@ -20,7 +20,10 @@
  *   loa, beam     metres
  *   grossTonnage
  *   builder, yearBuilt, lastRefit, classSociety
- *   photo         path to an image, e.g. 'assets/photos/aurelia.jpg' (null = crest)
+ *   photo         path to an image, e.g. 'assets/photos/aurelia.jpg'. Left null,
+ *                 a drawn side profile stands in for her — derived from length,
+ *                 tonnage and rig, so it is a plausible yacht of her size but
+ *                 not a likeness. Drop a photograph in and it takes over.
  *   discreet      true → never show an exact position for this yacht, regardless
  *                 of the global discreetMode setting
  *   service       your own operational data — the part no tracking site can show

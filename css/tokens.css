@@ -112,6 +112,17 @@
   --status-moored:   #8FA3B5;   /* Terms silver, tinted to the ground */
   --status-dark:     #5E7488;
 
+  /* The drawn vessel profile. Deliberately flat and diagrammatic — it should
+     read as an illustration standing in for a photograph, never as one. */
+  --profile-hull:   #2E4560;
+  --profile-house:  #40607F;
+  --profile-window: #0C1826;
+  --profile-spar:   #7EA8CA;
+  --profile-line:   rgba(126, 168, 202, 0.45);
+  --profile-rail:   rgba(126, 168, 202, 0.35);
+  --profile-sea-top:    #14293C;
+  --profile-sea-bottom: #0A1826;
+
   /* Service urgency. Reserved status colours, deliberately not themed: they are
      the only warm hues on the board, which is what makes them read as "look
      here" against an entirely cool brand. */
