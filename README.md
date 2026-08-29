@@ -174,6 +174,12 @@ every existing record intact — to copy or download. Save that over `fleet.js`
 and the vessel is gone for good: off the office display, off everyone else's
 console. That is the only complete removal there is.
 
+Served from a folder, **Download** writes `fleet.js` directly. Inside the
+artifact viewer a page cannot download anything by itself — it has to ask the
+host, which prompts and only permits certain extensions, `.js` not among them —
+so there it saves as `fleet.js.txt` to rename. **Copy file** works everywhere and
+is the simpler route if you are pasting into an editor anyway.
+
 Until you do, nothing is lost silently: the fleet list footer says how many
 vessels are hidden locally and offers them straight back.
 

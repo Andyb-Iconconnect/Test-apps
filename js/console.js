@@ -1016,25 +1016,52 @@
         selectInstead();
       }
     });
-    el('file-download').addEventListener('click', function () {
-      var status = el('file-status');
-      try {
-        var blob = new Blob([el('file-content').textContent], { type: 'text/javascript' });
-        var url = URL.createObjectURL(blob);
-        var link = document.createElement('a');
-        link.href = url;
-        link.download = 'fleet.js';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-        // Some embedded viewers block downloads outright and do so silently,
-        // so point at the copy button rather than leaving nothing to try.
-        status.textContent = 'Saving… if nothing arrives, use Copy file instead.';
-      } catch (e) {
-        status.textContent = 'This viewer blocks downloads — use Copy file instead.';
-      }
-    });
+    el('file-download').addEventListener('click', onDownloadFile);
+  }
+
+  // Saving a file works two different ways depending on where this is running.
+  // Served from a folder, an ordinary download link writes fleet.js. Inside the
+  // artifact viewer a page cannot download anything by itself — it has to ask
+  // the host, which prompts the viewer and only allows certain extensions, .js
+  // not among them. So there it saves as fleet.js.txt and says to rename it.
+  function onDownloadFile() {
+    var status = el('file-status');
+    var text = el('file-content').textContent;
+
+    var host = (window.claude && typeof window.claude.use === 'function')
+      ? window.claude.use('downloads') : null;
+
+    if (!host) { downloadDirect(text, status); return; }
+
+    status.textContent = 'Asking the viewer…';
+    Promise.resolve(host).then(function (downloads) {
+      if (!downloads) { downloadDirect(text, status); return; }
+      return downloads.save({ filename: 'fleet.js.txt', data: text }).then(function () {
+        status.textContent = 'Saved as fleet.js.txt — rename it to fleet.js.';
+      }).catch(function (error) {
+        var code = error && error.code;
+        status.textContent = code === 'declined' ? 'Save cancelled.'
+          : code === 'rate_limited' ? 'A save prompt is already open.'
+          : 'Could not save here — use Copy file instead.';
+      });
+    }).catch(function () { downloadDirect(text, status); });
+  }
+
+  function downloadDirect(text, status) {
+    try {
+      var blob = new Blob([text], { type: 'text/javascript' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'fleet.js';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+      status.textContent = 'Saving fleet.js — if nothing arrives, use Copy file.';
+    } catch (e) {
+      status.textContent = 'Downloads are blocked here — use Copy file instead.';
+    }
   }
 
   function wireRemoveDialog() {
