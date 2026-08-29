@@ -180,11 +180,19 @@ html, body {
   /* head, filters, the scrolling list, footer — the list is the only row that
      takes the slack. */
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  /* And ONE column, pinned. Left implicit it sizes to max-content, so a wide
+     child — two nowrap buttons in the head — widened the whole rail's inner
+     column. Every vessel row widened with it and pushed its count badge out
+     past the rail's edge and over the column beside it. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .filters {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   gap: 0.3rem;
   padding: 0.75rem 0.8rem;
@@ -218,6 +226,7 @@ html, body {
 
 .vessel-row {
   all: unset;
+  min-width: 0;
   display: grid;
   grid-template-columns: 0.5rem minmax(0, 1fr) auto;
   align-items: center;
@@ -273,6 +282,10 @@ html, body {
 
 .work {
   grid-area: work;
+  /* The tiles below size to THIS column, not the window — the rail and chart
+     pane take their share first, so viewport media queries are the wrong ruler. */
+  container-type: inline-size;
+  container-name: work;
   overflow-y: auto;
   min-height: 0;
   padding: 1.1rem 1.3rem 2rem;
@@ -299,32 +312,49 @@ html, body {
   gap: 0.8rem;
 }
 
-.tile-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.7rem; }
+/* Five status tiles. Left to auto-fit they wrap 4 + 1, and a lone tile hanging
+   under a full row reads as breakage rather than as layout. So the count per row
+   is chosen explicitly: five, then three (3 + 2), then two. */
+.tile-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: 0.7rem; }
+
+@container work (min-width: 620px) {
+  .tile-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+@container work (min-width: 420px) and (max-width: 619px) {
+  .tile-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container work (max-width: 419px) {
+  .tile-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Five into two leaves one over; give it the whole row so it reads as the
+     end of a list rather than as something that fell off one. */
+  .tile-row > :last-child { grid-column: 1 / -1; }
+}
 
 .tile {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
-  padding: 0.8rem 0.9rem;
+  padding: 0.7rem 0.75rem;
+  min-width: 0;
 }
 .tile.alert { border-color: var(--critical); }
 .tile.warn { border-color: var(--warning); }
 
 .tile .label {
   font-family: var(--font-display);
-  font-size: 0.66rem;
+  font-size: 0.63rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 .tile .figure {
   font-family: var(--font-display);
-  font-size: 2rem;
+  font-size: 1.8rem;
   font-weight: 300;
   line-height: 1.2;
   margin-top: 0.15rem;
 }
-.tile .note { font-size: 0.74rem; color: var(--text-muted); }
+.tile .note { font-size: 0.7rem; color: var(--text-muted); line-height: 1.3; }
 
 /* Detail header */
 
@@ -513,17 +543,24 @@ html, body {
  * A native <dialog>, so Escape, focus trapping and the backdrop come for free.
  * -------------------------------------------------------------------------- */
 
+/* Wraps rather than overflowing: with local changes there are two buttons here,
+   and at a narrow rail — or a zoomed-in page, which amounts to the same thing —
+   they do not fit on the title's line. */
 .rail-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
   padding: 0.7rem 0.8rem 0.5rem;
+  min-width: 0;
 }
 
 .add-button {
   all: unset;
   cursor: pointer;
+  box-sizing: border-box;
+  max-width: 100%;
   padding: 0.28rem 0.65rem;
   border: 1px solid var(--brand-cyan);
   border-radius: 0.3rem;
@@ -694,7 +731,7 @@ html, body {
 .button-quiet:hover { color: var(--text-primary); }
 .button-quiet:focus-visible { outline: 2px solid var(--brand-cyan); outline-offset: 2px; }
 
-.rail-head-actions { display: inline-flex; gap: 0.35rem; }
+.rail-head-actions { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; min-width: 0; }
 
 .snippet-tall { max-height: 32rem; }
 

@@ -120,7 +120,10 @@ worse than one that carries on.
 # Fleet Console — the desk tool
 
 Open `console.html`. Three columns: the fleet on the left, work in the middle, a
-chart on the right that re-aims as you select. Below about 1400px the columns
+chart on the right that re-aims as you select. It answers to the width of each
+column rather than the window, so zooming in behaves the same as narrowing the
+window: the columns tighten, the rail head stacks its buttons, the status tiles
+regroup 5 → 3 + 2 → 2 + 2 + 1, and below 960px the chart pane steps aside. Below about 1400px the columns
 tighten; below 960px the chart pane drops and it becomes two. The vessel record
 carries its own position line, so the chart going is never the difference
 between knowing where a yacht is and not.

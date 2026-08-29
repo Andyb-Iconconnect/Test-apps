@@ -76,11 +76,11 @@
   --text-muted:     #67819A;
 
   /* Chart. Land is stepped up from the wallpaper's blue-slate until it clears
-     the sea in daylight (5.4:1) and still reads under full night (1.9:1). */
+     the sea in daylight (4.6:1) and still reads under full night (1.9:1). */
   --map-ocean:      #0F2032;
   --map-ocean-deep: #0A1826;
-  --map-land:       #6899BE;
-  --map-coast:      #9CC8E4;
+  --map-land:       #5E8CB2;
+  --map-coast:      #93BEDC;
   --map-graticule:  #1E3752;
 
   /* Dusk, in the order it happens, filled between successive solar-altitude
@@ -91,13 +91,13 @@
      a violet twilight was lightening the ocean it was meant to be darkening.
      The night side came out the same brightness as the day side, which is
      exactly what it looked like. Multiplying can only ever darken, so the ramp
-     below is monotonic by construction: land under full night sits 3.4:1 away
+     below is monotonic by construction: land under full night sits 2.9:1 away
      from the same land in daylight, and the alpha is the strength. */
-  --twilight-dusk:      rgba(255, 205, 165, 0.265);  /* sun still above the horizon */
-  --twilight-civil:     rgba(170, 150, 235, 0.406);  /* 0 to -6 degrees */
-  --twilight-nautical:  rgba(105, 120, 215, 0.546);  /* -6 to -12 */
-  --twilight-astro:     rgba( 60,  78, 180, 0.679);  /* -12 to -18 */
-  --map-night:          rgba( 40,  55, 150, 0.780);  /* below -18: full night */
+  --twilight-dusk:      rgba(255, 205, 165, 0.245);  /* sun still above the horizon */
+  --twilight-civil:     rgba(170, 150, 235, 0.374);  /* 0 to -6 degrees */
+  --twilight-nautical:  rgba(105, 120, 215, 0.504);  /* -6 to -12 */
+  --twilight-astro:     rgba( 60,  78, 180, 0.626);  /* -12 to -18 */
+  --map-night:          rgba( 40,  55, 150, 0.720);  /* below -18: full night */
 
   /* Vessel state. Stepped from the brand hues onto the dark ground and
      validated as a categorical set against --surface-2: all three pass the
