@@ -72,9 +72,42 @@ const inlinedStyles = styles
   .map((f) => `<style>\n${inlineFonts(read(f), f)}\n</style>`)
   .join('\n');
 
+// Yacht photographs are referenced from fleet.js by relative path, which means
+// nothing once the bundle is opened off a USB stick — and a published artifact
+// blocks external images outright, so a remote URL will not render there at all.
+// Embed the local files; leave remote URLs alone but say so.
+let photoBytes = 0;
+function inlinePhotos(js) {
+  return js.replace(/photo:\s*'([^']+)'/g, (whole, ref) => {
+    if (/^data:/.test(ref)) return whole;
+    if (/^(https?:)?\/\//.test(ref)) {
+      console.warn(`  ! photo left as a remote URL: ${ref}\n` +
+                   '    A published artifact will not load it. ' +
+                   'node tools/fetch-photos.js --from-fleet copies it down.');
+      return whole;
+    }
+    const file = path.join(ROOT, ref);
+    if (!fs.existsSync(file)) {
+      console.warn(`  ! photo not found, left as a path: ${ref}`);
+      return whole;
+    }
+    const mime = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.webp': 'image/webp', '.avif': 'image/avif'
+    }[path.extname(file).toLowerCase()];
+    if (!mime) {
+      console.warn(`  ! photo is not an image type we embed, left as a path: ${ref}`);
+      return whole;
+    }
+    const data = fs.readFileSync(file);
+    photoBytes += data.length;
+    return `photo: 'data:${mime};base64,${data.toString('base64')}'`;
+  });
+}
+
 const inlinedScripts = scripts.map((f) => {
   const source = f === 'config.js' ? config : read(f);
-  return `<script>\n${guard(source)}\n</script>`;
+  return `<script>\n${guard(inlinePhotos(source))}\n</script>`;
 }).join('\n');
 
 // Take the markup between <body> and </body>, minus the script tags we've just
@@ -105,4 +138,12 @@ fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, out);
 console.log(`${entry}: ${scripts.length} scripts + ${styles.length} stylesheets inlined -> ` +
             `${path.relative(process.cwd(), outPath)} (${Math.round(out.length / 1024)} KB)` +
+            (photoBytes ? ` [${Math.round(photoBytes / 1024)} KB of photos]` : '') +
             (offline ? ' [offline]' : '') + (fragment ? ' [fragment]' : ''));
+
+// The artifact host refuses anything over 16 MB, and photographs are the only
+// thing here big enough to get near it.
+if (out.length > 15 * 1024 * 1024) {
+  console.warn(`  ! ${Math.round(out.length / (1024 * 1024))} MB is close to the 16 MB artifact ` +
+               'limit. Resize the photographs to about 1600 px on the long edge.');
+}

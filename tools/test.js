@@ -726,4 +726,48 @@ test('the port list is well formed', () => {
 })();
 
 
+/* --- Photo fetching ------------------------------------------------------- */
+
+test('repointing a photo field changes that field and nothing else', () => {
+  const { repoint, loadFleet } = require(path.join(__dirname, 'fetch-photos.js'));
+  const source = require('fs').readFileSync(path.join(__dirname, '..', 'fleet.js'), 'utf8');
+  const before = loadFleet(source);
+
+  let edited = repoint(source, 'aurelia', 'assets/photos/aurelia.jpg');
+  edited = repoint(edited, 'wind-verity', "assets/photos/o'brien.jpg");
+  const after = loadFleet(edited);
+
+  assert.strictEqual(after.length, before.length, 'the same fleet comes back');
+  assert.strictEqual(after.find((y) => y.id === 'aurelia').photo, 'assets/photos/aurelia.jpg');
+  assert.strictEqual(after.find((y) => y.id === 'wind-verity').photo, "assets/photos/o'brien.jpg",
+    'an apostrophe in the filename survives');
+
+  const strip = (f) => JSON.stringify(f.map((y) => Object.assign({}, y, { photo: null })));
+  assert.strictEqual(strip(after), strip(before), 'every other field is untouched');
+
+  // Only the two lines should differ. A whole-file rewrite would pass the check
+  // above while flattening the header, which is the thing to guard against.
+  const changedLines = source.split('\n')
+    .filter((line, i) => line !== edited.split('\n')[i]).length;
+  assert.ok(changedLines <= 2, 'the edit is two lines, not a rewrite (' + changedLines + ')');
+});
+
+test('repointing a record that has no photo field adds one', () => {
+  const { repoint, loadFleet } = require(path.join(__dirname, 'fetch-photos.js'));
+  const source = require('fs').readFileSync(path.join(__dirname, '..', 'fleet.js'), 'utf8');
+  const stripped = source.replace(/^[ \t]*photo:[^\n]*\n/gm, '');
+  assert.ok(!/photo:/.test(stripped), 'the fixture really has no photo fields');
+
+  const after = loadFleet(repoint(stripped, 'corvina', 'assets/photos/corvina.jpg'));
+  assert.strictEqual(after.find((y) => y.id === 'corvina').photo, 'assets/photos/corvina.jpg');
+  assert.ok(after.every((y) => y.id === 'corvina' || y.photo === undefined),
+    'no other record picked up a photo');
+});
+
+test('repointing an id that is not in the fleet refuses rather than guessing', () => {
+  const { repoint } = require(path.join(__dirname, 'fetch-photos.js'));
+  const source = require('fs').readFileSync(path.join(__dirname, '..', 'fleet.js'), 'utf8');
+  assert.throws(() => repoint(source, 'not-a-yacht', 'x.jpg'), /no record with id/);
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
