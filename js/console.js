@@ -479,10 +479,15 @@
   // where a motor yacht's is a wide one.
   function vesselVisual(y) {
     var band = h('div', 'detail-profile');
-    band.style.aspectRatio = String(window.Profile.frameAspect(y));
+    // A drawing knows its own proportions and the band takes them. A photograph
+    // does not: cover-cropping one into the drawing's long, low frame would cut
+    // the masthead off the top and the waterline off the bottom, so photographs
+    // get an ordinary landscape band instead.
+    band.style.aspectRatio = String(y.photo ? 16 / 9 : window.Profile.frameAspect(y));
 
     function drawn() {
       band.textContent = '';
+      band.style.aspectRatio = String(window.Profile.frameAspect(y));
       band.appendChild(window.Profile.create(y));
       band.appendChild(h('div', 'detail-profile-note', 'Illustration — add a photo in fleet.js'));
     }
