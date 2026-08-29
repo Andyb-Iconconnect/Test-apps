@@ -94,6 +94,12 @@ chromium --kiosk --incognito http://localhost:8000
 
 The cursor hides itself after a few seconds of stillness.
 
+**Step between views** with the `‹` `❚❚` `›` controls in the footer, or the arrow
+keys. They move between the three views rather than through the eight spotlight
+scenes behind one of them, which is what the three dots beside them mean. Like
+the cursor, they appear only once a pointer has moved, so the wall display never
+grows a control nobody can use.
+
 **Click a yacht** — on the chart or in the fleet rail — to jump straight to its
 detail. The rotation is not paused by the click; the scene timer restarts, so
 there is a full dwell to read it before the board moves on.
@@ -154,6 +160,19 @@ plainly wherever it appears. To make it permanent and shared — including with 
 office display — the form hands you the finished `fleet.js` entry to paste in,
 with a copy button. Until then it is marked "not in fleet.js" on its own record,
 with the snippet and a remove button.
+
+### Removing a vessel
+
+Every record has a **Remove vessel** button, and what it does depends on where
+the vessel came from.
+
+A vessel **added in this browser** is deleted outright — nothing else has a copy.
+
+A vessel **from `fleet.js`** cannot be deleted by a web page, so it is hidden
+here instead, immediately, and the dialog gives you the `id:` line to find and
+delete in the file. Until you do, the fleet list footer says how many vessels are
+hidden and offers them straight back. Same bargain as adding: it takes effect at
+your desk at once, and the file is what makes it true for everybody.
 
 Everything else it shows comes from `fleet.js` — the `service`, `systems` and
 `contacts` blocks. There is no separate database, which is the right call while

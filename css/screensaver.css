@@ -273,6 +273,41 @@ body.interactive .rail-row:hover { background: rgba(60, 180, 228, 0.07); }
   color: var(--text-muted);
 }
 
+/* Step controls. Like everything else interactive here they appear only once a
+   pointer has moved, so the wall display never grows a control nobody can use. */
+.viewnav {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 350ms ease, visibility 350ms;
+}
+
+body.interactive .viewnav { opacity: 1; visibility: visible; }
+
+.viewnav-button {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.7rem;
+  height: 1.4rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.3rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.viewnav-button:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.viewnav-button:focus-visible { outline: 2px solid var(--brand-cyan); outline-offset: 2px; }
+.viewnav-button[aria-pressed="true"] { color: var(--brand-cyan); border-color: var(--brand-cyan); }
+
+#view-pause { font-size: 0.6rem; letter-spacing: 0.08em; }
+
 .rotation-dots { display: flex; gap: 0.4rem; align-items: center; }
 
 .rotation-dot {

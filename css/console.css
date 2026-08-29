@@ -20,7 +20,13 @@ html, body {
 }
 
 #console {
-  height: 100%;
+  /* Sized against the viewport, not the parent. `height: 100%` needs every
+     ancestor to have a resolved height, and a host page that wraps the content
+     in a plain div breaks that chain — the grid then falls back to content
+     height, the rows stop stretching, and everything bunches at the top. */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 19rem minmax(0, 1fr) 26rem;
   grid-template-rows: auto minmax(0, 1fr);
@@ -173,7 +179,7 @@ html, body {
   display: grid;
   /* head, filters, the scrolling list, footer — the list is the only row that
      takes the slack. */
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   min-height: 0;
 }
 
@@ -534,8 +540,12 @@ html, body {
 /* `:not([hidden])` matters: a bare `display: flex` here outranks the user
    agent's `[hidden] { display: none }`, and the finished panel would sit
    stacked under the form it replaced. */
-.sheet form:not([hidden]),
-.sheet-done:not([hidden]) {
+.sheet-narrow { width: min(30rem, calc(100vw - 3rem)); }
+
+/* The `[hidden]` override in tokens.css is what keeps these from stacking. */
+.sheet form,
+.sheet-done,
+.sheet-panel {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 4rem);
@@ -626,6 +636,39 @@ html, body {
 }
 .button-primary:hover { filter: brightness(1.08); }
 .button-primary:focus-visible { outline: 2px solid var(--brand-cyan); outline-offset: 2px; }
+
+.button-danger {
+  all: unset; cursor: pointer;
+  padding: 0.45rem 1rem;
+  background: var(--critical);
+  color: #fff;
+  border-radius: 0.35rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+.button-danger:hover { filter: brightness(1.08); }
+.button-danger:focus-visible { outline: 2px solid var(--critical); outline-offset: 2px; }
+
+/* Destructive actions sit apart from the record, below a rule. */
+.danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.9rem;
+  margin-top: 0.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.danger-zone .note { font-size: 0.78rem; color: var(--text-muted); }
+
+.hidden-note {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.74rem;
+  color: var(--warning);
+}
 
 .button-quiet {
   all: unset; cursor: pointer;

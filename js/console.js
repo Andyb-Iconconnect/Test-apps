@@ -66,6 +66,7 @@
     el('clear-selection').addEventListener('click', function () { select(null); });
     el('discreet-toggle').addEventListener('click', toggleDiscreet);
     wireAddDialog();
+    wireRemoveDialog();
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', function () {
       window.FleetMap.resize();
@@ -80,6 +81,7 @@
     window.Store.recompute();
     renderFilters();
     renderRail(true);
+    renderHiddenNote();
     renderWork();
     aimChart();
     window.FleetMap.snap();
@@ -524,11 +526,7 @@
         copyButton.textContent = 'Copied';
         setTimeout(function () { copyButton.textContent = 'Copy entry'; }, 2000);
       });
-      var removeButton = h('button', 'button-quiet', 'Remove from this browser');
-      removeButton.type = 'button';
-      removeButton.addEventListener('click', function () { removeLocalVessel(y.id); });
       actions.appendChild(copyButton);
-      actions.appendChild(removeButton);
       localPanel.appendChild(actions);
       host.appendChild(localPanel);
     }
@@ -613,6 +611,16 @@
       contactPanel.appendChild(contactRows);
       host.appendChild(contactPanel);
     }
+
+    var danger = h('div', 'danger-zone');
+    danger.appendChild(h('span', 'note', y.addedLocally
+      ? 'Added in this browser — removing deletes it outright.'
+      : 'From fleet.js. Removing hides it here; the file still has the entry.'));
+    var removeButton = h('button', 'button-quiet', 'Remove vessel');
+    removeButton.type = 'button';
+    removeButton.addEventListener('click', function () { askToRemove(v); });
+    danger.appendChild(removeButton);
+    host.appendChild(danger);
   }
 
   // Label first, value second. The other way round — value large on the left
@@ -884,6 +892,7 @@
     window.Store.recompute();
     select(selectId || App.selected);
     renderRail(true);
+    renderHiddenNote();
   }
 
   function onCopySnippet() {
@@ -908,10 +917,67 @@
     }
   }
 
-  function removeLocalVessel(id) {
-    window.Vessel.removeAddition(id);
+  /* --- Removing a vessel --------------------------------------------------- */
+
+  var pendingRemoval = null;
+
+  function askToRemove(vessel) {
+    pendingRemoval = vessel;
+    var y = vessel.yacht;
+    var snippet = el('remove-snippet');
+
+    if (y.addedLocally) {
+      el('remove-body').textContent =
+        window.Fmt.fullName(y) + ' was added in this browser and is stored here only. ' +
+        'Removing it deletes it outright — nothing else has a copy.';
+      snippet.hidden = true;
+    } else {
+      // Be plain about what a browser can and cannot do to a file.
+      el('remove-body').textContent =
+        window.Fmt.fullName(y) + ' comes from fleet.js, which this page cannot edit. ' +
+        'Removing it hides the vessel here, on this browser, straight away. To take ' +
+        'it off the office display and everyone else\'s console, delete its entry ' +
+        'from fleet.js — the one that starts with the line below. It can be restored ' +
+        'from the bottom of the fleet list at any time.';
+      snippet.textContent = "id: '" + y.id + "',";
+      snippet.hidden = false;
+    }
+    el('remove-dialog').showModal();
+    el('remove-cancel').focus();
+  }
+
+  function confirmRemoval() {
+    if (!pendingRemoval) return;
+    var y = pendingRemoval.yacht;
+    if (y.addedLocally) window.Vessel.removeAddition(y.id);
+    else window.Vessel.hideVessel(y.id);
+    pendingRemoval = null;
+    el('remove-dialog').close();
     App.selected = null;
     reloadFleet(null);
+  }
+
+  function wireRemoveDialog() {
+    el('remove-cancel').addEventListener('click', function () { el('remove-dialog').close(); });
+    el('remove-close').addEventListener('click', function () { el('remove-dialog').close(); });
+    el('remove-confirm').addEventListener('click', confirmRemoval);
+    el('restore-hidden').addEventListener('click', function () {
+      window.Vessel.unhideAll();
+      reloadFleet(App.selected);
+    });
+  }
+
+  // Hidden vessels are never silently gone: the rail says how many and offers
+  // them back.
+  function renderHiddenNote() {
+    var hidden = window.Vessel.hiddenVessels(BASE_FLEET);
+    var strayCount = window.Vessel.hiddenIds().length;
+    var note = el('hidden-note');
+    if (!strayCount) { note.hidden = true; return; }
+    note.hidden = false;
+    el('hidden-count').textContent = strayCount === 1
+      ? '1 vessel hidden' + (hidden.length ? ' — ' + hidden[0].name : '')
+      : strayCount + ' vessels hidden';
   }
 
   function onKey(event) {

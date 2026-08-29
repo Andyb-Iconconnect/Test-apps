@@ -97,6 +97,41 @@
     return saveAdditions(list);
   };
 
+  /* --- Hiding a vessel from fleet.js --------------------------------------- */
+
+  // A browser cannot edit fleet.js, so removing a vessel that came from the file
+  // is recorded as a local hide and paired with the instruction to delete its
+  // entry. Same bargain as adding: it takes effect here immediately, and the
+  // file is what makes it true for everybody.
+  var HIDDEN_KEY = 'fleetwatch.hidden.v1';
+
+  Vessel.hiddenIds = function () {
+    var raw;
+    try { raw = localStorage.getItem(HIDDEN_KEY); } catch (e) { return []; }
+    if (!raw) return [];
+    try {
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  };
+
+  function saveHidden(ids) {
+    try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(ids)); return true; }
+    catch (e) { return false; }
+  }
+
+  Vessel.hideVessel = function (id) {
+    var ids = Vessel.hiddenIds();
+    if (ids.indexOf(id) === -1) ids.push(id);
+    return saveHidden(ids);
+  };
+
+  Vessel.unhideVessel = function (id) {
+    return saveHidden(Vessel.hiddenIds().filter(function (x) { return x !== id; }));
+  };
+
+  Vessel.unhideAll = function () { return saveHidden([]); };
+
   Vessel.removeAddition = function (id) {
     var list = Vessel.loadAdditions().filter(function (r) { return r.id !== id; });
     return saveAdditions(list);
@@ -105,6 +140,9 @@
   // Locally added vessels are marked so the console can say plainly that they
   // are not in fleet.js yet.
   Vessel.mergedFleet = function (base) {
+    var hidden = Vessel.hiddenIds();
+    var isHidden = function (y) { return hidden.indexOf(y.id) !== -1; };
+
     var additions = Vessel.loadAdditions().map(function (r) {
       var copy = JSON.parse(JSON.stringify(r));
       copy.addedLocally = true;
@@ -112,9 +150,17 @@
     });
     var taken = {};
     base.forEach(function (y) { taken[y.mmsi] = true; taken[y.id] = true; });
-    return base.concat(additions.filter(function (r) {
-      return !taken[r.mmsi] && !taken[r.id];
-    }));
+
+    return base
+      .concat(additions.filter(function (r) { return !taken[r.mmsi] && !taken[r.id]; }))
+      .filter(function (y) { return !isHidden(y); });
+  };
+
+  // Those hidden, resolved back to their records so they can be listed and put
+  // back. An id left over from an edited fleet.js simply resolves to nothing.
+  Vessel.hiddenVessels = function (base) {
+    var hidden = Vessel.hiddenIds();
+    return base.filter(function (y) { return hidden.indexOf(y.id) !== -1; });
   };
 
   /* --- Building a record --------------------------------------------------- */

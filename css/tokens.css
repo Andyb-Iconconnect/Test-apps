@@ -127,3 +127,14 @@
 
 }
 
+/* -----------------------------------------------------------------------------
+ * `hidden` must win.
+ *
+ * The user agent's `[hidden] { display: none }` is a plain attribute selector,
+ * so any rule of equal specificity that sets `display` — a `.panel { display:
+ * flex }`, or an `all: unset` on a button — silently beats it, and an element
+ * the script has hidden stays on screen. This has now caught three separate
+ * elements in this project, so it is settled here for both pages.
+ * -------------------------------------------------------------------------- */
+
+[hidden] { display: none !important; }

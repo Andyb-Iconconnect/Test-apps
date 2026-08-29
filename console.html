@@ -46,6 +46,10 @@
     </div>
     <div class="filters" id="filters"></div>
     <div class="rail-list" id="rail-list"></div>
+    <div class="hidden-note" id="hidden-note" hidden>
+      <span id="hidden-count"></span>
+      <button class="linkish" id="restore-hidden" type="button">Restore</button>
+    </div>
     <div class="rail-foot" id="rail-foot"></div>
   </aside>
 
@@ -61,6 +65,23 @@
     </div>
     <div class="chart-readout" id="chart-readout"></div>
   </aside>
+
+  <dialog class="sheet sheet-narrow" id="remove-dialog" aria-labelledby="remove-title">
+    <div class="sheet-panel">
+      <header class="sheet-head">
+        <h2 id="remove-title">Remove vessel</h2>
+        <button class="sheet-close" id="remove-close" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="sheet-body">
+        <p class="sheet-note" id="remove-body"></p>
+        <pre class="snippet" id="remove-snippet" hidden></pre>
+      </div>
+      <footer class="sheet-foot">
+        <button class="button-quiet" id="remove-cancel" type="button">Cancel</button>
+        <button class="button-danger" id="remove-confirm" type="button">Remove</button>
+      </footer>
+    </div>
+  </dialog>
 
   <dialog class="sheet" id="add-dialog" aria-labelledby="add-title">
     <form method="dialog" id="add-form" novalidate>

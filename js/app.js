@@ -43,6 +43,9 @@
     el('hint-close').addEventListener('click', function () {
       el('hint').classList.remove('visible');
     });
+    el('view-prev').addEventListener('click', function () { stepView(-1); });
+    el('view-next').addEventListener('click', function () { stepView(1); });
+    el('view-pause').addEventListener('click', togglePause);
 
     setInterval(function () { window.Store.recompute(); }, RECOMPUTE_MS);
     setInterval(function () { window.Store.persist(); }, PERSIST_MS);
@@ -165,13 +168,12 @@
   function enterScene(index) {
     App.scene = ((index % App.scenes.length) + App.scenes.length) % App.scenes.length;
     App.sceneStartedAt = performance.now();
+    setViewTitle();
     var scene = App.scenes[App.scene];
 
     ['chart', 'spotlight', 'stats'].forEach(function (name) {
       el('view-' + name).classList.toggle('active', name === scene.view);
     });
-    el('view-title').textContent = VIEW_TITLES[scene.view] || '';
-
     Array.prototype.forEach.call(el('rotation-dots').children, function (dot) {
       dot.classList.toggle('current', dot.dataset.view === scene.view);
       if (dot.dataset.view !== scene.view) dot.firstChild.style.width = '0%';
@@ -423,21 +425,29 @@
     }
   }
 
+  function togglePause() {
+    App.paused = !App.paused;
+    if (!App.paused) App.sceneStartedAt = performance.now();
+    setViewTitle();
+  }
+
   function setViewTitle() {
     var scene = App.scenes[App.scene];
     el('view-title').textContent =
       (App.paused ? 'Paused · ' : '') + (VIEW_TITLES[scene.view] || '');
+    var pause = el('view-pause');
+    pause.setAttribute('aria-pressed', String(App.paused));
+    pause.setAttribute('aria-label', App.paused ? 'Resume rotation' : 'Pause rotation');
   }
 
   function onKey(event) {
     switch (event.key) {
       case ' ':
         event.preventDefault();
-        App.paused = !App.paused;
-        setViewTitle();
+        togglePause();
         break;
-      case 'ArrowRight': enterScene(App.scene + 1); break;
-      case 'ArrowLeft': enterScene(App.scene - 1); break;
+      case 'ArrowRight': stepView(1); break;
+      case 'ArrowLeft': stepView(-1); break;
       case '1': jumpToView('chart'); break;
       case '2': jumpToView('spotlight'); break;
       case '3': jumpToView('stats'); break;
@@ -485,6 +495,19 @@
     for (var i = 0; i < App.scenes.length; i++) {
       if (App.scenes[i].view === view) { enterScene(i); return; }
     }
+  }
+
+  // Stepping moves between the three views, not through the eight spotlight
+  // scenes behind one of them — the footer shows three dots, so back and forward
+  // should mean what those dots mean.
+  var VIEW_ORDER = ['chart', 'spotlight', 'stats'];
+
+  function stepView(delta) {
+    var current = App.scenes[App.scene].view;
+    var index = VIEW_ORDER.indexOf(current);
+    if (index < 0) index = 0;
+    var next = (index + delta + VIEW_ORDER.length) % VIEW_ORDER.length;
+    jumpToView(VIEW_ORDER[next]);
   }
 
   window.App = App;
