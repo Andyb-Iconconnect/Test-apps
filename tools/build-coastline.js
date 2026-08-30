@@ -8,7 +8,7 @@
  * Run from the repository root:
  *
  *   npm pack world-atlas@2 topojson-client
- *   tar xzf world-atlas-*.tgz                       # -> package/land-50m.json
+ *   tar xzf world-atlas-*.tgz                       # -> package/land-10m.json
  *   tar xzf topojson-client-*.tgz --one-top-level=tjc
  *   node tools/build-coastline.js
  *
@@ -20,13 +20,13 @@
 const fs = require('fs');
 const path = require('path');
 
-const SOURCE = process.env.LAND_JSON || 'package/land-50m.json';
+const SOURCE = process.env.LAND_JSON || 'package/land-10m.json';
 const TOPOJSON = process.env.TOPOJSON_CLIENT || 'tjc/package/dist/topojson-client.js';
 const OUTPUT = path.join(__dirname, '..', 'data', 'world-land.js');
 
-const EPS = 0.005;             // Douglas-Peucker tolerance, degrees (~550 m)
-const SCALE = 1000;            // coordinate quantisation (~110 m)
-const MIN_AREA_DEG2 = 0.0008;  // drop islands below roughly 3 km across
+const EPS = +(process.env.EPS || 0.003);        // Douglas-Peucker tolerance, degrees
+const SCALE = +(process.env.SCALE || 1000);     // coordinate quantisation (~110 m)
+const MIN_AREA_DEG2 = +(process.env.MIN_AREA || 0.0003);
 
 for (const [label, file] of [['land', SOURCE], ['topojson-client', TOPOJSON]]) {
   if (!fs.existsSync(file)) {

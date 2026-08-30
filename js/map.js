@@ -19,6 +19,11 @@
   var canvas, ctx, dpr = 1;
   var width = 0, height = 0;
   var land = null, landBounds = null;
+  var coarseLand = null, coarseBounds = null;
+  var fineLand = null, fineBounds = null;
+  // Below this many degrees across the screen the fine coastline is worth its
+  // cost; above it the difference is under a pixel and the cost is all there is.
+  var DETAIL_BELOW_DEGREES = 90;
   var depth = null, depthBounds = null;      // [band][ring]
   var borders = null, borderBounds = null;
   var theme = {};
@@ -35,8 +40,20 @@
   Map.init = function (canvasElement) {
     canvas = canvasElement;
     ctx = canvas.getContext('2d', { alpha: false });
-    land = window.Geo.decodeLand(window.WORLD_LAND_ENCODED, window.WORLD_LAND_SCALE);
-    landBounds = land.map(ringBounds);
+    // Two levels of coastline. The fine one is five times the points, which at
+    // world zoom — where every ring is traced once per world repeat — measured
+    // 474 ms a frame, or two frames a second on a board that has to run all day.
+    // Culling handles the zoomed-in case on its own; it is only the wide views
+    // that need the coarse copy.
+    coarseLand = window.Geo.decodeLand(window.WORLD_LAND_ENCODED, window.WORLD_LAND_SCALE);
+    coarseBounds = coarseLand.map(ringBounds);
+    if (window.WORLD_LAND_DETAIL_ENCODED) {
+      fineLand = window.Geo.decodeLand(window.WORLD_LAND_DETAIL_ENCODED,
+                                       window.WORLD_LAND_DETAIL_SCALE);
+      fineBounds = fineLand.map(ringBounds);
+    }
+    land = coarseLand;
+    landBounds = coarseBounds;
 
     // Both optional: the board runs without either file, just flatter.
     if (window.WORLD_DEPTH_ENCODED) {
@@ -101,7 +118,9 @@
       depth1000: v('--map-depth-1000', '#081220'),
       border: v('--map-border', 'rgba(147, 190, 220, 0.22)'),
       courseLine: v('--map-course', 'rgba(60, 180, 228, 0.45)'),
-      wind: v('--map-wind', 'rgba(147, 190, 220, 0.6)')
+      wind: v('--map-wind', 'rgba(147, 190, 220, 0.6)'),
+      placeWater: v('--map-place-water', 'rgba(147, 190, 220, 0.55)'),
+      placeLand: v('--map-place-land', 'rgba(20, 40, 62, 0.75)')
     };
   }
   Map.readTheme = readTheme;
@@ -221,11 +240,19 @@
     ctx.save();
     ctx.translate(driftPx, driftPy);
 
-    drawOcean();
-    drawDepth();
-    drawGraticule();
-    drawLand();
-    drawBorders();
+    if (Map.profile) {
+      var mark = function (name, fn) {
+        var t = performance.now(); fn(); Map.profile[name] = (Map.profile[name] || 0) + (performance.now() - t);
+      };
+      mark('ocean', drawOcean); mark('depth', drawDepth); mark('graticule', drawGraticule);
+      mark('land', drawLand); mark('borders', drawBorders);
+    } else {
+      drawOcean();
+      drawDepth();
+      drawGraticule();
+      drawLand();
+      drawBorders();
+    }
     if (opts.showNight !== false) drawNight(now);
 
     // Vessel labels are laid out before anything else is written over the chart,
@@ -233,7 +260,10 @@
     // win; ports yield. Then everything is painted in z-order.
     var placed = locateVessels(vessels);
     var labels = opts.labels === false ? [] : layoutLabels(placed, opts);
-    drawPorts(labels.map(function (l) { return l.box; }).concat(markerBoxes(placed)));
+    var claimed = labels.map(function (l) { return l.box; }).concat(markerBoxes(placed));
+    // Place names go under the ports and the fleet, and yield to both.
+    claimed = claimed.concat(drawPlaces(claimed, opts));
+    drawPorts(claimed);
     drawCourses(vessels);
     drawTracks(vessels);
     paintMarkers(placed, opts, now);
@@ -343,19 +373,24 @@
     var stride = degPerPx > 0.6 ? 4 : degPerPx > 0.25 ? 2 : 1;
     var fills = [theme.depth200, theme.depth1000];
 
+    // One path per band, filled once. Filling each ring separately was correct
+    // and cost up to fourteen hundred fill() calls a frame at world zoom, which
+    // was most of a sixty-millisecond frame. Nonzero does not cancel where two
+    // rings overlap, so batching them is safe — that was the only reason to
+    // keep them apart.
     for (var band = 0; band < depth.length; band++) {
-      ctx.fillStyle = fills[Math.min(band, fills.length - 1)];
+      ctx.beginPath();
       for (var i = 0; i < depth[band].length; i++) {
         var bounds = depthBounds[band][i];
         // Below a couple of pixels a contour is noise, not shape.
         if ((bounds.spanX * cam.scale) < 3 && (bounds.spanY * cam.scale) < 3) continue;
         for (var r = -repeats; r <= repeats; r++) {
           if (!visible(bounds, r)) continue;
-          ctx.beginPath();
           traceRing(depth[band][i], r, stride);
-          ctx.fill();
         }
       }
+      ctx.fillStyle = fills[Math.min(band, fills.length - 1)];
+      ctx.fill();
     }
   }
 
@@ -399,10 +434,17 @@
 
   function drawLand() {
     var repeats = worldRepeats();
+    var useFine = fineLand && ((width / cam.scale) * 360) < DETAIL_BELOW_DEGREES;
+    land = useFine ? fineLand : coarseLand;
+    landBounds = useFine ? fineBounds : coarseBounds;
     // Stride: when zoomed out there is no point emitting a lineTo for detail
     // finer than a pixel.
     var degPerPx = (width / cam.scale) * 360 / width;
-    var stride = degPerPx > 0.6 ? 4 : degPerPx > 0.25 ? 2 : 1;
+    // Measured: filling and then stroking one path of forty thousand segments
+    // was 57 ms a frame at world zoom, most of the frame. Striding harder when
+    // a whole hemisphere is on screen costs nothing visible — at 0.19 degrees
+    // per pixel every fourth point is still finer than the display.
+    var stride = degPerPx > 0.15 ? 8 : degPerPx > 0.06 ? 4 : degPerPx > 0.02 ? 2 : 1;
 
     ctx.beginPath();
     for (var r = -repeats; r <= repeats; r++) {
@@ -420,15 +462,17 @@
     }
     ctx.fillStyle = theme.land;
     ctx.fill('evenodd');          // interior rings punch out lakes and inland seas
-    // A hairline coast is what separates land from sea at world scale, where the
-    // fill alone reads as haze. It costs a second pass over the path, which the
-    // 30fps budget can absorb; it fades in as the chart zooms so it never turns
-    // the continents into outlines.
-    ctx.strokeStyle = theme.coast;
-    ctx.globalAlpha = cam.scale > 1800 ? 1 : 0.55;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    // A hairline coast is what separates land from sea where the fill alone
+    // reads as haze. It costs a second pass over the same path, so it is
+    // skipped at the zooms where it is a sub-pixel shimmer nobody can see and
+    // half the frame budget.
+    if (degPerPx < 0.15) {
+      ctx.strokeStyle = theme.coast;
+      ctx.globalAlpha = cam.scale > 1800 ? 1 : 0.55;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
   }
 
   function traceRing(ring, worldOffset, stride) {
@@ -517,6 +561,77 @@
 
   // Yachting hubs, drawn only once the chart is close enough that naming them
   // adds context rather than clutter.
+  /**
+   * Sea, ocean and country names.
+   *
+   * Nothing else on the chart said what anything was called: with only port
+   * dots it read as a diagram of dots rather than a chart. Seas are set in
+   * letter-spaced capitals, which is the convention on paper and does the
+   * useful work of distinguishing water from land at a glance.
+   *
+   * Each name is shown across a band of zooms and hidden outside it — an ocean
+   * label makes no sense when the screen is one bay, and a country's does not
+   * when the screen is a hemisphere. Everything yields to the fleet.
+   */
+  function drawPlaces(claimed, opts) {
+    if (!window.PLACES || opts.places === false) return [];
+    var degreesOnScreen = (width / cam.scale) * 360;
+    var mine = [];
+
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    for (var i = 0; i < window.PLACES.length; i++) {
+      var pl = window.PLACES[i];
+      var name = pl[0], kind = pl[3], size = pl[4] || 0;
+      var style = placeStyle(kind, size, degreesOnScreen);
+      if (!style) continue;
+
+      var x = nearestScreenX(pl[1]);
+      var y = sy(window.Geo.worldY(pl[2]));
+      if (x < -100 || x > width + 100 || y < 10 || y > height - 10) continue;
+
+      ctx.font = style.font;
+      ctx.letterSpacing = style.tracking;
+      var w = ctx.measureText(name).width;
+      var box = { x: x - w / 2, y: y - style.size, w: w, h: style.size * 2 };
+      var leftLimit = (opts.inset && opts.inset.left ? opts.inset.left : 0) + 4;
+      if (box.x < leftLimit || box.x + box.w > width - 4) { ctx.letterSpacing = '0px'; continue; }
+      if (collides(box, claimed.concat(mine), null)) { ctx.letterSpacing = '0px'; continue; }
+
+      ctx.fillStyle = style.color;
+      ctx.globalAlpha = style.alpha;
+      ctx.fillText(style.upper ? name.toUpperCase() : name, x, y);
+      ctx.globalAlpha = 1;
+      ctx.letterSpacing = '0px';
+      mine.push(box);
+    }
+    ctx.restore();
+    return mine;
+  }
+
+  // Which names belong at this zoom, and how they are set. Returns null for a
+  // name that has no business being on screen at all.
+  function placeStyle(kind, size, deg) {
+    if (kind === 'ocean') {
+      if (deg < 70) return null;
+      return { font: '400 15px ' + FONT_DISPLAY, tracking: '0.34em', size: 15,
+               color: theme.placeWater, alpha: 0.85, upper: true };
+    }
+    if (kind === 'sea') {
+      if (deg > 130 || deg < 2) return null;
+      return { font: '400 12px ' + FONT_DISPLAY, tracking: '0.26em', size: 12,
+               color: theme.placeWater, alpha: 0.8, upper: true };
+    }
+    // A country is worth naming once it is a reasonable share of the screen,
+    // and stops being worth it when the screen is inside it.
+    var share = size / deg;
+    if (share < 0.12 || share > 2.5) return null;
+    return { font: '400 12px ' + FONT_DISPLAY, tracking: '0.16em', size: 12,
+             color: theme.placeLand, alpha: 0.72, upper: true };
+  }
+
   function drawPorts(claimed) {
     if (cam.scale < 12000) return;
     var showNames = cam.scale > 20000;

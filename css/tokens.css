@@ -93,6 +93,10 @@
   --map-border:      rgba(147, 190, 220, 0.22);
   --map-course:      rgba(60, 180, 228, 0.45);   /* the leg still to run */
   --map-wind:        rgba(147, 190, 220, 0.60);
+  /* Place names. Water reads light on the sea; land reads dark on the land,
+     because the land fill is the lightest thing on the chart. */
+  --map-place-water: rgba(147, 190, 220, 0.55);
+  --map-place-land:  rgba(18, 36, 58, 0.78);
 
   /* Dusk, in the order it happens, filled between successive solar-altitude
      contours and composited with `multiply`.

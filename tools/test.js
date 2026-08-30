@@ -1517,6 +1517,59 @@ test('the depth layers decode into the bands the renderer expects', () => {
   });
 });
 
+test('the coastline ships at two levels of detail', () => {
+  load('data/world-land-detail.js');
+  const coarse = Geo.decodeLand(window.WORLD_LAND_ENCODED, window.WORLD_LAND_SCALE);
+  const fine = Geo.decodeLand(window.WORLD_LAND_DETAIL_ENCODED, window.WORLD_LAND_DETAIL_SCALE);
+
+  assert.ok(fine.length > coarse.length * 2,
+    'the fine level resolves far more islands: ' + fine.length + ' against ' + coarse.length);
+
+  const median = (rings) => {
+    const segs = [];
+    rings.forEach((r) => {
+      for (let i = 2; i < r.length; i += 2) {
+        const dx = (r[i] - r[i - 2]) * Math.cos(r[i + 1] * Math.PI / 180);
+        segs.push(Math.hypot(dx, r[i + 1] - r[i - 1]) * 60);
+      }
+    });
+    segs.sort((a, b) => a - b);
+    return segs[Math.floor(segs.length / 2)];
+  };
+  // The whole point: at a quarter of a mile per pixel, a 4 nm segment is a
+  // sixteen-pixel straight line and every shore is visibly faceted.
+  assert.ok(median(fine) < 2, 'fine median segment is under 2 nm, got ' + median(fine).toFixed(2));
+  assert.ok(median(coarse) > median(fine), 'and the coarse level is coarser');
+
+  // Both levels must survive the seam, or a ring paints a bar across the chart.
+  [coarse, fine].forEach((set, which) => {
+    set.forEach((ring, i) => {
+      for (let k = 2; k < ring.length; k += 2) {
+        assert.ok(Math.abs(ring[k] - ring[k - 2]) <= 180,
+          (which ? 'fine' : 'coarse') + ' ring ' + i + ' steps across the seam');
+      }
+    });
+  });
+});
+
+test('every place name sits somewhere a name can go', () => {
+  load('data/places.js');
+  const { PLACES } = window;
+  assert.ok(PLACES.length > 150, 'seas, oceans and countries');
+
+  PLACES.forEach(([name, lon, lat, kind, size]) => {
+    assert.ok(name && name.length, 'named');
+    assert.ok(lon >= -180 && lon <= 180, name + ': longitude is in range, got ' + lon);
+    assert.ok(lat >= -90 && lat <= 90, name + ': latitude is in range, got ' + lat);
+    assert.ok(['ocean', 'sea', 'country'].indexOf(kind) !== -1, name + ': known kind');
+    if (kind === 'country') assert.ok(size > 0, name + ': has a size to judge zoom by');
+  });
+
+  const seas = PLACES.filter((p) => p[3] === 'sea').map((p) => p[0]);
+  ['Mediterranean Sea', 'Adriatic Sea', 'Aegean Sea', 'Caribbean Sea', 'English Channel']
+    .forEach((n) => assert.ok(seas.indexOf(n) !== -1, n + ' is named'));
+});
+
 test('a great circle bends the right way and lands where it is aimed', () => {
   // Palma to New York should bow north of the rhumb line, not run straight
   // across the Mercator, and it must not fold back at the seam.
