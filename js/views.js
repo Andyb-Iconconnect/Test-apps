@@ -120,9 +120,13 @@
   function renderVisual(v) {
     var host = el('spot-visual');
     host.textContent = '';
-    if (v.yacht.photo) {
+    // An uploaded photograph lives in this browser's storage; `photo` in the
+    // record is a path or a URL. Either is just a src as far as this is
+    // concerned.
+    var source = window.Photos.resolve(v.yacht);
+    if (source) {
       var img = document.createElement('img');
-      img.src = v.yacht.photo;
+      img.src = source;
       img.alt = window.Fmt.fullName(v.yacht);
       // If the file isn't there, fall back rather than showing a broken image.
       img.onerror = function () { host.textContent = ''; host.appendChild(placeholderVisual(v)); };

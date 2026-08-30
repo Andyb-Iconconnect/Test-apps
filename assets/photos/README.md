@@ -1,5 +1,11 @@
 # Yacht photos
 
+**The easiest way in is the console: open a vessel, press Edit, and choose or drop
+an image.** It is scaled down and kept in that browser, shows immediately on that
+machine, and the Save fleet.js dialog writes it out here with `fleet.js` already
+pointing at it — which is what the office display needs, being a different
+machine. The rest of this file is the manual route.
+
 One image per yacht, named for her `id` in `fleet.js`:
 
 ```

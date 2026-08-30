@@ -1062,4 +1062,111 @@ test('repointing an id that is not in the fleet refuses rather than guessing', (
   assert.throws(() => repoint(source, 'not-a-yacht', 'x.jpg'), /no record with id/);
 });
 
+/* --- Photographs held in the browser -------------------------------------- */
+
+(function () {
+  // The shared harness gives a localStorage that throws, on purpose. These need
+  // one that works, plus one that is full, so both are built here.
+  const realStorage = global.localStorage;
+  function fakeStorage(capacityBytes) {
+    const data = {};
+    return {
+      getItem(k) { return k in data ? data[k] : null; },
+      setItem(k, v) {
+        const used = Object.keys(data).reduce(
+          (n, key) => n + (key === k ? 0 : data[key].length), 0);
+        if (capacityBytes != null && used + v.length > capacityBytes) {
+          const e = new Error('quota');
+          e.name = 'QuotaExceededError';
+          throw e;
+        }
+        data[k] = String(v);
+      },
+      removeItem(k) { delete data[k]; }
+    };
+  }
+
+  global.localStorage = fakeStorage();
+  load('js/photos.js');
+  const { Photos } = window;
+  const uri = (n) => 'data:image/jpeg;base64,' + 'A'.repeat(n);
+
+  test('a photograph is stored against the vessel and read back', () => {
+    global.localStorage = fakeStorage();
+    assert.strictEqual(Photos.get('aurelia'), null, 'nothing to begin with');
+    assert.strictEqual(Photos.set('aurelia', uri(100)).ok, true);
+    assert.ok(Photos.get('aurelia').startsWith('data:image/jpeg'));
+    assert.deepStrictEqual(Photos.ids(), ['aurelia']);
+    assert.strictEqual(Photos.has('aurelia'), true);
+    assert.strictEqual(Photos.remove('aurelia'), true);
+    assert.strictEqual(Photos.get('aurelia'), null, 'and it is gone');
+    assert.strictEqual(Photos.remove('aurelia'), false, 'removing twice is not an error');
+  });
+
+  test('an uploaded photograph beats the path in the record', () => {
+    global.localStorage = fakeStorage();
+    const yacht = { id: 'aurelia', photo: 'assets/photos/aurelia.jpg' };
+    assert.strictEqual(Photos.resolve(yacht), 'assets/photos/aurelia.jpg',
+      'the record is used when nothing is uploaded');
+    Photos.set('aurelia', uri(50));
+    assert.ok(Photos.resolve(yacht).startsWith('data:'), 'the upload wins');
+    Photos.remove('aurelia');
+    assert.strictEqual(Photos.resolve(yacht), 'assets/photos/aurelia.jpg',
+      'and the record is used again once it is gone');
+    assert.strictEqual(Photos.resolve({ id: 'x' }), null, 'neither is null, not undefined');
+  });
+
+  test('running out of storage says so and leaves what was there alone', () => {
+    // A photograph that silently failed to save is worse than one that plainly
+    // refused, and browsers run out sooner than anyone expects.
+    global.localStorage = fakeStorage(400);
+    assert.strictEqual(Photos.set('aurelia', uri(100)).ok, true, 'the first one fits');
+    const before = Photos.get('aurelia');
+
+    const result = Photos.set('corvina', uri(5000));
+    assert.strictEqual(result.ok, false, 'the second does not');
+    assert.strictEqual(result.full, true, 'and it is reported as a quota problem');
+    assert.strictEqual(Photos.get('corvina'), null, 'the one that failed is not half-stored');
+    assert.strictEqual(Photos.get('aurelia'), before, 'and the one that fitted survives');
+  });
+
+  test('replacing a photograph that does not fit keeps the old one', () => {
+    global.localStorage = fakeStorage(400);
+    Photos.set('aurelia', uri(100));
+    const before = Photos.get('aurelia');
+    assert.strictEqual(Photos.set('aurelia', uri(5000)).ok, false);
+    assert.strictEqual(Photos.get('aurelia'), before,
+      'the photograph she had is still there');
+  });
+
+  test('storage that is switched off entirely is survivable', () => {
+    global.localStorage = realStorage;      // the throwing one
+    assert.doesNotThrow(() => Photos.load());
+    assert.deepStrictEqual(Photos.load(), {});
+    assert.strictEqual(Photos.get('aurelia'), null);
+    const result = Photos.set('aurelia', uri(10));
+    assert.strictEqual(result.ok, false);
+    assert.doesNotThrow(() => Photos.usageBytes());
+  });
+
+  test('usage is reported in the size the bytes actually take', () => {
+    global.localStorage = fakeStorage();
+    Photos.set('aurelia', uri(4000));
+    // Base64 carries 6 bits per character, so the bytes are three quarters of it.
+    const expected = Math.round(('data:image/jpeg;base64,'.length + 4000) * 0.75);
+    close(Photos.usageBytes(), expected, 2, 'usage');
+    assert.strictEqual(Photos.formatBytes(512), '512 B');
+    assert.strictEqual(Photos.formatBytes(2048), '2 KB');
+    assert.strictEqual(Photos.formatBytes(3 * 1024 * 1024), '3.0 MB');
+  });
+
+  test('the export path is the one the written file points at', () => {
+    // These two must agree or the file names a photograph that was never saved.
+    assert.strictEqual(Photos.exportName('silver-meridian'),
+      'assets/photos/silver-meridian.jpg');
+  });
+
+  global.localStorage = realStorage;
+})();
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

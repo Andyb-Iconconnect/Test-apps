@@ -82,6 +82,15 @@
           Save it over the existing file and the change is real everywhere —
           the office display included. Until then it is only on this browser.
         </p>
+        <div class="panel" id="photo-export" hidden>
+          <div class="pane-title">Photographs held in this browser</div>
+          <p class="sheet-note" id="photo-export-note"></p>
+          <div class="rows" id="photo-export-list"></div>
+          <div class="sheet-actions">
+            <button class="button-quiet" id="photo-export-save" type="button">Save the images</button>
+            <span class="sheet-foot-note" id="photo-export-status"></span>
+          </div>
+        </div>
         <pre class="snippet snippet-tall" id="file-content"></pre>
       </div>
       <footer class="sheet-foot">
@@ -211,19 +220,40 @@
         <div class="form-section">
           <h3>Photograph</h3>
           <div class="photo-row">
-            <div class="field-pair">
-              <label for="f-photo">Image URL or path</label>
-              <input id="f-photo" name="photo" autocomplete="off" type="url"
-                     placeholder="assets/photos/cloudbreak.jpg  ·  or  https://…">
-              <p class="field-hint">
-                Leave it empty and she gets a drawn side profile instead. The preview
-                is the real test: many image hosts refuse to serve to another site, and
-                a blocked photo looks exactly like one nobody added.
+            <div>
+              <div class="photo-drop" id="photo-drop">
+                <input type="file" id="f-photo-file" accept="image/*" hidden>
+                <button type="button" class="button-quiet" id="photo-choose">Choose an image…</button>
+                <span class="photo-drop-hint">or drop one here</span>
+              </div>
+              <p class="field-hint" id="photo-note">
+                The file is scaled down and kept in this browser. It shows on this
+                console straight away; the office display is a different machine and
+                only sees it once the image is in <code>assets/photos/</code> and
+                <code>fleet.js</code> points at it — the Save fleet.js dialog will
+                hand you both.
               </p>
-              <p class="field-error" id="e-photo" role="alert"></p>
+              <p class="field-error" id="e-photo-file" role="alert"></p>
+
+              <div class="field-pair photo-url">
+                <label for="f-photo">…or a URL or path instead</label>
+                <input id="f-photo" name="photo" autocomplete="off"
+                       placeholder="assets/photos/cloudbreak.jpg  ·  or  https://…">
+                <p class="field-hint">
+                  Used only when no image has been uploaded. Many hosts refuse to serve
+                  to another site, which is what the preview is for.
+                </p>
+                <p class="field-error" id="e-photo" role="alert"></p>
+              </div>
             </div>
-            <div class="photo-preview" id="photo-preview">
-              <span class="photo-preview-empty">No photo</span>
+            <div>
+              <div class="photo-preview" id="photo-preview">
+                <span class="photo-preview-empty">No photo</span>
+              </div>
+              <div class="photo-actions" id="photo-actions" hidden>
+                <span class="photo-meta" id="photo-meta"></span>
+                <button type="button" class="button-quiet" id="photo-clear">Remove</button>
+              </div>
             </div>
           </div>
         </div>
@@ -336,6 +366,7 @@
 <script src="js/ais.js"></script>
 <script src="js/demo.js"></script>
 <script src="js/weather.js"></script>
+<script src="js/photos.js"></script>
 <script src="js/profile.js"></script>
 <script src="js/map.js"></script>
 <script src="js/console.js"></script>

@@ -390,18 +390,20 @@
     // does not: cover-cropping one into the drawing's long, low frame would cut
     // the masthead off the top and the waterline off the bottom, so photographs
     // get an ordinary landscape band instead.
-    band.style.aspectRatio = String(y.photo ? 16 / 9 : window.Profile.frameAspect(y));
+    band.style.aspectRatio = String(window.Photos.resolve(y)
+      ? 16 / 9 : window.Profile.frameAspect(y));
 
     function drawn() {
       band.textContent = '';
       band.style.aspectRatio = String(window.Profile.frameAspect(y));
       band.appendChild(window.Profile.create(y));
-      band.appendChild(h('div', 'detail-profile-note', 'Illustration — add a photo in fleet.js'));
+      band.appendChild(h('div', 'detail-profile-note', 'Illustration — add a photo above'));
     }
 
-    if (y.photo) {
+    var source = window.Photos.resolve(y);
+    if (source) {
       var img = document.createElement('img');
-      img.src = y.photo;
+      img.src = source;
       img.alt = window.Fmt.text(y.prefix) + ' ' + y.name;
       img.addEventListener('error', drawn);
       band.appendChild(img);
@@ -803,10 +805,17 @@
     'demoStatus', 'demoPort', 'demoSpeed', 'demoLat', 'demoLon',
     'demoDestination', 'demoEtaHours'
   ];
-  var ERROR_FIELDS = ['name', 'mmsi', 'imo', 'photo', 'demoPort', 'demoLat', 'demoLon'];
+  var ERROR_FIELDS = ['name', 'mmsi', 'imo', 'photo', 'photo-file',
+                      'demoPort', 'demoLat', 'demoLon'];
 
   // Which vessel is being edited, or null when adding.
   var editing = null;
+  // A photograph chosen in this sitting, not yet committed: null means "no
+  // change", a data URI means "use this", and REMOVE_PHOTO means "drop the one
+  // already stored". Undefined and null would otherwise have to mean different
+  // things, which is how photographs get deleted by accident.
+  var REMOVE_PHOTO = '\u0000remove';
+  var pendingPhoto = null;
 
   function wireAddDialog() {
     var dialog = el('add-dialog');
@@ -832,7 +841,54 @@
     // it here and refuse it from the board, and both look identical in the field.
     el('f-photo').addEventListener('input', debounce(updatePhotoPreview, 400));
 
+    wirePhotoUpload();
     fillPortList();
+  }
+
+  function wirePhotoUpload() {
+    var input = el('f-photo-file');
+    var drop = el('photo-drop');
+
+    el('photo-choose').addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      if (input.files && input.files[0]) takePhotoFile(input.files[0]);
+      input.value = '';
+    });
+    el('photo-clear').addEventListener('click', function () {
+      pendingPhoto = REMOVE_PHOTO;
+      updatePhotoPreview();
+    });
+
+    // Dropping a file on the page navigates to it by default, which loses
+    // everything typed into the form.
+    ['dragenter', 'dragover'].forEach(function (type) {
+      drop.addEventListener(type, function (e) {
+        e.preventDefault();
+        drop.classList.add('over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (type) {
+      drop.addEventListener(type, function (e) {
+        e.preventDefault();
+        drop.classList.remove('over');
+      });
+    });
+    drop.addEventListener('drop', function (e) {
+      var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) takePhotoFile(file);
+    });
+  }
+
+  function takePhotoFile(file) {
+    setFieldError('photo-file', '');
+    el('photo-meta').textContent = 'Reading…';
+    window.Photos.fromFile(file).then(function (result) {
+      pendingPhoto = result.dataUri;
+      updatePhotoPreview(result);
+    }).catch(function (error) {
+      setFieldError('photo-file', error.message || 'That image could not be read.');
+      updatePhotoPreview();
+    });
   }
 
   function debounce(fn, ms) {
@@ -856,11 +912,41 @@
       });
   }
 
-  function updatePhotoPreview() {
+  function updatePhotoPreview(justRead) {
     var host = el('photo-preview');
-    var url = el('f-photo').value.trim();
+    var actions = el('photo-actions');
+    var meta = el('photo-meta');
     host.textContent = '';
     setFieldError('photo', '');
+
+    // An uploaded image, whether chosen a moment ago or already in storage,
+    // beats the URL — and the URL box is inert while one is in place.
+    var stored = (editing && pendingPhoto !== REMOVE_PHOTO)
+      ? window.Photos.get(editing.yacht.id) : null;
+    var uploaded = pendingPhoto && pendingPhoto !== REMOVE_PHOTO ? pendingPhoto : stored;
+
+    if (uploaded) {
+      var shot = document.createElement('img');
+      shot.alt = '';
+      shot.src = uploaded;
+      host.appendChild(shot);
+      actions.hidden = false;
+      meta.textContent = justRead
+        ? justRead.width + '×' + justRead.height + ' · ' +
+          window.Photos.formatBytes(Math.round(uploaded.length * 0.75))
+        : 'In this browser · ' +
+          window.Photos.formatBytes(Math.round(uploaded.length * 0.75));
+      el('f-photo').disabled = true;
+      el('photo-note').classList.add('muted');
+      return;
+    }
+
+    actions.hidden = true;
+    meta.textContent = '';
+    el('f-photo').disabled = false;
+    el('photo-note').classList.remove('muted');
+
+    var url = el('f-photo').value.trim();
     if (!url) {
       host.appendChild(h('span', 'photo-preview-empty', 'No photo'));
       return;
@@ -884,6 +970,7 @@
 
   function openVesselDialog(vessel) {
     editing = vessel || null;
+    pendingPhoto = null;
     var form = el('add-form');
     form.reset();
     ERROR_FIELDS.forEach(function (k) { setFieldError(k, ''); });
@@ -909,6 +996,7 @@
       : 'Add a vessel';
     el('add-submit').textContent = vessel ? 'Save changes' : 'Add vessel';
 
+    el('f-photo').disabled = false;
     updatePhotoPreview();
     form.hidden = false;
     el('add-done').hidden = true;
@@ -989,18 +1077,41 @@
         'top of what fleet.js says. Save the file to make it the real record.';
     }
 
+    var photoWarning = commitPhoto(record.id);
+
     reloadFleet(record.id);
 
     el('done-title').textContent = editing ? 'Saved — now make it permanent'
                                            : 'Added — now make it permanent';
     el('done-lede').textContent = lede;
     el('done-snippet').textContent = window.Vessel.toSnippet(record) + ',';
-    el('copy-status').textContent = stored ? ''
+    el('copy-status').textContent = photoWarning ? photoWarning : (stored ? ''
       : 'This browser is blocking storage, so the change will be gone on reload — ' +
-        'the entry below is the only copy.';
+        'the entry below is the only copy.');
     el('add-form').hidden = true;
     el('add-done').hidden = false;
     editing = null;
+    pendingPhoto = null;
+  }
+
+  // Returns a message worth showing, or '' when there is nothing to say. A
+  // photograph that silently failed to save is worse than one that plainly
+  // refused, and the storage a browser gives a page runs out long before
+  // anybody expects it to.
+  function commitPhoto(id) {
+    if (pendingPhoto === REMOVE_PHOTO) {
+      window.Photos.remove(id);
+      return '';
+    }
+    if (!pendingPhoto) return '';
+    var result = window.Photos.set(id, pendingPhoto);
+    if (result.ok) return '';
+    return result.full
+      ? 'The vessel saved but the photograph did not — this browser is out of ' +
+        'storage (' + window.Photos.formatBytes(window.Photos.usageBytes()) +
+        ' of photographs already). Save the fleet file to write the images out to ' +
+        'assets/photos/, then remove them here.'
+      : 'The vessel saved but the photograph did not — this browser is blocking storage.';
   }
 
   // A vessel demo mode cannot place never reaches the chart, which looks exactly
@@ -1124,6 +1235,10 @@
     var y = pendingRemoval.yacht;
     if (y.addedLocally) window.Vessel.removeAddition(y.id);
     else window.Vessel.hideVessel(y.id);
+    // Her photograph is the largest thing stored about her; leaving it behind
+    // fills the browser with pictures of boats nobody can see.
+    window.Photos.remove(y.id);
+    window.Vessel.clearOverride(y.id);
     var wasFromFile = !y.addedLocally;
     pendingRemoval = null;
     el('remove-dialog').close();
@@ -1142,7 +1257,8 @@
   function localChangeCount() {
     return window.Vessel.loadAdditions().length +
            window.Vessel.hiddenIds().length +
-           window.Vessel.overriddenIds().length;
+           window.Vessel.overriddenIds().length +
+           window.Photos.ids().length;
   }
 
   function renderSaveButton() {
@@ -1160,16 +1276,134 @@
     if (added) parts.push(added + (added === 1 ? ' vessel added' : ' vessels added'));
     if (edited) parts.push(edited + (edited === 1 ? ' vessel edited' : ' vessels edited'));
     if (hidden) parts.push(hidden + (hidden === 1 ? ' vessel removed' : ' vessels removed'));
+    var shots = window.Photos.ids().length;
+    if (shots) parts.push(shots + (shots === 1 ? ' photograph' : ' photographs'));
     el('file-summary').textContent = parts.length
       ? parts.join(', ') + ' in this browser.'
       : 'No local changes — this is the fleet exactly as the file already has it.';
-    el('file-content').textContent = window.Vessel.toFleetFile(window.FLEET);
+    // The written file points at assets/photos/, never at the base64 held here:
+    // thirty photographs inlined would make a fleet.js nobody can open.
+    el('file-content').textContent = window.Vessel.toFleetFile(fleetForFile());
     el('file-status').textContent = '';
+    renderPhotoExport();
     el('file-dialog').showModal();
     el('file-close').focus();
   }
 
+  /**
+   * The fleet as it should be written out: any vessel whose photograph lives in
+   * this browser gets `photo` pointed at where that image is about to be saved.
+   * The image itself is saved separately — see renderPhotoExport.
+   */
+  function fleetForFile() {
+    var ids = window.Photos.ids();
+    if (!ids.length) return window.FLEET;
+    return window.FLEET.map(function (y) {
+      if (ids.indexOf(y.id) === -1) return y;
+      var copy = JSON.parse(JSON.stringify(y));
+      copy.photo = window.Photos.exportName(y.id);
+      return copy;
+    });
+  }
+
+  function renderPhotoExport() {
+    var panel = el('photo-export');
+    var ids = window.Photos.ids().filter(function (id) {
+      return window.FLEET.some(function (y) { return y.id === id; });
+    });
+    panel.hidden = ids.length === 0;
+    if (!ids.length) return;
+
+    el('photo-export-note').textContent =
+      (ids.length === 1 ? 'One photograph is' : ids.length + ' photographs are') +
+      ' held in this browser (' + window.Photos.formatBytes(window.Photos.usageBytes()) +
+      '). The file above already points at them. Save them into assets/photos/ ' +
+      'and the office display sees them too — until then only this console does.';
+
+    var list = el('photo-export-list');
+    list.textContent = '';
+    ids.forEach(function (id) {
+      var y = window.FLEET.filter(function (v) { return v.id === id; })[0];
+      var row = h('div', 'row');
+      row.appendChild(h('div', 'r-main', window.Fmt.fullName(y)));
+      row.appendChild(h('div', 'r-sub', window.Photos.exportName(id)));
+      list.appendChild(row);
+    });
+    el('photo-export-status').textContent = '';
+  }
+
+  // Saved one at a time: the artifact host prompts per file and refuses a second
+  // prompt while one is open, so they have to be walked through in order.
+  function savePhotosInTurn() {
+    var ids = window.Photos.ids().filter(function (id) {
+      return window.FLEET.some(function (y) { return y.id === id; });
+    });
+    var status = el('photo-export-status');
+    if (!ids.length) return;
+
+    var saved = 0;
+    function next(i) {
+      if (i >= ids.length) {
+        status.textContent = saved === ids.length
+          ? 'Saved ' + saved + '. Put them in assets/photos/.'
+          : 'Saved ' + saved + ' of ' + ids.length + '.';
+        return;
+      }
+      status.textContent = 'Saving ' + (i + 1) + ' of ' + ids.length + '…';
+      savePhoto(ids[i]).then(function (ok) {
+        if (ok) saved++;
+        next(i + 1);
+      });
+    }
+    next(0);
+  }
+
+  function savePhoto(id) {
+    var dataUri = window.Photos.get(id);
+    if (!dataUri) return Promise.resolve(false);
+    var filename = id + '.jpg';
+    var blob = dataUriToBlob(dataUri);
+    if (!blob) return Promise.resolve(false);
+
+    var host = (window.claude && typeof window.claude.use === 'function')
+      ? window.claude.use('downloads') : null;
+    if (!host) return Promise.resolve(saveBlobDirect(blob, filename));
+
+    return Promise.resolve(host).then(function (downloads) {
+      if (!downloads) return saveBlobDirect(blob, filename);
+      return downloads.save({ filename: filename, data: blob })
+        .then(function () { return true; })
+        .catch(function () { return false; });
+    }).catch(function () { return saveBlobDirect(blob, filename); });
+  }
+
+  function dataUriToBlob(dataUri) {
+    try {
+      var parts = dataUri.split(',');
+      var mime = /:(.*?);/.exec(parts[0])[1];
+      var binary = atob(parts[1]);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    } catch (e) { return null; }
+  }
+
+  function saveBlobDirect(blob, filename) {
+    try {
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+      return true;
+    } catch (e) { return false; }
+  }
+
   function wireFileDialog() {
+    el('photo-export-save').addEventListener('click', savePhotosInTurn);
     el('save-file').addEventListener('click', openFileDialog);
     el('file-close').addEventListener('click', function () { el('file-dialog').close(); });
     el('file-copy').addEventListener('click', function () {
