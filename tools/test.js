@@ -1160,6 +1160,49 @@ test('repointing an id that is not in the fleet refuses rather than guessing', (
     assert.strictEqual(Photos.formatBytes(3 * 1024 * 1024), '3.0 MB');
   });
 
+  test('a filename is matched to the vessel it names', () => {
+    const m = (n) => Photos.matchFilename(n, FLEET);
+
+    // The identifier, or the name outright.
+    assert.strictEqual(m('corvina.jpg').yacht.id, 'corvina');
+    assert.strictEqual(m('corvina.jpg').confidence, 'sure');
+    assert.strictEqual(m('Silver Meridian.JPEG').yacht.id, 'silver-meridian');
+    assert.strictEqual(m('silver_meridian.png').yacht.id, 'silver-meridian');
+    assert.strictEqual(m('WIND-VERITY.webp').yacht.id, 'wind-verity');
+
+    // The name buried in whatever the photographer called the file.
+    const buried = m('MY Cloudbreak sea trials 2016 (1).jpg');
+    assert.strictEqual(buried, null, 'a vessel not in this fleet matches nothing');
+    const loose = m('MY Sea Ember sea trials 2016 (1).jpg');
+    assert.strictEqual(loose.yacht.id, 'sea-ember');
+    assert.strictEqual(loose.confidence, 'likely', 'and it says it is only a guess');
+
+    // Nine digits nobody types by accident.
+    const byMmsi = m('IMG_' + FLEET[0].mmsi + '.jpg');
+    assert.strictEqual(byMmsi.yacht.id, FLEET[0].id);
+    assert.strictEqual(byMmsi.confidence, 'sure');
+    assert.strictEqual(m('' + FLEET[2].imo + '.jpg').yacht.id, FLEET[2].id, 'IMO too');
+  });
+
+  test('filename matching does not guess when it should not', () => {
+    const m = (n) => Photos.matchFilename(n, FLEET);
+    assert.strictEqual(m('DSC_0481.jpg'), null, 'a camera filename matches nothing');
+    assert.strictEqual(m('.jpg'), null, 'and neither does an empty one');
+    assert.strictEqual(m('screenshot.png'), null);
+    assert.strictEqual(Photos.matchFilename('corvina.jpg', []), null, 'nor an empty fleet');
+  });
+
+  test('the longer name wins where two could match', () => {
+    // 'Sea Ember' contains no other vessel, but a fleet with both 'Sea' and
+    // 'Sea Ember' must not hand a photo of the latter to the former.
+    const fleet = [
+      { id: 'sea', name: 'Sea', mmsi: 319000001 },
+      { id: 'sea-ember', name: 'Sea Ember', mmsi: 319000002 }
+    ];
+    assert.strictEqual(
+      Photos.matchFilename('sea ember at anchor.jpg', fleet).yacht.id, 'sea-ember');
+  });
+
   test('the export path is the one the written file points at', () => {
     // These two must agree or the file names a photograph that was never saved.
     assert.strictEqual(Photos.exportName('silver-meridian'),

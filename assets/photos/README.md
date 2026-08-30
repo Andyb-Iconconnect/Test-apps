@@ -1,7 +1,10 @@
 # Yacht photos
 
-**The easiest way in is the console: open a vessel, press Edit, and choose or drop
-an image.** It is scaled down and kept in that browser, shows immediately on that
+**The easiest way in is the console.** Drop a whole folder of images onto it — or
+press **Photos…** — and each is matched to a vessel by filename: her name, her id,
+or her MMSI or IMO anywhere in it. Guesses are shown for checking and nothing is
+stored until you accept them. For one boat at a time, open a vessel, press Edit,
+and choose or drop an image there instead. It is scaled down and kept in that browser, shows immediately on that
 machine, and the Save fleet.js dialog writes it out here with `fleet.js` already
 pointing at it — which is what the office display needs, being a different
 machine. The rest of this file is the manual route.

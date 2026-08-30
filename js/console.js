@@ -88,6 +88,7 @@
     el('clear-selection').addEventListener('click', function () { select(null); });
     el('discreet-toggle').addEventListener('click', toggleDiscreet);
     wireAddDialog();
+    wirePhotoImport();
     wireRemoveDialog();
     wireFileDialog();
     document.addEventListener('keydown', onKey);
@@ -793,6 +794,194 @@
   }
 
   /* --- Adding a vessel ----------------------------------------------------- */
+
+  /* --- Importing a pile of photographs ------------------------------------- */
+
+  // Each dropped file, once read: { file, dataUri, width, height, yachtId, error }
+  var importQueue = [];
+
+  function wirePhotoImport() {
+    var input = el('import-file');
+    el('import-photos').addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      if (input.files && input.files.length) beginImport(input.files);
+      input.value = '';
+    });
+    el('import-close').addEventListener('click', function () { el('import-dialog').close(); });
+    el('import-cancel').addEventListener('click', function () { el('import-dialog').close(); });
+    el('import-apply').addEventListener('click', applyImport);
+
+    // Dropping images anywhere on the console starts the same flow, except
+    // while the vessel form is open — that has its own drop zone for one photo
+    // of one boat, and stealing its files would be a surprise.
+    ['dragenter', 'dragover'].forEach(function (type) {
+      document.addEventListener(type, function (e) {
+        if (!hasFiles(e) || el('add-dialog').open) return;
+        e.preventDefault();
+        document.body.classList.add('dropping');
+      });
+    });
+    document.addEventListener('dragleave', function (e) {
+      if (e.relatedTarget) return;            // still inside the window
+      document.body.classList.remove('dropping');
+    });
+    document.addEventListener('drop', function (e) {
+      document.body.classList.remove('dropping');
+      if (!hasFiles(e) || el('add-dialog').open) return;
+      // Without this the browser navigates to the dropped file and the console
+      // is simply gone, unsaved changes and all.
+      e.preventDefault();
+      if (e.dataTransfer.files.length) beginImport(e.dataTransfer.files);
+    });
+  }
+
+  function hasFiles(event) {
+    var dt = event.dataTransfer;
+    if (!dt) return false;
+    if (dt.types && dt.types.indexOf) return dt.types.indexOf('Files') !== -1;
+    return true;
+  }
+
+  function beginImport(fileList) {
+    var files = Array.prototype.slice.call(fileList);
+    importQueue = [];
+    el('import-list').textContent = '';
+    el('import-status').textContent = 'Reading ' + files.length + '…';
+    el('import-note').textContent = '';
+    el('import-apply').disabled = true;
+    el('import-dialog').showModal();
+
+    // Sequentially rather than all at once: decoding twenty camera JPEGs in
+    // parallel locks the tab up for as long as it takes.
+    var index = 0;
+    function next() {
+      if (index >= files.length) { finishReading(); return; }
+      var file = files[index++];
+      window.Photos.fromFile(file).then(function (result) {
+        var match = window.Photos.matchFilename(file.name, window.FLEET);
+        importQueue.push({
+          name: file.name, dataUri: result.dataUri,
+          width: result.width, height: result.height,
+          yachtId: match ? match.yacht.id : '',
+          confidence: match ? match.confidence : 'none'
+        });
+      }).catch(function (error) {
+        importQueue.push({ name: file.name, error: error.message || 'Could not be read.' });
+      }).then(function () {
+        el('import-status').textContent = 'Reading ' + index + ' of ' + files.length + '…';
+        next();
+      });
+    }
+    next();
+  }
+
+  function finishReading() {
+    var readable = importQueue.filter(function (item) { return !item.error; });
+    var matched = readable.filter(function (item) { return item.yachtId; });
+
+    el('import-note').textContent = readable.length
+      ? matched.length + ' of ' + readable.length + ' matched to a vessel by filename. ' +
+        'Check the guesses and change any that are wrong — nothing is stored until ' +
+        'you say so. Anything left on "Skip" is ignored.'
+      : 'None of those could be read as an image.';
+    el('import-status').textContent = '';
+    el('import-apply').disabled = readable.length === 0;
+    renderImportList();
+  }
+
+  function renderImportList() {
+    var host = el('import-list');
+    host.textContent = '';
+
+    importQueue.forEach(function (item, i) {
+      var row = h('div', 'import-row' + (item.error ? ' bad' : ''));
+
+      var thumb = h('div', 'import-thumb');
+      if (item.dataUri) {
+        var img = document.createElement('img');
+        img.src = item.dataUri;
+        img.alt = '';
+        thumb.appendChild(img);
+      }
+      row.appendChild(thumb);
+
+      var meta = h('div', 'import-meta');
+      meta.appendChild(h('div', 'i-name', item.name));
+      meta.appendChild(h('div', 'i-sub', item.error
+        ? item.error
+        : item.width + '×' + item.height + ' · ' +
+          window.Photos.formatBytes(Math.round(item.dataUri.length * 0.75))));
+      row.appendChild(meta);
+
+      if (item.error) {
+        row.appendChild(h('div', 'i-verdict bad', 'Skipped'));
+      } else {
+        var select = document.createElement('select');
+        select.className = 'import-pick';
+        var skip = document.createElement('option');
+        skip.value = '';
+        skip.textContent = 'Skip';
+        select.appendChild(skip);
+        window.FLEET.forEach(function (y) {
+          var option = document.createElement('option');
+          option.value = y.id;
+          option.textContent = window.Fmt.fullName(y) +
+            (window.Photos.has(y.id) ? '  (replaces)' : '');
+          select.appendChild(option);
+        });
+        select.value = item.yachtId;
+        select.addEventListener('change', function () {
+          importQueue[i].yachtId = select.value;
+          importQueue[i].confidence = select.value ? 'chosen' : 'none';
+          renderImportList();
+        });
+        row.appendChild(select);
+        row.appendChild(h('div', 'i-verdict ' + item.confidence, {
+          sure: 'Matched', likely: 'Best guess', chosen: 'Chosen', none: 'No match'
+        }[item.confidence] || ''));
+      }
+      host.appendChild(row);
+    });
+  }
+
+  function applyImport() {
+    var wanted = importQueue.filter(function (item) { return item.yachtId && !item.error; });
+    if (!wanted.length) { el('import-dialog').close(); return; }
+
+    // Two files aimed at one vessel would store one and silently lose the other.
+    var seen = {}, clash = null;
+    wanted.forEach(function (item) {
+      if (seen[item.yachtId]) clash = item.yachtId;
+      seen[item.yachtId] = true;
+    });
+    if (clash) {
+      var y = window.FLEET.filter(function (v) { return v.id === clash; })[0];
+      el('import-status').textContent = 'Two photographs are both set to ' +
+        (y ? window.Fmt.fullName(y) : clash) + '. Only one can be hers.';
+      return;
+    }
+
+    var saved = 0, failed = [];
+    wanted.forEach(function (item) {
+      var result = window.Photos.set(item.yachtId, item.dataUri);
+      if (result.ok) saved++;
+      else failed.push({ item: item, full: result.full });
+    });
+
+    importQueue = [];
+    reloadFleet(App.selected);
+
+    if (!failed.length) {
+      el('import-dialog').close();
+      return;
+    }
+    // Storage ran out partway. Say which ones did not make it rather than
+    // closing on a job half done.
+    el('import-status').textContent = saved + ' stored, ' + failed.length + ' did not fit — ' +
+      'this browser is full at ' + window.Photos.formatBytes(window.Photos.usageBytes()) +
+      '. Save the fleet file to write these out to assets/photos/, then remove them here.';
+    el('import-apply').disabled = true;
+  }
 
   /* --- The vessel form ----------------------------------------------------- */
 

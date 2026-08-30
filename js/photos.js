@@ -176,6 +176,53 @@
     });
   }
 
+  /* --- Matching a pile of files to vessels --------------------------------- */
+
+  var strip = function (t) {
+    return String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+
+  /**
+   * Guess which vessel a file is of, from its name.
+   *
+   * Returns { yacht, confidence } or null. Confidence is 'sure' when the file
+   * names her identifier or her name outright, 'likely' when her name merely
+   * appears in it — "MY Cloudbreak sea trials 2016.jpg" is a likely, and being
+   * a likely rather than a sure is why the importer shows its work and lets it
+   * be changed before anything is stored.
+   *
+   * An MMSI or IMO in the filename counts as sure: nobody types nine digits
+   * that happen to match a vessel by accident.
+   */
+  Photos.matchFilename = function (filename, fleet) {
+    var base = strip(String(filename).replace(/\.[^.]+$/, ''));
+    if (!base) return null;
+
+    var digits = String(filename).match(/\d{7,9}/g) || [];
+    var best = null;
+
+    fleet.forEach(function (y) {
+      var id = strip(y.id), name = strip(y.name);
+      var score = null;
+
+      if (digits.indexOf(String(y.mmsi)) !== -1) score = { rank: 0, confidence: 'sure' };
+      else if (y.imo && digits.indexOf(String(y.imo)) !== -1) score = { rank: 0, confidence: 'sure' };
+      else if (base === id) score = { rank: 1, confidence: 'sure' };
+      else if (name && base === name) score = { rank: 2, confidence: 'sure' };
+      else if (name && name.length >= 4 && base.indexOf(name) !== -1) {
+        // Longer names win: 'seaember' should not lose to 'sea'.
+        score = { rank: 3 - name.length / 1000, confidence: 'likely' };
+      }
+
+      if (score && (!best || score.rank < best.rank)) {
+        best = { yacht: y, rank: score.rank, confidence: score.confidence };
+      }
+    });
+
+    return best ? { yacht: best.yacht, confidence: best.confidence } : null;
+  };
+
   // "412 KB", for telling somebody what their photographs are costing.
   Photos.formatBytes = function (bytes) {
     if (bytes < 1024) return bytes + ' B';

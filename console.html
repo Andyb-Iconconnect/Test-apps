@@ -45,6 +45,8 @@
       <span class="rail-head-actions">
         <button class="add-button" id="save-file" type="button" hidden>Save fleet.js</button>
         <button class="add-button" id="add-vessel" type="button">+ Add vessel</button>
+        <button class="add-button" id="import-photos" type="button">Photos…</button>
+        <input type="file" id="import-file" accept="image/*" multiple hidden>
       </span>
     </div>
     <div class="filters" id="filters"></div>
@@ -68,6 +70,25 @@
     </div>
     <div class="chart-readout" id="chart-readout"></div>
   </aside>
+
+  <!-- Bulk photo import: a pile of files matched to vessels by filename. -->
+  <dialog class="sheet sheet-wide" id="import-dialog" aria-labelledby="import-title">
+    <div class="sheet-panel">
+      <header class="sheet-head">
+        <h2 id="import-title">Photographs</h2>
+        <button class="sheet-close" id="import-close" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="sheet-body">
+        <p class="sheet-note" id="import-note"></p>
+        <div class="import-list" id="import-list"></div>
+      </div>
+      <footer class="sheet-foot">
+        <span class="sheet-foot-note" id="import-status"></span>
+        <button class="button-quiet" id="import-cancel" type="button">Cancel</button>
+        <button class="button-primary" id="import-apply" type="submit">Use these</button>
+      </footer>
+    </div>
+  </dialog>
 
   <dialog class="sheet" id="file-dialog" aria-labelledby="file-title">
     <div class="sheet-panel">
