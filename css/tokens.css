@@ -83,6 +83,17 @@
   --map-coast:      #93BEDC;
   --map-graticule:  #1E3752;
 
+  /* Depth. Natural Earth's bands are "deeper than N", nested with the abyss
+     innermost, so these DARKEN outward from the coast: --map-ocean is the
+     shelf and needs no band of its own, and each contour beyond it drops a
+     step. Shallow-reads-lighter is how a paper chart does it, and how anyone
+     who has looked at the sea expects it. */
+  --map-depth-200:  #0B1826;   /* beyond the 200 m contour */
+  --map-depth-1000: #081220;   /* beyond 1000 m */
+  --map-border:      rgba(147, 190, 220, 0.22);
+  --map-course:      rgba(60, 180, 228, 0.45);   /* the leg still to run */
+  --map-wind:        rgba(147, 190, 220, 0.60);
+
   /* Dusk, in the order it happens, filled between successive solar-altitude
      contours and composited with `multiply`.
      

@@ -22,9 +22,10 @@ global.localStorage = {
 const load = (f) => require(path.join(__dirname, '..', f));
 ['config.js', 'fleet.js', 'data/mid.js', 'data/ports.js', 'data/world-land.js',
  'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js',
- 'js/demo.js', 'js/csv.js'].forEach(load);
+ 'js/demo.js', 'js/csv.js', 'js/map.js'].forEach(load);
 
 const { Geo, Fmt, Store, Ais, Vessel, Demo, Csv, PORTS, CONFIG } = window;
+const FleetMap = window.FleetMap;
 
 // The behavioural tests run against a fixed sample fleet, NOT against fleet.js.
 // fleet.js is the file you replace with your own boats; a suite that failed the
@@ -1484,6 +1485,50 @@ test('the fleet writes out to a spreadsheet and reads back the same', () => {
     Vessel.toFields));
   assert.strictEqual(tricky[1][0], "O'Brien, Folly");
   assert.strictEqual(tricky[1][10], 'Feadship, Netherlands');
+});
+
+/* --- Chart layers ---------------------------------------------------------- */
+
+test('the depth layers decode into the bands the renderer expects', () => {
+  load('data/world-depth.js');
+  load('data/world-borders.js');
+  const { WORLD_DEPTH_ENCODED, WORLD_DEPTH_SCALE, WORLD_DEPTH_BANDS,
+          WORLD_BORDERS_ENCODED, WORLD_BORDERS_SCALE } = window;
+
+  const rings = Geo.decodeLand(WORLD_DEPTH_ENCODED, WORLD_DEPTH_SCALE);
+  assert.strictEqual(rings.length, WORLD_DEPTH_BANDS.reduce((a, b) => a + b, 0),
+    'the band counts account for every ring');
+  assert.strictEqual(WORLD_DEPTH_BANDS.length, 2, '200 m and 1000 m');
+  assert.ok(WORLD_DEPTH_BANDS[0] > WORLD_DEPTH_BANDS[1],
+    'the shallower contour has more rings — the deep is one big expanse');
+
+  const borders = Geo.decodeLand(WORLD_BORDERS_ENCODED, WORLD_BORDERS_SCALE);
+  assert.ok(borders.length > 100, 'borders decoded');
+
+  // No ring may step more than half the world between points: that is the
+  // antimeridian bug, which paints a bar straight across the chart.
+  [rings, borders].forEach((set, which) => {
+    set.forEach((ring, i) => {
+      for (let k = 2; k < ring.length; k += 2) {
+        assert.ok(Math.abs(ring[k] - ring[k - 2]) <= 180,
+          (which ? 'border' : 'depth') + ' ring ' + i + ' steps across the seam');
+      }
+    });
+  });
+});
+
+test('a great circle bends the right way and lands where it is aimed', () => {
+  // Palma to New York should bow north of the rhumb line, not run straight
+  // across the Mercator, and it must not fold back at the seam.
+  const gc = FleetMap._greatCircle;
+  const legs = gc(2.65, 39.57, -74.0, 40.7);
+  close(legs[0][0], 2.65, 0.01, 'starts where told');
+  close(legs[legs.length - 1][0], -74.0, 0.01, 'ends where told');
+  const mid = legs[Math.floor(legs.length / 2)];
+  assert.ok(mid[1] > 40.7, 'the middle of the leg is north of both ends');
+  for (let i = 1; i < legs.length; i++) {
+    assert.ok(Math.abs(legs[i][0] - legs[i - 1][0]) < 180, 'no fold at the seam');
+  }
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

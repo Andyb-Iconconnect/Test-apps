@@ -19,6 +19,8 @@
   var canvas, ctx, dpr = 1;
   var width = 0, height = 0;
   var land = null, landBounds = null;
+  var depth = null, depthBounds = null;      // [band][ring]
+  var borders = null, borderBounds = null;
   var theme = {};
   var nightPath = null, nightComputedAt = 0;
 
@@ -35,6 +37,23 @@
     ctx = canvas.getContext('2d', { alpha: false });
     land = window.Geo.decodeLand(window.WORLD_LAND_ENCODED, window.WORLD_LAND_SCALE);
     landBounds = land.map(ringBounds);
+
+    // Both optional: the board runs without either file, just flatter.
+    if (window.WORLD_DEPTH_ENCODED) {
+      var all = window.Geo.decodeLand(window.WORLD_DEPTH_ENCODED, window.WORLD_DEPTH_SCALE);
+      var counts = window.WORLD_DEPTH_BANDS || [all.length];
+      depth = [];
+      var at = 0;
+      for (var b = 0; b < counts.length; b++) {
+        depth.push(all.slice(at, at + counts[b]));
+        at += counts[b];
+      }
+      depthBounds = depth.map(function (band) { return band.map(ringBounds); });
+    }
+    if (window.WORLD_BORDERS_ENCODED) {
+      borders = window.Geo.decodeLand(window.WORLD_BORDERS_ENCODED, window.WORLD_BORDERS_SCALE);
+      borderBounds = borders.map(ringBounds);
+    }
     readTheme();
     Map.resize();
   };
@@ -77,7 +96,12 @@
       dark: v('--status-dark', '#6c7a8c'),
       label: v('--text-primary', '#ffffff'),
       labelDim: v('--text-secondary', '#c3c2b7'),
-      panel: v('--surface-2', '#111820')
+      panel: v('--surface-2', '#111820'),
+      depth200: v('--map-depth-200', '#0B1826'),
+      depth1000: v('--map-depth-1000', '#081220'),
+      border: v('--map-border', 'rgba(147, 190, 220, 0.22)'),
+      courseLine: v('--map-course', 'rgba(60, 180, 228, 0.45)'),
+      wind: v('--map-wind', 'rgba(147, 190, 220, 0.6)')
     };
   }
   Map.readTheme = readTheme;
@@ -198,8 +222,10 @@
     ctx.translate(driftPx, driftPy);
 
     drawOcean();
+    drawDepth();
     drawGraticule();
     drawLand();
+    drawBorders();
     if (opts.showNight !== false) drawNight(now);
 
     // Vessel labels are laid out before anything else is written over the chart,
@@ -208,16 +234,22 @@
     var placed = locateVessels(vessels);
     var labels = opts.labels === false ? [] : layoutLabels(placed, opts);
     drawPorts(labels.map(function (l) { return l.box; }).concat(markerBoxes(placed)));
+    drawCourses(vessels);
     drawTracks(vessels);
     paintMarkers(placed, opts, now);
+    drawWind(placed);
     paintLabels(labels);
+    drawScaleBar(opts);
 
     ctx.restore();
 
     // Kept so a pointer can be matched against the marks. The drift offset has
     // to come with it: the markers are drawn through a translated context, so
     // their screen position is the projected position plus the drift.
-    Map.lastFrame = { placed: placed, driftX: driftPx, driftY: driftPy };
+    // Labels come with it: they are the thing most likely to collide with
+    // something new, and a check that can read them is worth more than one that
+    // has to squint at a screenshot.
+    Map.lastFrame = { placed: placed, labels: labels, driftX: driftPx, driftY: driftPy };
     return placed;
   };
 
@@ -288,6 +320,81 @@
       spanX: window.Geo.worldX(maxX) - window.Geo.worldX(minX),
       spanY: window.Geo.worldY(minY) - window.Geo.worldY(maxY)
     };
+  }
+
+  /**
+   * Depth, painted over the ocean and under the graticule.
+   *
+   * Natural Earth's bands are "water DEEPER than N metres", not shallower —
+   * the deep Atlantic is inside the 200 m polygon and the English Channel is
+   * not. So they nest with the abyss innermost and are drawn shallowest first,
+   * each one a step darker: --map-ocean is the shelf, and the sea falls away
+   * from it. Reading them the other way round paints the ocean pale and the
+   * continental shelves dark, which is how this first came out.
+   *
+   * Filled nonzero rather than even-odd. Even-odd cancels wherever two rings
+   * overlap, and after simplification plenty of them do, which turns a coastal
+   * shelf into a moth-eaten one.
+   */
+  function drawDepth() {
+    if (!depth) return;
+    var repeats = worldRepeats();
+    var degPerPx = (width / cam.scale) * 360 / width;
+    var stride = degPerPx > 0.6 ? 4 : degPerPx > 0.25 ? 2 : 1;
+    var fills = [theme.depth200, theme.depth1000];
+
+    for (var band = 0; band < depth.length; band++) {
+      ctx.fillStyle = fills[Math.min(band, fills.length - 1)];
+      for (var i = 0; i < depth[band].length; i++) {
+        var bounds = depthBounds[band][i];
+        // Below a couple of pixels a contour is noise, not shape.
+        if ((bounds.spanX * cam.scale) < 3 && (bounds.spanY * cam.scale) < 3) continue;
+        for (var r = -repeats; r <= repeats; r++) {
+          if (!visible(bounds, r)) continue;
+          ctx.beginPath();
+          traceRing(depth[band][i], r, stride);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  // Whether a ring's bounds fall anywhere on screen in world copy `r`.
+  function visible(bounds, r) {
+    var left = sx(bounds.minX + r), right = sx(bounds.maxX + r);
+    if (right < -40 || left > width + 40) return false;
+    var top = sy(bounds.minY), bottom = sy(bounds.maxY);
+    return !(bottom < -40 || top > height + 40);
+  }
+
+  /**
+   * International boundaries. Coastlines are deliberately absent from the data:
+   * the land layer already draws those, and a second pass over them thickens
+   * every shore in the world.
+   */
+  function drawBorders() {
+    if (!borders) return;
+    var repeats = worldRepeats();
+    // Only worth drawing once a country is big enough on screen to be worth
+    // naming; below that they are a grey haze over the land.
+    if (cam.scale < 900) return;
+
+    ctx.beginPath();
+    for (var i = 0; i < borders.length; i++) {
+      for (var r = -repeats; r <= repeats; r++) {
+        if (!visible(borderBounds[i], r)) continue;
+        var line = borders[i];
+        ctx.moveTo(sx(window.Geo.worldX(line[0]) + r), sy(window.Geo.worldY(line[1])));
+        for (var k = 2; k < line.length; k += 2) {
+          ctx.lineTo(sx(window.Geo.worldX(line[k]) + r), sy(window.Geo.worldY(line[k + 1])));
+        }
+      }
+    }
+    ctx.strokeStyle = theme.border;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   function drawLand() {
@@ -453,6 +560,187 @@
     return theme[status] || theme.dark;
   }
 
+  /**
+   * The leg still to run: from where she is to the port she says she is bound
+   * for, as a great circle.
+   *
+   * The destination is crew-typed into the AIS static message, so it is intent
+   * rather than fact and is drawn as a dashed line rather than a route. A
+   * destination naming nowhere in data/ports.js simply is not drawn: guessing
+   * at what "ST BARTHS VIA ANTIGUA" means would put a line across the chart
+   * that nobody can account for.
+   */
+  function drawCourses(vessels) {
+    if (!vessels) return;
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.2;
+
+    for (var i = 0; i < vessels.length; i++) {
+      var v = vessels[i], d = v.derived;
+      if (!d || d.lat == null || d.discreet) continue;
+      if (d.status !== 'underway') continue;
+      var name = v.voyage && v.voyage.destination;
+      if (!name) continue;
+      var port = portNamed(name);
+      if (!port) continue;
+
+      var legs = greatCircle(d.lon, d.lat, port[0], port[1]);
+      if (legs.length < 2) continue;
+
+      ctx.strokeStyle = theme.courseLine;
+      ctx.beginPath();
+      var offset = nearestScreenX(d.lon) - sx(window.Geo.worldX(d.lon));
+      for (var k = 0; k < legs.length; k++) {
+        var px = sx(window.Geo.worldX(legs[k][0])) + offset;
+        var py = sy(window.Geo.worldY(legs[k][1]));
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      // A small ring on the destination, so the line ends somewhere rather
+      // than just stopping.
+      var ex = sx(window.Geo.worldX(port[0])) + offset;
+      var ey = sy(window.Geo.worldY(port[1]));
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(ex, ey, 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([6, 5]);
+    }
+    ctx.restore();
+  }
+
+  // Points along the great circle, so a long leg bends the way a passage does
+  // rather than running straight across a Mercator chart.
+  function greatCircle(lon1, lat1, lon2, lat2, steps) {
+    var n = steps || 48;
+    var toRad = Math.PI / 180, toDeg = 180 / Math.PI;
+    var p1 = lat1 * toRad, l1 = lon1 * toRad, p2 = lat2 * toRad, l2 = lon2 * toRad;
+    var dp = p2 - p1, dl = l2 - l1;
+    var a = Math.sin(dp / 2) * Math.sin(dp / 2) +
+            Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+    var delta = 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+    if (!isFinite(delta) || delta < 1e-9) return [[lon1, lat1], [lon2, lat2]];
+
+    var out = [];
+    for (var i = 0; i <= n; i++) {
+      var f = i / n;
+      var A = Math.sin((1 - f) * delta) / Math.sin(delta);
+      var B = Math.sin(f * delta) / Math.sin(delta);
+      var x = A * Math.cos(p1) * Math.cos(l1) + B * Math.cos(p2) * Math.cos(l2);
+      var y = A * Math.cos(p1) * Math.sin(l1) + B * Math.cos(p2) * Math.sin(l2);
+      var z = A * Math.sin(p1) + B * Math.sin(p2);
+      out.push([Math.atan2(y, x) * toDeg, Math.atan2(z, Math.sqrt(x * x + y * y)) * toDeg]);
+    }
+    // Unwrap, so a leg crossing the antimeridian does not fold back on itself.
+    for (var k = 1; k < out.length; k++) {
+      var step = out[k][0] - out[k - 1][0];
+      if (step > 180) out[k][0] -= 360;
+      else if (step < -180) out[k][0] += 360;
+    }
+    return out;
+  }
+
+  function portNamed(name) {
+    var want = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!want) return null;
+    for (var i = 0; i < window.PORTS.length; i++) {
+      var p = window.PORTS[i];
+      var have = p[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (have === want) return [p[2], p[3]];
+    }
+    return null;
+  }
+
+  /**
+   * What she is sitting in: an arrow at each marker, pointing the way the wind
+   * is blowing, with its speed.
+   *
+   * Meteorological convention names the direction wind comes FROM, so the arrow
+   * points the opposite way — towards where it is going, which is what anyone
+   * reading a chart expects an arrow to mean.
+   */
+  function drawWind(placed) {
+    for (var i = 0; i < placed.length; i++) {
+      var w = placed[i].vessel.weather;
+      if (!w || w.windSpeed == null || w.windDirection == null) continue;
+      if (placed[i].vessel.derived.discreet) continue;
+
+      var x = placed[i].x + 22, y = placed[i].y - 20;
+      var heading = (w.windDirection + 180) * Math.PI / 180;
+      var dx = Math.sin(heading), dy = -Math.cos(heading);
+      var len = 9;
+
+      ctx.save();
+      ctx.strokeStyle = theme.wind;
+      ctx.fillStyle = theme.wind;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(x - dx * len, y - dy * len);
+      ctx.lineTo(x + dx * len, y + dy * len);
+      ctx.stroke();
+      // Head.
+      ctx.beginPath();
+      ctx.moveTo(x + dx * len, y + dy * len);
+      ctx.lineTo(x + dx * (len - 5) - dy * 3.2, y + dy * (len - 5) + dx * 3.2);
+      ctx.lineTo(x + dx * (len - 5) + dy * 3.2, y + dy * (len - 5) - dx * 3.2);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.font = '400 10px ' + FONT;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(Math.round(w.windSpeed) + ' kn', x + 13, y);
+      ctx.restore();
+    }
+  }
+
+  /**
+   * A nautical scale bar. Every chart has one; this had none, so nothing on
+   * screen said whether two yachts were ten miles apart or a thousand.
+   *
+   * Sized by measuring a real distance across the middle of the view rather
+   * than from the projection constant, because Mercator's scale changes with
+   * latitude and a bar computed at the equator lies everywhere else.
+   */
+  function drawScaleBar(opts) {
+    var lat = window.Geo.latFromWorldY(cam.cy);
+    var lonPerPx = 360 / cam.scale;
+    var nmPerPx = window.Geo.distanceNm(0, lat, lonPerPx, lat);
+    if (!isFinite(nmPerPx) || nmPerPx <= 0) return;
+
+    // The nearest sensible round number under a fifth of the width.
+    var target = nmPerPx * Math.min(220, width * 0.2);
+    var steps = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000];
+    var nm = steps[0];
+    for (var i = 0; i < steps.length; i++) if (steps[i] <= target) nm = steps[i];
+    var barPx = nm / nmPerPx;
+
+    // Clear of the fleet rail, which the label layout already avoids and which
+    // the bar was sitting squarely behind.
+    var x = ((opts && opts.inset && opts.inset.left) || 0) + 26;
+    var y = height - 26;
+    ctx.save();
+    ctx.strokeStyle = theme.labelDim;
+    ctx.fillStyle = theme.labelDim;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 4);
+    ctx.moveTo(x, y); ctx.lineTo(x + barPx, y);
+    ctx.moveTo(x + barPx / 2, y - 3); ctx.lineTo(x + barPx / 2, y + 3);
+    ctx.moveTo(x + barPx, y - 4); ctx.lineTo(x + barPx, y + 4);
+    ctx.stroke();
+
+    ctx.font = '400 11px ' + FONT;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(nm >= 1000 ? (nm / 1000) + ',000 nm' : nm + ' nm', x + barPx + 8, y + 4);
+    ctx.restore();
+  }
+
   function drawTracks(vessels) {
     vessels.forEach(function (v) {
       var d = v.derived;
@@ -503,9 +791,27 @@
   }
 
   function markerBoxes(placed) {
-    return placed.map(function (p) {
-      return { x: p.x - 9, y: p.y - 9, w: 18, h: 18, owner: p.vessel.yacht.id };
+    var boxes = [];
+    placed.forEach(function (p) {
+      boxes.push({ x: p.x - 9, y: p.y - 9, w: 18, h: 18, owner: p.vessel.yacht.id });
+      // The wind arrow and its speed sit up and to the right of the marker.
+      // Without claiming that space the name label lands on top of it, which is
+      // exactly what happened the first time.
+      if (windBox(p)) boxes.push(windBox(p));
     });
+    return boxes;
+  }
+
+  function windBox(p) {
+    var w = p.vessel.weather;
+    if (!w || w.windSpeed == null || w.windDirection == null) return null;
+    if (p.vessel.derived.discreet) return null;
+    // Centre (p.x + 22, p.y - 20), arrow half-length 9, then the speed out to +48.
+    //
+    // Deliberately NOT owned by the vessel. `collides` lets a label sit on its
+    // own marker, which is right for the marker and wrong for this: her name
+    // would land squarely on her own wind arrow, which is what it did.
+    return { x: p.x + 10, y: p.y - 32, w: 62, h: 24, tight: true };
   }
 
   function paintMarkers(placed, opts, now) {
@@ -737,8 +1043,8 @@
     for (var i = 0; i < others.length; i++) {
       var o = others[i];
       if (o.owner && o.owner === selfId) continue;
-      var padX = o.owner ? 4 : 12;
-      var padY = o.owner ? 3 : 8;
+      var padX = (o.owner || o.tight) ? 4 : 12;
+      var padY = (o.owner || o.tight) ? 3 : 8;
       if (box.x < o.x + o.w + padX && box.x + box.w + padX > o.x &&
           box.y < o.y + o.h + padY && box.y + box.h + padY > o.y) return true;
     }
@@ -748,6 +1054,7 @@
   // Shared with the spotlight's small locator chart so the coastline is decoded
   // once for the whole board rather than per view.
   Map.landRings = function () { return land; };
+  Map._greatCircle = greatCircle;   // for tests
   Map.landBounds = function () { return landBounds; };
 
   Map.camera = cam;
