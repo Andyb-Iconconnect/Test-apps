@@ -23,7 +23,15 @@ const load = (f) => require(path.join(__dirname, '..', f));
 ['config.js', 'fleet.js', 'data/ports.js', 'data/world-land.js',
  'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js'].forEach(load);
 
-const { Geo, Fmt, Store, Ais, Vessel, PORTS, CONFIG, FLEET } = window;
+const { Geo, Fmt, Store, Ais, Vessel, PORTS, CONFIG } = window;
+
+// The behavioural tests run against a fixed sample fleet, NOT against fleet.js.
+// fleet.js is the file you replace with your own boats; a suite that failed the
+// moment you did that would be crying wolf on every real edit. Checks that are
+// genuinely about your file — unique ids, valid MMSIs — use REAL_FLEET below.
+load('tools/fixtures/fleet-sample.js');
+const FLEET = window.FLEET_SAMPLE;
+const REAL_FLEET = window.FLEET;
 
 let passed = 0;
 function test(name, fn) {
@@ -567,7 +575,8 @@ test('writing the file out and reading it back is stable', () => {
 
 test('the fleet file is internally consistent', () => {
   const ids = new Set(), mmsis = new Set();
-  FLEET.forEach((y) => {
+  assert.ok(REAL_FLEET.length, 'fleet.js has at least one vessel in it');
+  REAL_FLEET.forEach((y) => {
     assert.ok(y.id && !ids.has(y.id), 'unique id: ' + y.id);
     ids.add(y.id);
     assert.ok(/^\d{9}$/.test(String(y.mmsi)), 'MMSI is nine digits: ' + y.mmsi);
@@ -662,7 +671,9 @@ test('the port list is well formed', () => {
   };
 
   test('every vessel in the fleet draws a profile that fits its frame', () => {
-    FLEET.forEach((y) => {
+    // Both fleets: the sample for variety, yours because it is the one that goes
+    // on the wall.
+    FLEET.concat(REAL_FLEET).forEach((y) => {
       const d = drawing(y);
       assert.ok(d.height > 0, y.name + ': the frame has height');
       Object.keys(d.parts).forEach((cls) => {
@@ -728,9 +739,15 @@ test('the port list is well formed', () => {
 
 /* --- Photo fetching ------------------------------------------------------- */
 
+// The fixture as a fleet FILE, named the way fleet.js names it, so the tools
+// that read one can be pointed at it instead of at yours.
+const sampleSource = () => require('fs')
+  .readFileSync(path.join(__dirname, 'fixtures', 'fleet-sample.js'), 'utf8')
+  .replace('window.FLEET_SAMPLE =', 'window.FLEET =');
+
 test('repointing a photo field changes that field and nothing else', () => {
   const { repoint, loadFleet } = require(path.join(__dirname, 'fetch-photos.js'));
-  const source = require('fs').readFileSync(path.join(__dirname, '..', 'fleet.js'), 'utf8');
+  const source = sampleSource();
   const before = loadFleet(source);
 
   let edited = repoint(source, 'aurelia', 'assets/photos/aurelia.jpg');
@@ -754,7 +771,7 @@ test('repointing a photo field changes that field and nothing else', () => {
 
 test('repointing a record that has no photo field adds one', () => {
   const { repoint, loadFleet } = require(path.join(__dirname, 'fetch-photos.js'));
-  const source = require('fs').readFileSync(path.join(__dirname, '..', 'fleet.js'), 'utf8');
+  const source = sampleSource();
   const stripped = source.replace(/^[ \t]*photo:[^\n]*\n/gm, '');
   assert.ok(!/photo:/.test(stripped), 'the fixture really has no photo fields');
 
@@ -766,7 +783,7 @@ test('repointing a record that has no photo field adds one', () => {
 
 test('repointing an id that is not in the fleet refuses rather than guessing', () => {
   const { repoint } = require(path.join(__dirname, 'fetch-photos.js'));
-  const source = require('fs').readFileSync(path.join(__dirname, '..', 'fleet.js'), 'utf8');
+  const source = sampleSource();
   assert.throws(() => repoint(source, 'not-a-yacht', 'x.jpg'), /no record with id/);
 });
 

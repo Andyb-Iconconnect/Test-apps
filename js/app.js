@@ -15,7 +15,33 @@
 
   /* --- Boot -------------------------------------------------------------- */
 
+  /**
+   * fleet.js is hand-edited, and a missing bracket there takes the whole file
+   * with it: the script throws, `window.FLEET` never gets defined, and the board
+   * boots into nothing at all. Silence is the worst possible answer to that, so
+   * say what happened and how to find it.
+   */
+  function fleetLoaded(where) {
+    if (Array.isArray(window.FLEET) && window.FLEET.length) return true;
+    var missing = typeof window.FLEET === 'undefined';
+    document.body.innerHTML = '';
+    var box = document.createElement('div');
+    box.className = 'boot-error';
+    box.innerHTML =
+      '<h1>' + (missing ? 'fleet.js did not load' : 'fleet.js has no vessels in it') + '</h1>' +
+      '<p>' + (missing
+        ? 'The file threw before it could define the fleet — almost always an ' +
+          'unclosed bracket or a missing comma. Nothing else on ' + where + ' can start until it parses.'
+        : 'The file loaded and parsed, but <code>window.FLEET</code> is an empty list.') +
+      '</p>' +
+      '<p>Check it with:</p><pre>node --check fleet.js</pre>' +
+      '<p>The browser console has the line number too.</p>';
+    document.body.appendChild(box);
+    return false;
+  }
+
   function boot() {
+    if (!fleetLoaded('the board')) return;
     if (window.CONFIG.discreetLocked) window.CONFIG.discreetMode = true;
     window.Store.init(window.FLEET);
     window.FleetMap.init(el('chart-canvas'));

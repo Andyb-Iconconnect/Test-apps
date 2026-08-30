@@ -853,3 +853,38 @@ html, body {
 .vessel-profile .p-rigging,
 .vessel-profile .p-rail,
 .vessel-profile .p-waterline { fill: none; }
+
+/* Shown in place of everything when fleet.js fails to parse. Deliberately plain:
+   it has to render with no data and no assumptions about what else loaded. */
+.boot-error {
+  max-width: 46rem;
+  margin: 12vh auto;
+  padding: 1.6rem 1.9rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.6rem;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  line-height: 1.5;
+}
+.boot-error h1 {
+  margin: 0 0 0.7rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+.boot-error p { margin: 0 0 0.7rem; }
+.boot-error pre,
+.boot-error code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86rem;
+  color: var(--brand-cyan);
+}
+.boot-error pre {
+  margin: 0 0 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.4rem;
+  background: var(--bg);
+  overflow-x: auto;
+}
