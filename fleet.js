@@ -1,6 +1,10 @@
 /* -----------------------------------------------------------------------------
  * THE FLEET — this is the file you swap.
  *
+ * You do not have to edit it by hand. The console adds, edits and removes
+ * vessels, imports a whole fleet from a CSV, exports one back out for Excel,
+ * and writes this file for you to save over the top.
+ *
  * Every yacht below is INVENTED. The IMO and MMSI numbers are deliberately
  * sequential placeholders (9900001+, 3190000xx) so they cannot collide with a
  * real vessel. Replace them with your own boats and the board becomes yours.

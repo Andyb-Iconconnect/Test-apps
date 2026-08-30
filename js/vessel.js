@@ -284,7 +284,7 @@
    */
   Vessel.buildDemo = function (fields) {
     var demo = {
-      status: fields.demoStatus || 'moored'
+      status: Vessel.normaliseStatus(fields.demoStatus)
     };
     if (fields.demoRoute && fields.demoRoute.length >= 2) {
       demo.route = fields.demoRoute;
@@ -293,12 +293,38 @@
     } else if (text(fields.demoPort)) {
       demo.port = text(fields.demoPort);
     } else {
-      demo.port = (window.CONFIG && window.CONFIG.office && window.CONFIG.office.label) || 'Palma';
+      // The office, by position rather than by name. `office.label` is "Palma
+      // office", which is not a port in data/ports.js — falling back to it left
+      // the vessel with no position at all, which is the exact thing this
+      // fallback exists to prevent.
+      var office = (window.CONFIG && window.CONFIG.office) || {};
+      demo.position = [
+        office.lon != null ? office.lon : 2.6502,
+        office.lat != null ? office.lat : 39.5696
+      ];
     }
     if (num(fields.demoSpeed) != null) demo.speed = num(fields.demoSpeed);
     if (text(fields.demoDestination)) demo.destination = text(fields.demoDestination).toUpperCase();
     if (num(fields.demoEtaHours) != null) demo.etaHours = num(fields.demoEtaHours);
     return demo;
+  };
+
+  /**
+   * The four states the rest of the app knows, from however they were written.
+   *
+   * A spreadsheet says "At anchor", "Alongside", "In port", "Under way", "No
+   * signal". Stored raw, they reach demo.js as words it has never heard: the
+   * status is then neither honoured nor rejected, just quietly ignored, and the
+   * vessel derives whatever her speed happens to imply.
+   */
+  Vessel.normaliseStatus = function (value) {
+    var t = String(value == null ? '' : value).toLowerCase().replace(/[^a-z]/g, '');
+    if (!t) return 'moored';
+    if (/anchor|riding|swinging/.test(t)) return 'anchored';
+    if (/underway|underway|steaming|passage|enroute|sailing|making|transit/.test(t)) return 'underway';
+    if (/dark|nosignal|silent|off|unknown|notracking/.test(t)) return 'dark';
+    if (/moor|alongside|berth|dock|quay|marina|inport|tied|refit|yard/.test(t)) return 'moored';
+    return 'moored';
   };
 
   // The reverse: a record back into flat form fields.
@@ -310,7 +336,7 @@
       loa: y.loa, beam: y.beam, grossTonnage: y.grossTonnage,
       builder: y.builder, yearBuilt: y.yearBuilt, lastRefit: y.lastRefit,
       classSociety: y.classSociety, photo: y.photo, discreet: !!y.discreet,
-      demoStatus: d.status || 'moored',
+      demoStatus: Vessel.normaliseStatus(d.status),
       demoPort: d.port || null,
       demoLat: d.position ? d.position[1] : null,
       demoLon: d.position ? d.position[0] : null,

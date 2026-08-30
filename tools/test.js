@@ -22,9 +22,9 @@ global.localStorage = {
 const load = (f) => require(path.join(__dirname, '..', f));
 ['config.js', 'fleet.js', 'data/ports.js', 'data/world-land.js',
  'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js',
- 'js/demo.js'].forEach(load);
+ 'js/demo.js', 'js/csv.js'].forEach(load);
 
-const { Geo, Fmt, Store, Ais, Vessel, Demo, PORTS, CONFIG } = window;
+const { Geo, Fmt, Store, Ais, Vessel, Demo, Csv, PORTS, CONFIG } = window;
 
 // The behavioural tests run against a fixed sample fleet, NOT against fleet.js.
 // fleet.js is the file you replace with your own boats; a suite that failed the
@@ -792,6 +792,42 @@ test('a pasted entry says the same thing the written file does', () => {
     'entry and file agree field for field');
 });
 
+test('however a spreadsheet words a state, it lands on one of the four', () => {
+  // Stored raw, "At anchor" reaches demo.js as a word it has never heard: the
+  // status is neither honoured nor rejected, just ignored, and the vessel
+  // derives whatever her speed happens to imply.
+  const cases = {
+    'At anchor': 'anchored', 'ANCHORED': 'anchored', 'riding to anchor': 'anchored',
+    'Alongside': 'moored', 'In port': 'moored', 'berthed': 'moored', 'At the yard': 'moored',
+    'Under way': 'underway', 'underway': 'underway', 'En route': 'underway',
+    'steaming': 'underway', 'on passage': 'underway',
+    'No signal': 'dark', 'dark': 'dark', 'unknown': 'dark',
+    '': 'moored', 'nonsense': 'moored'
+  };
+  Object.keys(cases).forEach((input) => {
+    assert.strictEqual(Vessel.normaliseStatus(input), cases[input],
+      JSON.stringify(input) + ' means ' + cases[input]);
+  });
+  assert.strictEqual(Vessel.buildDemo({ demoStatus: 'At anchor' }).status, 'anchored',
+    'and it is normalised on the way into the record');
+});
+
+test('a vessel with nowhere given still gets somewhere real', () => {
+  // The fallback used CONFIG.office.label — "Palma office", which is not a port
+  // in data/ports.js. So the safety net left her with no position at all, which
+  // is the precise thing it exists to prevent.
+  const demo = Vessel.buildDemo({ name: 'Nowhere' });
+  assert.ok(demo.position, 'she is placed by position, not by a name that may not resolve');
+  assert.strictEqual(demo.position.length, 2);
+  close(demo.position[0], CONFIG.office.lon, 0.001, 'office longitude');
+  close(demo.position[1], CONFIG.office.lat, 0.001, 'office latitude');
+
+  // And demo mode can actually place her, which is the whole point.
+  const agent = Demo._makeAgent({ yacht: { name: 'Nowhere', mmsi: 319000123, demo: demo } });
+  assert.ok(agent, 'demo mode places her');
+  assert.ok(agent.lon != null && agent.lat != null);
+});
+
 test('a demo vessel told she is underway actually makes way', () => {
   // The console offers "underway" as a choice, so it has to mean something. Given
   // only a point to sit on she would report zero knots and derive as alongside,
@@ -1211,5 +1247,124 @@ test('repointing an id that is not in the fleet refuses rather than guessing', (
 
   global.localStorage = realStorage;
 })();
+
+/* --- Reading a fleet out of a spreadsheet --------------------------------- */
+
+test('the CSV parser survives what a real spreadsheet exports', () => {
+  // Splitting on commas mangles exactly the rows a fleet list is full of.
+  const rows = Csv.parse(
+    'Name,Builder,Class\r\n' +
+    'Corvina,"Feadship, Netherlands","Lloyd\'s Register"\r\n' +
+    '"Sea ""Ember""",Benetti,RINA\r\n' +
+    '"Wind\nVerity",Royal Huisman,BV\r\n');
+
+  assert.strictEqual(rows.length, 4, 'header and three vessels');
+  assert.deepStrictEqual(rows[1], ['Corvina', 'Feadship, Netherlands', "Lloyd's Register"],
+    'a comma inside quotes is not a new column');
+  assert.strictEqual(rows[2][0], 'Sea "Ember"', 'a doubled quote is one quote');
+  assert.strictEqual(rows[3][0], 'Wind\nVerity', 'a newline inside quotes stays in the field');
+});
+
+test('the parser copes with the mess files arrive in', () => {
+  assert.deepStrictEqual(Csv.parse('\ufeffName,MMSI\nCorvina,319000004\n')[0],
+    ['Name', 'MMSI'], 'a byte-order mark from Excel is not part of the first heading');
+
+  assert.strictEqual(Csv.parse('a,b\n\n\nc,d\n').length, 2, 'blank lines are dropped');
+  assert.strictEqual(Csv.parse('a,b\r\nc,d').length, 2, 'a missing final newline is fine');
+  assert.deepStrictEqual(Csv.parse(''), [], 'and so is an empty file');
+  assert.deepStrictEqual(Csv.parse('  Name ,  MMSI  \n')[0], ['Name', 'MMSI'],
+    'padding around a value is not part of it');
+});
+
+test('the delimiter is worked out rather than assumed', () => {
+  assert.strictEqual(Csv.sniffDelimiter('Name;MMSI;IMO'), ';', 'a European export');
+  assert.strictEqual(Csv.sniffDelimiter('Name\tMMSI\tIMO'), '\t', 'a pasted table');
+  assert.strictEqual(Csv.sniffDelimiter('Name,MMSI,IMO'), ',');
+  assert.strictEqual(Csv.sniffDelimiter('OnlyOneColumn'), ',', 'a single column is still valid');
+  // A comma inside a quoted heading must not win the vote.
+  assert.strictEqual(Csv.sniffDelimiter('"Builder, yard";MMSI;IMO'), ';');
+  assert.deepStrictEqual(Csv.parse('Name;Builder\nCorvina;Benetti')[1], ['Corvina', 'Benetti']);
+});
+
+test('columns are matched to fields by their headings', () => {
+  const mapping = Csv.mapColumns(
+    ['Vessel Name', 'MMSI Number', 'IMO', 'LOA (m)', 'Year Built', 'Flag State',
+     'Gross Tonnage', 'Call Sign', 'Current Port', 'Notes']);
+  assert.deepStrictEqual(mapping,
+    ['name', 'mmsi', 'imo', 'loa', 'yearBuilt', 'flag',
+     'grossTonnage', 'callSign', 'demoPort', '']);
+});
+
+test('a heading that could be two fields goes to the right one', () => {
+  // 'Year Built' must not be taken by the alias 'year', and 'Last Refit' must
+  // not be taken by 'refit' before 'lastrefit' is tried.
+  assert.deepStrictEqual(Csv.mapColumns(['Year Built', 'Last Refit']),
+    ['yearBuilt', 'lastRefit']);
+  assert.deepStrictEqual(Csv.mapColumns(['Length Overall', 'Beam']), ['loa', 'beam']);
+  // A field is claimed once: the second 'Name' is left for the user to set.
+  assert.deepStrictEqual(Csv.mapColumns(['Name', 'Name']), ['name', '']);
+  assert.deepStrictEqual(Csv.mapColumns(['', 'MMSI']), ['', 'mmsi']);
+});
+
+test('a row becomes the fields the vessel form uses', () => {
+  const header = ['Name', 'Type', 'MMSI', 'IMO', 'LOA', 'Discreet', 'Port'];
+  const mapping = Csv.mapColumns(header);
+  const fields = Csv.rowToFields(
+    ['Wind Verity', 'sailing', '319000007', '9900071', '45.3', 'yes', 'Göcek'], mapping);
+
+  assert.strictEqual(fields.name, 'Wind Verity');
+  assert.strictEqual(fields.prefix, 'S/Y', 'a sailing yacht is read as one');
+  assert.strictEqual(fields.discreet, true);
+  assert.strictEqual(fields.demoPort, 'Göcek');
+  assert.strictEqual(fields.loa, '45.3', 'numbers stay text; buildRecord coerces them');
+
+  // Empty cells are absent rather than empty strings, so they do not overwrite.
+  const sparse = Csv.rowToFields(['Petrel', '', '319000008', '', '', '', ''], mapping);
+  assert.deepStrictEqual(Object.keys(sparse).sort(), ['mmsi', 'name']);
+});
+
+test('a spreadsheet says yes in a dozen ways', () => {
+  ['yes', 'Y', 'TRUE', '1', 'x', '✓'].forEach((v) => {
+    assert.strictEqual(Csv.truthy(v), true, v + ' means yes');
+  });
+  ['no', 'N', 'FALSE', '0', '', '-'].forEach((v) => {
+    assert.strictEqual(Csv.truthy(v), false, JSON.stringify(v) + ' does not');
+  });
+});
+
+test('the fleet writes out to a spreadsheet and reads back the same', () => {
+  // The round trip is the point: export, edit in Excel, drop it back.
+  const text = Csv.fromFleet(FLEET, Vessel.toFields);
+  const rows = Csv.parse(text);
+  const mapping = Csv.mapColumns(rows[0]);
+
+  assert.strictEqual(rows.length, FLEET.length + 1, 'a header and every vessel');
+  assert.ok(text.charCodeAt(0) === 0xFEFF, 'with the mark Excel needs for Göcek');
+
+  const rebuilt = rows.slice(1).map((row) => {
+    const fields = Csv.rowToFields(row, mapping);
+    return Vessel.buildRecord(Object.assign(fields, {
+      mmsi: Number(fields.mmsi), imo: Number(fields.imo)
+    }));
+  });
+
+  FLEET.forEach((source, i) => {
+    const out = rebuilt[i];
+    ['name', 'prefix', 'mmsi', 'imo', 'callSign', 'flag', 'flagCode', 'loa',
+     'beam', 'grossTonnage', 'builder', 'yearBuilt', 'lastRefit', 'classSociety',
+     'discreet'].forEach((key) => {
+      assert.deepStrictEqual(out[key], source[key],
+        source.name + ': ' + key + ' survives the round trip');
+    });
+  });
+
+  // A comma and an apostrophe in the data must come back intact.
+  const tricky = Csv.parse(Csv.fromFleet(
+    [{ id: 'x', name: "O'Brien, Folly", mmsi: 319000001, imo: 9074729,
+       builder: 'Feadship, Netherlands', demo: { status: 'moored', port: 'Göcek' } }],
+    Vessel.toFields));
+  assert.strictEqual(tricky[1][0], "O'Brien, Folly");
+  assert.strictEqual(tricky[1][10], 'Feadship, Netherlands');
+});
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

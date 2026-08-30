@@ -987,7 +987,7 @@ html, body {
 /* A whole-window cue: the drop target is the console, not a small box, so the
    feedback has to be the console too. */
 body.dropping::after {
-  content: 'Drop photographs to match them to vessels';
+  content: 'Drop photographs, or a CSV of vessels';
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -1065,3 +1065,62 @@ body.dropping::after {
   .import-row .import-pick { grid-column: 1 / -1; }
   .import-row .i-verdict { grid-column: 1 / -1; text-align: left; }
 }
+
+/* --- Importing vessels from a spreadsheet ---------------------------------- */
+
+.sheet-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.7rem;
+}
+.sheet-column {
+  min-width: 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--surface-1);
+}
+.sheet-column .c-head {
+  font-family: var(--font-display);
+  font-size: 0.76rem;
+  color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sheet-column .c-sample {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.sheet-rows { display: flex; flex-direction: column; gap: 0.3rem; max-height: 22rem; overflow-y: auto; }
+
+.sheet-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.3rem;
+}
+.sheet-row:nth-child(odd) { background: rgba(120, 180, 220, 0.04); }
+.sheet-row.bad { opacity: 0.7; }
+.sheet-row input[type="checkbox"] { accent-color: var(--brand-cyan); }
+
+.sheet-meta { min-width: 0; }
+.sheet-meta .s-name {
+  font-size: 0.88rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sheet-meta .s-sub { font-size: 0.74rem; color: var(--text-muted); }
+
+.s-verdict {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.s-verdict.new { color: var(--status-anchored); }
+.s-verdict.update { color: var(--brand-cyan); }
+.s-verdict.bad { color: var(--critical); }

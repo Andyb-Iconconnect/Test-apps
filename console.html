@@ -46,7 +46,9 @@
         <button class="add-button" id="save-file" type="button" hidden>Save fleet.js</button>
         <button class="add-button" id="add-vessel" type="button">+ Add vessel</button>
         <button class="add-button" id="import-photos" type="button">Photos…</button>
+        <button class="add-button" id="import-sheet" type="button">Spreadsheet…</button>
         <input type="file" id="import-file" accept="image/*" multiple hidden>
+        <input type="file" id="sheet-file" accept=".csv,.tsv,.txt,text/csv" hidden>
       </span>
     </div>
     <div class="filters" id="filters"></div>
@@ -70,6 +72,38 @@
     </div>
     <div class="chart-readout" id="chart-readout"></div>
   </aside>
+
+  <!-- Bulk vessel import from a spreadsheet. -->
+  <dialog class="sheet sheet-wide" id="sheet-dialog" aria-labelledby="sheet-title">
+    <div class="sheet-panel">
+      <header class="sheet-head">
+        <h2 id="sheet-title">Vessels from a spreadsheet</h2>
+        <button class="sheet-close" id="sheet-close" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="sheet-body">
+        <p class="sheet-note" id="sheet-note"></p>
+
+        <div class="panel" id="sheet-columns-panel">
+          <div class="pane-title">Columns</div>
+          <p class="sheet-note">
+            Matched by heading. Set anything it guessed wrong, or leave a column
+            on “Ignore”. Name and MMSI are the two it cannot do without.
+          </p>
+          <div class="sheet-columns" id="sheet-columns"></div>
+        </div>
+
+        <div class="panel">
+          <div class="pane-title" id="sheet-rows-title">Rows</div>
+          <div class="sheet-rows" id="sheet-rows"></div>
+        </div>
+      </div>
+      <footer class="sheet-foot">
+        <span class="sheet-foot-note" id="sheet-status"></span>
+        <button class="button-quiet" id="sheet-cancel" type="button">Cancel</button>
+        <button class="button-primary" id="sheet-apply" type="submit">Import</button>
+      </footer>
+    </div>
+  </dialog>
 
   <!-- Bulk photo import: a pile of files matched to vessels by filename. -->
   <dialog class="sheet sheet-wide" id="import-dialog" aria-labelledby="import-title">
@@ -116,6 +150,7 @@
       </div>
       <footer class="sheet-foot">
         <span class="sheet-foot-note" id="file-status"></span>
+        <button class="button-quiet" id="file-csv" type="button">Download CSV</button>
         <button class="button-quiet" id="file-copy" type="button">Copy file</button>
         <button class="button-primary" id="file-download" type="button">Download fleet.js</button>
       </footer>
@@ -387,6 +422,7 @@
 <script src="js/ais.js"></script>
 <script src="js/demo.js"></script>
 <script src="js/weather.js"></script>
+<script src="js/csv.js"></script>
 <script src="js/photos.js"></script>
 <script src="js/profile.js"></script>
 <script src="js/map.js"></script>

@@ -107,7 +107,11 @@ function inlinePhotos(js) {
 
 const inlinedScripts = scripts.map((f) => {
   const source = f === 'config.js' ? config : read(f);
-  return `<script>\n${guard(inlinePhotos(source))}\n</script>`;
+  // Only the data file. Applied to every script it rewrites any `photo: '...'`
+  // it finds in ordinary code — a field label, a comment, a form key — which at
+  // best warns about a file that was never meant to exist and at worst corrupts
+  // the source.
+  return `<script>\n${guard(f === 'fleet.js' ? inlinePhotos(source) : source)}\n</script>`;
 }).join('\n');
 
 // Take the markup between <body> and </body>, minus the script tags we've just

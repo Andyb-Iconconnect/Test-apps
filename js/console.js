@@ -89,6 +89,7 @@
     el('discreet-toggle').addEventListener('click', toggleDiscreet);
     wireAddDialog();
     wirePhotoImport();
+    wireSheetImport();
     wireRemoveDialog();
     wireFileDialog();
     document.addEventListener('keydown', onKey);
@@ -795,6 +796,277 @@
 
   /* --- Adding a vessel ----------------------------------------------------- */
 
+  /* --- Importing vessels from a spreadsheet -------------------------------- */
+
+  var sheet = { rows: [], mapping: [], plan: [] };
+
+  var FIELD_LABELS = {
+    name: 'Name', prefix: 'Type (M/Y or S/Y)', mmsi: 'MMSI', imo: 'IMO',
+    callSign: 'Call sign', flag: 'Flag', flagCode: 'Flag code',
+    loa: 'LOA (m)', beam: 'Beam (m)', grossTonnage: 'Gross tonnage',
+    builder: 'Builder', yearBuilt: 'Year built', lastRefit: 'Last refit',
+    classSociety: 'Class society', photo: 'Photo path or URL', discreet: 'Discreet',
+    demoStatus: 'State', demoPort: 'Port', demoLat: 'Latitude', demoLon: 'Longitude',
+    demoDestination: 'Bound for', demoSpeed: 'Speed', demoEtaHours: 'ETA hours'
+  };
+
+  function wireSheetImport() {
+    var input = el('sheet-file');
+    el('import-sheet').addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      if (input.files && input.files[0]) readSheetFile(input.files[0]);
+      input.value = '';
+    });
+    el('sheet-close').addEventListener('click', function () { el('sheet-dialog').close(); });
+    el('sheet-cancel').addEventListener('click', function () { el('sheet-dialog').close(); });
+    el('sheet-apply').addEventListener('click', applySheet);
+    el('file-csv').addEventListener('click', downloadCsv);
+  }
+
+  function readSheetFile(file) {
+    // .xlsx is a zip of XML and needs a megabyte of library to read. Saying so
+    // beats failing at a file that looks perfectly reasonable to its owner.
+    if (/\.(xlsx|xls|numbers|ods)$/i.test(file.name)) {
+      el('sheet-note').textContent = '';
+      el('sheet-columns-panel').hidden = true;
+      el('sheet-rows').textContent = '';
+      el('sheet-rows').appendChild(h('div', 'empty',
+        file.name + ' is a spreadsheet, not a CSV. Open it and Save As (or Export) ' +
+        'CSV, then drop that here. Reading .xlsx directly would mean a megabyte of ' +
+        'library inlined into every copy of this, to save one Save As.'));
+      el('sheet-status').textContent = '';
+      el('sheet-apply').disabled = true;
+      el('sheet-dialog').showModal();
+      return;
+    }
+
+    var reader = new FileReader();
+    reader.onload = function () { loadSheet(String(reader.result), file.name); };
+    reader.onerror = function () {
+      el('sheet-note').textContent = 'That file could not be read.';
+      el('sheet-dialog').showModal();
+    };
+    reader.readAsText(file);
+  }
+
+  function loadSheet(text, filename) {
+    el('sheet-columns-panel').hidden = false;
+    var rows = window.Csv.parse(text);
+    if (rows.length < 2) {
+      sheet = { rows: [], mapping: [], plan: [] };
+      el('sheet-note').textContent = filename + ' has no rows under its headings.';
+      el('sheet-columns').textContent = '';
+      el('sheet-rows').textContent = '';
+      el('sheet-apply').disabled = true;
+      el('sheet-dialog').showModal();
+      return;
+    }
+
+    sheet.rows = rows;
+    sheet.mapping = window.Csv.mapColumns(rows[0]);
+    el('sheet-note').textContent = filename + ' — ' + (rows.length - 1) +
+      (rows.length === 2 ? ' row' : ' rows') + ' under ' + rows[0].length + ' columns.';
+    renderColumnMap();
+    planSheet();
+    el('sheet-dialog').showModal();
+  }
+
+  function renderColumnMap() {
+    var host = el('sheet-columns');
+    host.textContent = '';
+    sheet.rows[0].forEach(function (heading, index) {
+      var cell = h('div', 'sheet-column');
+      cell.appendChild(h('div', 'c-head', heading || '(no heading)'));
+      cell.appendChild(h('div', 'c-sample', sampleFor(index)));
+
+      var select = document.createElement('select');
+      select.className = 'import-pick';
+      var ignore = document.createElement('option');
+      ignore.value = '';
+      ignore.textContent = 'Ignore';
+      select.appendChild(ignore);
+      window.Csv.FIELDS.forEach(function (field) {
+        var option = document.createElement('option');
+        option.value = field;
+        option.textContent = FIELD_LABELS[field] || field;
+        select.appendChild(option);
+      });
+      select.value = sheet.mapping[index];
+      select.addEventListener('change', function () {
+        // A field can only come from one column; taking it releases the other.
+        if (select.value) {
+          sheet.mapping = sheet.mapping.map(function (f, i) {
+            return i !== index && f === select.value ? '' : f;
+          });
+        }
+        sheet.mapping[index] = select.value;
+        renderColumnMap();
+        planSheet();
+      });
+      cell.appendChild(select);
+      host.appendChild(cell);
+    });
+  }
+
+  function sampleFor(index) {
+    for (var i = 1; i < sheet.rows.length; i++) {
+      var value = sheet.rows[i][index];
+      if (value) return value.length > 28 ? value.slice(0, 27) + '…' : value;
+    }
+    return '—';
+  }
+
+  /**
+   * Work out what each row would do, without doing any of it.
+   *
+   * A row matching a vessel already on the list updates her rather than adding
+   * a second copy — re-importing a corrected spreadsheet is the normal case,
+   * not the exception, and duplicates would be the result otherwise.
+   */
+  function planSheet() {
+    var seenMmsi = {};
+    sheet.plan = sheet.rows.slice(1).map(function (row, i) {
+      var fields = window.Csv.rowToFields(row, sheet.mapping);
+      var line = i + 2;
+      var label = fields.name || '(row ' + line + ')';
+
+      if (!fields.name) return { line: line, label: label, error: 'No name.' };
+
+      var mmsi = window.Vessel.validateMmsi(fields.mmsi || '');
+      if (!mmsi.ok) return { line: line, label: label, error: mmsi.error };
+
+      if (seenMmsi[mmsi.value]) {
+        return { line: line, label: label,
+                 error: 'MMSI ' + mmsi.value + ' is on row ' + seenMmsi[mmsi.value] + ' too.' };
+      }
+      seenMmsi[mmsi.value] = line;
+
+      // IMO is checked when given and left alone when not: plenty of yachts
+      // under 300 GT have never been issued one.
+      var imo = null;
+      if (fields.imo) {
+        var checked = window.Vessel.validateImo(fields.imo);
+        if (!checked.ok) return { line: line, label: label, error: checked.error };
+        imo = checked.value;
+      }
+
+      var existing = window.FLEET.filter(function (y) {
+        return y.mmsi === mmsi.value || (imo && y.imo === imo);
+      })[0];
+
+      return {
+        line: line, label: label, fields: fields, mmsi: mmsi.value, imo: imo,
+        existing: existing || null, use: true
+      };
+    });
+    renderSheetRows();
+  }
+
+  function renderSheetRows() {
+    var host = el('sheet-rows');
+    host.textContent = '';
+
+    var good = sheet.plan.filter(function (p) { return !p.error; });
+    var adds = good.filter(function (p) { return !p.existing; }).length;
+    var updates = good.length - adds;
+    var bad = sheet.plan.length - good.length;
+
+    el('sheet-rows-title').textContent = 'Rows — ' + adds + ' new, ' + updates +
+      ' updated' + (bad ? ', ' + bad + ' with a problem' : '');
+    el('sheet-apply').disabled = good.length === 0;
+    el('sheet-apply').textContent = good.length
+      ? 'Import ' + good.length : 'Import';
+
+    sheet.plan.forEach(function (item, i) {
+      var row = h('div', 'sheet-row' + (item.error ? ' bad' : ''));
+
+      var tick = document.createElement('input');
+      tick.type = 'checkbox';
+      tick.checked = !item.error && item.use !== false;
+      tick.disabled = !!item.error;
+      tick.addEventListener('change', function () {
+        sheet.plan[i].use = tick.checked;
+        renderSheetRows();
+      });
+      row.appendChild(tick);
+
+      var meta = h('div', 'sheet-meta');
+      meta.appendChild(h('div', 's-name', item.label));
+      meta.appendChild(h('div', 's-sub', item.error
+        ? 'Row ' + item.line + ' · ' + item.error
+        : 'Row ' + item.line + ' · MMSI ' + item.mmsi +
+          (item.imo ? ' · IMO ' + item.imo : ' · no IMO')));
+      row.appendChild(meta);
+
+      row.appendChild(h('div', 's-verdict ' + (item.error ? 'bad'
+        : item.existing ? 'update' : 'new'),
+        item.error ? 'Skipped' : item.existing ? 'Updates ' + item.existing.name : 'New'));
+      host.appendChild(row);
+    });
+  }
+
+  function applySheet() {
+    var wanted = sheet.plan.filter(function (p) { return !p.error && p.use !== false; });
+    if (!wanted.length) { el('sheet-dialog').close(); return; }
+
+    var added = 0, updated = 0, failed = 0;
+    wanted.forEach(function (item) {
+      // An update starts from what is already known about her, so a spreadsheet
+      // with four columns in it does not blank the other fourteen.
+      var base = item.existing ? window.Vessel.toFields(item.existing) : {};
+      var fields = Object.assign({}, base, item.fields, {
+        mmsi: item.mmsi,
+        imo: item.imo != null ? item.imo : (item.existing ? item.existing.imo : null),
+        id: item.existing ? item.existing.id : null
+      });
+      if (item.existing) {
+        fields.demoRoute = window.Vessel.toFields(item.existing).demoRoute;
+      }
+      var record = window.Vessel.buildRecord(fields);
+
+      var ok;
+      if (!item.existing) ok = window.Vessel.addAddition(record);
+      else if (item.existing.addedLocally) ok = window.Vessel.updateAddition(record.id, record);
+      else ok = window.Vessel.setOverride(record.id, record);
+
+      if (!ok) failed++;
+      else if (item.existing) updated++;
+      else added++;
+    });
+
+    sheet = { rows: [], mapping: [], plan: [] };
+    reloadFleet(App.selected);
+
+    if (!failed) { el('sheet-dialog').close(); return; }
+    el('sheet-status').textContent = added + ' added, ' + updated + ' updated, ' +
+      failed + ' could not be stored — this browser is blocking or out of storage.';
+  }
+
+  function downloadCsv() {
+    var text = window.Csv.fromFleet(window.FLEET, window.Vessel.toFields);
+    var status = el('file-status');
+    var blob = new Blob([text], { type: 'text/csv' });
+
+    var host = (window.claude && typeof window.claude.use === 'function')
+      ? window.claude.use('downloads') : null;
+    if (!host) {
+      status.textContent = saveBlobDirect(blob, 'fleet.csv')
+        ? 'Saving fleet.csv — edit it and drop it back on the console.'
+        : 'Downloads are blocked here.';
+      return;
+    }
+    status.textContent = 'Asking the viewer…';
+    Promise.resolve(host).then(function (downloads) {
+      if (!downloads) {
+        status.textContent = saveBlobDirect(blob, 'fleet.csv') ? 'Saving fleet.csv…' : '';
+        return;
+      }
+      return downloads.save({ filename: 'fleet.csv', data: blob }).then(function () {
+        status.textContent = 'Saved. Edit it and drop it back on the console.';
+      }).catch(function () { status.textContent = 'Save cancelled.'; });
+    }).catch(function () { saveBlobDirect(blob, 'fleet.csv'); });
+  }
+
   /* --- Importing a pile of photographs ------------------------------------- */
 
   // Each dropped file, once read: { file, dataUri, width, height, yachtId, error }
@@ -831,8 +1103,22 @@
       // Without this the browser navigates to the dropped file and the console
       // is simply gone, unsaved changes and all.
       e.preventDefault();
-      if (e.dataTransfer.files.length) beginImport(e.dataTransfer.files);
+      routeDroppedFiles(e.dataTransfer.files);
     });
+  }
+
+  // One drop target, two kinds of file. A spreadsheet among images is much more
+  // likely to be a mis-drop than a deliberate mixture, so the two are separated
+  // and whichever is present is handled.
+  function routeDroppedFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList);
+    if (!files.length) return;
+    var sheets = files.filter(function (f) {
+      return /\.(csv|tsv|xlsx|xls|numbers|ods)$/i.test(f.name) ||
+             /csv|excel|spreadsheet/i.test(f.type || '');
+    });
+    if (sheets.length) { readSheetFile(sheets[0]); return; }
+    beginImport(files);
   }
 
   function hasFiles(event) {
