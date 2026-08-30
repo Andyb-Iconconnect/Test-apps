@@ -119,15 +119,6 @@ window.CONFIG = {
   /* --- Console ----------------------------------------------------------- */
 
   // Settings for console.html, the desk tool. The office display ignores these.
-  fleetConsole: {
-    // A system older than this is flagged as worth a conversation. Split by
-    // line because they do not age at the same rate — a network core dates
-    // faster than a control system, which dates faster than cameras.
-    systemAgeYears: { AV: 8, IT: 6, Security: 8 },
-    // Anything falling due inside this window counts as needing attention.
-    attentionDays: 21
-  },
-
   /* --- Look -------------------------------------------------------------- */
 
   display: {

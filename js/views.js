@@ -74,7 +74,7 @@
       row.appendChild(state);
 
       var where = h('span', 'where', whereText(v));
-      if (d.stale && d.status !== 'refit') {
+      if (d.stale) {
         where.textContent += ' · ' + window.Fmt.age(v.fix && v.fix.at);
       }
       row.appendChild(where);
@@ -100,7 +100,10 @@
       [window.Fmt.tonnage(y.grossTonnage), ''],
       ['IMO ' + window.Fmt.text(y.imo), ''],
       [window.Fmt.text(y.classSociety), '']
-    ].forEach(function (pair) {
+    ].filter(function (pair) {
+      // A sparse record otherwise reads as a row of em dashes.
+      return pair[0] && pair[0].indexOf('—') === -1;
+    }).forEach(function (pair) {
       var span = h('span');
       var b = h('b', null, pair[0]);
       span.appendChild(b);
@@ -112,7 +115,6 @@
     renderPositionCard(v);
     renderWeatherCard(v);
     renderDaylightCard(v);
-    renderServiceCard(v);
   };
 
   function renderVisual(v) {
@@ -430,35 +432,12 @@
     return svg;
   }
 
-  function renderServiceCard(v) {
-    var s = v.yacht.service || {};
-    var host = el('spot-service');
-    host.textContent = '';
-
-    var grid = h('div', 'kv-grid');
-    var until = s.nextEventDate ? window.Fmt.until(s.nextEventDate) : null;
-    grid.appendChild(kv('Next', s.nextEvent || '—',
-      until ? until.text : null));
-    grid.appendChild(kv('Open jobs', String(s.openJobs != null ? s.openJobs : '—'),
-      s.urgentJobs ? s.urgentJobs + ' urgent' : null));
-    grid.appendChild(kv('Engineer', s.engineer || '—', null));
-    if (s.partsOnOrder && s.partsOnOrder.length) {
-      var next = s.partsOnOrder[0];
-      grid.appendChild(kv('Parts', String(s.partsOnOrder.length),
-        'next ' + window.Fmt.shortDate(next.eta) + ' · ' + next.port));
-    } else {
-      grid.appendChild(kv('Parts', 'None on order', null));
-    }
-    host.appendChild(grid);
-  }
-
   /* --- View 3: fleet statistics ------------------------------------------- */
 
   var STAT_STATES = [
     ['underway', 'Underway'],
     ['anchored', 'At anchor'],
     ['moored', 'Alongside'],
-    ['refit', 'In refit'],
     ['dark', 'No signal']
   ];
 
@@ -516,6 +495,7 @@
   // The facts an office actually repeats to each other, worked out from the same
   // data rather than typed in anywhere.
   function renderGlance() {
+    var summary = window.Store.summary();
     var vessels = window.Store.vessels;
     var host = el('glance-list');
     host.textContent = '';
@@ -539,14 +519,6 @@
       return (b.derived.distance7d || 0) - (a.derived.distance7d || 0);
     })[0];
 
-    var nextEvent = window.Store.upcoming().filter(function (i) { return i.kind === 'event'; })[0];
-
-    var engineers = {};
-    vessels.forEach(function (v) {
-      var e = v.yacht.service && v.yacht.service.engineer;
-      if (e) engineers[e] = (engineers[e] || 0) + 1;
-    });
-
     [
       ['Fleet length', totalLoa.toFixed(0) + ' m', vessels.length + ' vessels'],
       ['Average age', avgAge.toFixed(0) + ' yrs', 'since build'],
@@ -556,9 +528,8 @@
         moving ? window.Fmt.speed(moving.fix.sog) : null],
       ['Busiest this week', busiest ? busiest.yacht.name : '—',
         busiest ? window.Fmt.distance(busiest.derived.distance7d || 0) : null],
-      ['Next survey', nextEvent ? nextEvent.vessel.yacht.name : '—',
-        nextEvent ? window.Fmt.shortDate(nextEvent.date) + ' · ' + nextEvent.label : null],
-      ['Engineers assigned', String(Object.keys(engineers).length), 'across the fleet']
+      ['Reporting', summary.tracked + ' of ' + summary.total,
+        summary.tracked === summary.total ? 'all of them' : 'the rest are dark']
     ].forEach(function (row) {
       var line = h('div', 'glance-row');
       line.appendChild(h('div', 'g-label', row[0]));
@@ -622,9 +593,7 @@
 
     var summary = window.Store.summary();
     el('region-note').textContent =
-      summary.tracked + ' of ' + summary.total + ' reporting · ' +
-      summary.openJobs + ' open jobs' +
-      (summary.urgentJobs ? ' · ' + summary.urgentJobs + ' urgent' : '');
+      summary.tracked + ' of ' + summary.total + ' reporting';
   }
 
   window.Views = Views;

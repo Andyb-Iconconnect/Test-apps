@@ -26,13 +26,9 @@
  *                 not a likeness. Drop a photograph in and it takes over.
  *   discreet      true → never show an exact position for this yacht, regardless
  *                 of the global discreetMode setting
- *   service       your own operational data — the part no tracking site can show
- *   systems       what we have installed, by service line, with the date. Drives
- *                 both the aftersales "what am I supporting" view and the sales
- *                 "which boats are due an upgrade conversation" list
- *   contacts      who to reach aboard. Shown in the console only, never on the
- *                 office display
- *   demo          starting state for DEMO MODE only; ignored once live AIS is on
+ *   demo          starting state for DEMO MODE only; ignored once live AIS is on.
+ *                 Needs one of `route`, `position: [lon, lat]`, or `port` named
+ *                 from data/ports.js, or she never reaches the chart.
  * -------------------------------------------------------------------------- */
 
 window.FLEET = [
@@ -51,21 +47,6 @@ window.FLEET = [
     classSociety: null,
     photo: null,
     discreet: false,
-    service: {
-      nextEvent: null,
-      nextEventDate: null,
-      engineer: null,
-      openJobs: 0,
-      urgentJobs: 0,
-      partsOnOrder: [],
-      yardPeriod: null
-    },
-    systems: [
-      { line: 'AV',       product: null, installed: null },
-      { line: 'IT',       product: null, installed: null },
-      { line: 'Security', product: null, installed: null }
-    ],
-    contacts: [],
     // DEMO MODE ONLY, and invented — nothing here is a real position. Change
     // `port` to wherever she actually is (any name in data/ports.js), or give
     // `position: [lon, lat]`. The only way to show where she really is, is to

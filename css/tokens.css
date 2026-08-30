@@ -108,7 +108,6 @@
      alone; every dot on this board sits beside its own word. */
   --status-underway: #3596C8;   /* brand cyan, stepped into the dark band */
   --status-anchored: #39A566;   /* Security aqua, stepped for separation */
-  --status-refit:    #9A55A6;   /* AV purple, stepped */
   --status-moored:   #8FA3B5;   /* Terms silver, tinted to the ground */
   --status-dark:     #5E7488;
 

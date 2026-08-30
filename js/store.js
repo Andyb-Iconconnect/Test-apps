@@ -154,8 +154,6 @@
   };
 
   function deriveStatus(v, d, now) {
-    var yard = v.yacht.service && v.yacht.service.yardPeriod;
-    if (yard && withinPeriod(now, yard.from, yard.to)) return 'refit';
     if (!v.fix) return 'unknown';
     if (d.dark) return 'dark';
 
@@ -171,11 +169,6 @@
     return 'anchored';
   }
 
-  function withinPeriod(now, from, to) {
-    var f = new Date(from), t = new Date(to);
-    return !isNaN(f) && !isNaN(t) && now >= f && now <= t;
-  }
-
   function trackDistance(track, sinceMs) {
     var total = 0;
     for (var i = 1; i < track.length; i++) {
@@ -188,50 +181,19 @@
   /* --- Fleet-level rollups ----------------------------------------------- */
 
   Store.summary = function () {
-    var counts = { underway: 0, anchored: 0, moored: 0, refit: 0, dark: 0, unknown: 0 };
-    var tracked = 0, totalOpenJobs = 0, totalUrgent = 0, distance7d = 0;
+    var counts = { underway: 0, anchored: 0, moored: 0, dark: 0, unknown: 0 };
+    var tracked = 0, distance7d = 0;
     Store.vessels.forEach(function (v) {
       counts[v.derived.status] = (counts[v.derived.status] || 0) + 1;
       if (v.fix && !v.derived.dark) tracked++;
-      var s = v.yacht.service || {};
-      totalOpenJobs += s.openJobs || 0;
-      totalUrgent += s.urgentJobs || 0;
       distance7d += v.derived.distance7d || 0;
     });
     return {
       counts: counts,
       total: Store.vessels.length,
       tracked: tracked,
-      openJobs: totalOpenJobs,
-      urgentJobs: totalUrgent,
       distance7d: distance7d
     };
-  };
-
-  // Everything with a date attached, soonest first — drives the schedule board.
-  Store.upcoming = function () {
-    var items = [];
-    Store.vessels.forEach(function (v) {
-      var s = v.yacht.service;
-      if (!s) return;
-      if (s.nextEventDate) {
-        items.push({ vessel: v, kind: 'event', label: s.nextEvent, date: new Date(s.nextEventDate) });
-      }
-      (s.partsOnOrder || []).forEach(function (p) {
-        items.push({ vessel: v, kind: 'part', label: p.item, date: new Date(p.eta), port: p.port });
-      });
-      if (s.yardPeriod) {
-        items.push({
-          vessel: v, kind: 'yard',
-          label: s.yardPeriod.yard,
-          date: new Date(s.yardPeriod.to),
-          from: new Date(s.yardPeriod.from),
-          to: new Date(s.yardPeriod.to)
-        });
-      }
-    });
-    return items.filter(function (i) { return !isNaN(i.date); })
-                .sort(function (a, b) { return a.date - b.date; });
   };
 
   /* --- Persistence ------------------------------------------------------- */

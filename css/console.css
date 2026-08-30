@@ -228,7 +228,7 @@ html, body {
   all: unset;
   min-width: 0;
   display: grid;
-  grid-template-columns: 0.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 0.5rem minmax(0, 1fr);
   align-items: center;
   gap: 0.55rem;
   width: 100%;
@@ -257,20 +257,6 @@ html, body {
   color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.vessel-row .v-flagcount {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.3rem;
-  padding: 0.05rem 0.3rem;
-  border-radius: 0.25rem;
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-  background: var(--surface-3);
-  color: var(--text-secondary);
-}
-.vessel-row .v-flagcount.urgent { background: var(--critical); color: #fff; }
-
 .rail-foot {
   padding: 0.6rem 0.8rem;
   border-top: 1px solid var(--border);
@@ -337,7 +323,6 @@ html, body {
   padding: 0.7rem 0.75rem;
   min-width: 0;
 }
-.tile.alert { border-color: var(--critical); }
 .tile.warn { border-color: var(--warning); }
 
 .tile .label {
@@ -431,43 +416,6 @@ html, body {
 
 .field .f-value { font-size: 0.95rem; overflow-wrap: anywhere; }
 .field .f-sub { grid-column: 2; font-size: 0.78rem; color: var(--text-muted); }
-
-.chip {
-  display: inline-flex; align-items: center; gap: 0.3rem;
-  padding: 0.15rem 0.5rem; border-radius: 0.28rem;
-  border: 1px solid currentColor;
-  font-family: var(--font-display);
-  font-size: 0.7rem; letter-spacing: 0.05em; white-space: nowrap;
-}
-.chip.overdue { color: var(--critical); }
-.chip.due     { color: var(--warning); }
-.chip.ok      { color: var(--text-muted); }
-.chip.part    { color: var(--status-anchored); }
-.chip.yard    { color: var(--status-refit); }
-
-/* Systems: their own service lines, each labelled so colour is never alone */
-
-.systems { display: flex; flex-direction: column; gap: 0.55rem; }
-
-.system-row {
-  display: grid;
-  grid-template-columns: 5.2rem minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.8rem;
-}
-
-.line-badge {
-  display: inline-flex; align-items: center; gap: 0.35rem;
-  font-family: var(--font-display);
-  font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--text-secondary);
-}
-.line-badge .swatch { width: 0.55rem; height: 0.55rem; border-radius: 2px; flex: none; }
-
-.system-row .s-product { font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.system-row .s-age { font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
-.system-row .s-age.flag { color: var(--warning); }
-.system-row .s-age.none { color: var(--text-muted); }
 
 .empty { font-size: 0.88rem; color: var(--text-muted); padding: 0.4rem 0; }
 

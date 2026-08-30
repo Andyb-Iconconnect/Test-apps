@@ -191,18 +191,7 @@
       lastRefit: null,
       classSociety: null,
       photo: null,
-      discreet: !!fields.discreet,
-      service: {
-        nextEvent: fields.nextEvent || null,
-        nextEventDate: fields.nextEventDate || null,
-        engineer: fields.engineer || null,
-        openJobs: 0,
-        urgentJobs: 0,
-        partsOnOrder: [],
-        yardPeriod: null
-      },
-      systems: [],
-      contacts: []
+      discreet: !!fields.discreet
     };
   };
 
@@ -292,22 +281,7 @@
       '    yearBuilt: ' + js(r.yearBuilt) + ', lastRefit: ' + js(r.lastRefit) + ',',
       '    classSociety: ' + js(r.classSociety) + ',',
       '    photo: null,',
-      '    discreet: ' + js(r.discreet) + ',',
-      '    service: {',
-      '      nextEvent: ' + js(r.service.nextEvent) + ',',
-      '      nextEventDate: ' + js(r.service.nextEventDate) + ',',
-      '      engineer: ' + js(r.service.engineer) + ',',
-      '      openJobs: 0,',
-      '      urgentJobs: 0,',
-      '      partsOnOrder: [],',
-      '      yardPeriod: null',
-      '    },',
-      '    systems: [',
-      "      { line: 'AV',       product: null, installed: null },",
-      "      { line: 'IT',       product: null, installed: null },",
-      "      { line: 'Security', product: null, installed: null }",
-      '    ],',
-      '    contacts: []',
+      '    discreet: ' + js(r.discreet),
       '  }'
     ];
     return lines.join('\n');

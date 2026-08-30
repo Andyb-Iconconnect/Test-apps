@@ -142,12 +142,6 @@
     return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
   };
 
-  Fmt.shortDate = function (dateish) {
-    var d = dateish instanceof Date ? dateish : new Date(dateish);
-    if (isNaN(d)) return '—';
-    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(d);
-  };
-
   // "4 min ago", "3 h ago", "2 days ago" — the age of a fix is as important as
   // the fix, so this is used everywhere a position is shown.
   Fmt.age = function (fromDate, now) {
@@ -164,26 +158,12 @@
     return Math.round(days / 7) + ' weeks ago';
   };
 
-  // Countdown to a service date: "in 6 days", "overdue by 2 days".
-  Fmt.until = function (dateish, now) {
-    var d = dateish instanceof Date ? dateish : new Date(dateish);
-    if (isNaN(d)) return { text: '—', overdue: false, days: null };
-    var today = now || new Date();
-    var days = Math.round((d - today) / 86400000);
-    if (days < 0) return { text: 'overdue by ' + Math.abs(days) + (days === -1 ? ' day' : ' days'), overdue: true, days: days };
-    if (days === 0) return { text: 'today', overdue: false, days: 0 };
-    if (days === 1) return { text: 'tomorrow', overdue: false, days: 1 };
-    if (days < 60) return { text: 'in ' + days + ' days', overdue: false, days: days };
-    return { text: 'in ' + Math.round(days / 30) + ' months', overdue: false, days: days };
-  };
-
   /* --- Vessel state ------------------------------------------------------ */
 
   var STATUS_LABELS = {
     underway: 'Underway',
     anchored: 'At anchor',
     moored: 'Alongside',
-    refit: 'In refit',
     dark: 'No signal',
     unknown: 'Unknown'
   };

@@ -127,7 +127,7 @@
         for (var s = points; s >= 0; s--) {
           var p = stationaryPosition(a, now - s * 3600000 / 2);
           window.Store.applyFix(a.mmsi, {
-            lon: p[0], lat: p[1], cog: p[2], sog: a.kind === 'moored' || a.kind === 'refit' ? 0 : a.speed,
+            lon: p[0], lat: p[1], cog: p[2], sog: a.kind === 'moored' ? 0 : a.speed,
             heading: p[2], navStatus: navStatusFor(a.kind),
             at: new Date(now - s * 3600000 / 2)
           });
@@ -158,7 +158,7 @@
 
   function navStatusFor(kind) {
     if (kind === 'anchored') return 1;
-    if (kind === 'moored' || kind === 'refit') return 5;
+    if (kind === 'moored') return 5;
     return 0;
   }
 
@@ -190,7 +190,7 @@
   // A yacht at anchor yaws slowly around its ground tackle; one alongside does
   // not move at all. Both look more convincing than a frozen dot.
   function stationaryPosition(a, atMs) {
-    if (a.kind === 'moored' || a.kind === 'refit') {
+    if (a.kind === 'moored') {
       return [a.home[0], a.home[1], a.phase * 57.3 % 360];
     }
     var t = atMs / 1000 / 240 + a.phase;      // one slow swing every few minutes

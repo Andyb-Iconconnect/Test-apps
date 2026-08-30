@@ -1,11 +1,10 @@
 /* -----------------------------------------------------------------------------
- * console.js — the desk tool for sales and aftersales.
+ * console.js — the desk tool for looking a vessel up.
  *
  * Shares everything factual with the office display: the same store, the same
  * feeds, the same chart renderer, the same fleet file. What differs is the job.
- * The board is glanced at and never touched; this is opened in the morning and
- * worked through, so it leads with what needs attention rather than with where
- * everything is.
+ * The board is glanced at and never touched; this is opened when someone needs
+ * to answer "where is she", so it can be searched, filtered and read in full.
  *
  * Full detail is the point here, which is why discretion is a deliberate,
  * visible act rather than the default: the redacted install is index.html with
@@ -33,10 +32,6 @@
   function statusVar(status) {
     return 'var(--status-' + (status === 'unknown' ? 'dark' : status) + ')';
   }
-
-  // Their own service lines, in the charter's colours. Always beside the line's
-  // name, so the colour identifies rather than carries the meaning.
-  var LINE_COLOUR = { AV: '#93509E', IT: '#64A0C8', Security: '#80DED6' };
 
   /* --- Boot ---------------------------------------------------------------- */
 
@@ -165,95 +160,13 @@
     return svg;
   }
 
-  /* --- What needs attention ------------------------------------------------ */
-
-  // One model, used by the tiles, the rail badges and the attention list, so a
-  // yacht flagged in one place is flagged in all of them.
-  function attentionFor(v) {
-    var cfg = window.CONFIG.fleetConsole;
-    var now = new Date();
-    var s = v.yacht.service || {};
-    var items = [];
-
-    if (s.nextEventDate) {
-      var until = window.Fmt.until(s.nextEventDate, now);
-      if (until.overdue) {
-        items.push({ vessel: v, kind: 'event', severity: 'overdue', label: s.nextEvent,
-                     date: new Date(s.nextEventDate), note: until.text });
-      } else if (until.days != null && until.days <= cfg.attentionDays) {
-        items.push({ vessel: v, kind: 'event', severity: 'due', label: s.nextEvent,
-                     date: new Date(s.nextEventDate), note: until.text });
-      }
-    }
-
-    if (s.urgentJobs) {
-      items.push({ vessel: v, kind: 'job', severity: 'overdue',
-                   label: s.urgentJobs + (s.urgentJobs === 1 ? ' urgent job' : ' urgent jobs'),
-                   date: now, note: 'open' });
-    }
-
-    (s.partsOnOrder || []).forEach(function (part) {
-      var until = window.Fmt.until(part.eta, now);
-      if (until.days != null && until.days <= 7) {
-        items.push({ vessel: v, kind: 'part', severity: until.overdue ? 'overdue' : 'due',
-                     label: part.item, date: new Date(part.eta),
-                     note: until.text + ' · ' + part.port, port: part.port });
-      }
-    });
-
-    if (s.yardPeriod) {
-      var yardUntil = window.Fmt.until(s.yardPeriod.to, now);
-      if (yardUntil.days != null && yardUntil.days <= cfg.attentionDays) {
-        items.push({ vessel: v, kind: 'yard', severity: 'due',
-                     label: s.yardPeriod.yard + ' — yard period ends',
-                     date: new Date(s.yardPeriod.to), note: yardUntil.text });
-      }
-    }
-
-    return items;
-  }
-
-  function allAttention() {
-    var out = [];
-    window.Store.vessels.forEach(function (v) { out = out.concat(attentionFor(v)); });
-    var rank = { overdue: 0, due: 1 };
-    return out.sort(function (a, b) {
-      return (rank[a.severity] - rank[b.severity]) || (a.date - b.date);
-    });
-  }
-
-  // Systems past the age at which they are worth a conversation. The sales list.
-  function upgradeCandidates() {
-    var thresholds = window.CONFIG.fleetConsole.systemAgeYears;
-    var now = Date.now();
-    var out = [];
-    window.Store.vessels.forEach(function (v) {
-      (v.yacht.systems || []).forEach(function (sys) {
-        if (!sys.installed) return;
-        var years = (now - new Date(sys.installed)) / 31557600000;
-        var limit = thresholds[sys.line];
-        if (limit != null && years >= limit) {
-          out.push({ vessel: v, system: sys, years: years, limit: limit });
-        }
-      });
-    });
-    return out.sort(function (a, b) { return b.years - a.years; });
-  }
-
-  function systemAge(sys) {
-    if (!sys.installed) return null;
-    return (Date.now() - new Date(sys.installed)) / 31557600000;
-  }
-
   /* --- Rail ---------------------------------------------------------------- */
 
   var FILTERS = [
     ['all', 'All'],
-    ['attention', 'Needs attention'],
     ['underway', 'Underway'],
     ['anchored', 'At anchor'],
     ['moored', 'Alongside'],
-    ['refit', 'In refit'],
     ['dark', 'No signal']
   ];
 
@@ -265,7 +178,7 @@
       button.type = 'button';
       button.dataset.filter = f[0];
       button.setAttribute('aria-pressed', String(App.filter === f[0]));
-      if (f[0] !== 'all' && f[0] !== 'attention') {
+      if (f[0] !== 'all') {
         var swatch = h('span', 'swatch');
         swatch.style.background = statusVar(f[0]);
         button.appendChild(swatch);
@@ -282,7 +195,6 @@
 
   function matchesFilter(v, filter) {
     if (filter === 'all') return true;
-    if (filter === 'attention') return attentionFor(v).length > 0;
     return v.derived.status === filter;
   }
 
@@ -292,9 +204,7 @@
     var hay = [
       y.name, y.prefix, y.flag, y.flagCode, y.callSign, y.builder, y.classSociety,
       String(y.imo), String(y.mmsi),
-      v.derived.port ? v.derived.port.name : '',
-      y.service ? y.service.engineer : '',
-      (y.systems || []).map(function (s) { return s.line + ' ' + (s.product || ''); }).join(' ')
+      v.derived.port ? v.derived.port.name : ''
     ].join(' ').toLowerCase();
     return hay.indexOf(App.query) !== -1;
   }
@@ -303,8 +213,7 @@
     return window.Store.vessels.filter(function (v) {
       return matchesFilter(v, App.filter) && matchesQuery(v);
     }).sort(function (a, b) {
-      var d = attentionFor(b).length - attentionFor(a).length;
-      return d || a.yacht.name.localeCompare(b.yacht.name);
+      return a.yacht.name.localeCompare(b.yacht.name);
     });
   }
 
@@ -324,9 +233,6 @@
     var list = visibleVessels();
 
     list.forEach(function (v) {
-      var attention = attentionFor(v);
-      var urgent = attention.some(function (a) { return a.severity === 'overdue'; });
-
       var row = h('button', 'vessel-row');
       row.type = 'button';
       row.dataset.yachtId = v.yacht.id;
@@ -342,12 +248,6 @@
       var nameCell = h('span', 'v-name', v.yacht.name);
       if (v.yacht.addedLocally) nameCell.appendChild(h('span', 'local-dot'));
       row.appendChild(nameCell);
-
-      if (attention.length) {
-        row.appendChild(h('span', 'v-flagcount' + (urgent ? ' urgent' : ''), String(attention.length)));
-      } else {
-        row.appendChild(h('span'));
-      }
 
       row.appendChild(h('span', 'v-where', whereText(v)));
       host.appendChild(row);
@@ -391,94 +291,69 @@
     return null;
   }
 
+  var OVERVIEW_STATES = [
+    ['underway', 'Underway'],
+    ['anchored', 'At anchor'],
+    ['moored', 'Alongside'],
+    ['dark', 'No signal']
+  ];
+
   function renderOverview(host) {
-    var attention = allAttention();
-    var overdue = attention.filter(function (a) { return a.severity === 'overdue'; });
     var summary = window.Store.summary();
-    var upgrades = upgradeCandidates();
-    var parts = attention.filter(function (a) { return a.kind === 'part'; });
 
     var tiles = h('div', 'tile-row');
-    tiles.appendChild(tile('Overdue', overdue.length, overdue.length ? 'needs action now' : 'nothing overdue',
-      overdue.length ? 'alert' : ''));
-    tiles.appendChild(tile('Due soon', attention.length - overdue.length,
-      'within ' + window.CONFIG.fleetConsole.attentionDays + ' days',
-      (attention.length - overdue.length) ? 'warn' : ''));
-    tiles.appendChild(tile('Open jobs', summary.openJobs,
-      summary.urgentJobs ? summary.urgentJobs + ' urgent' : 'none urgent'));
-    tiles.appendChild(tile('Parts landing', parts.length, 'within 7 days'));
-    tiles.appendChild(tile('Upgrade leads', upgrades.length, 'systems past their age'));
+    OVERVIEW_STATES.forEach(function (pair) {
+      tiles.appendChild(tile(pair[1], summary.counts[pair[0]] || 0,
+        'of ' + summary.total, pair[0] === 'dark' && summary.counts.dark ? 'warn' : ''));
+    });
+    tiles.appendChild(tile('Reporting', summary.tracked + ' of ' + summary.total,
+      summary.tracked === summary.total ? 'all of them' : 'the rest are dark',
+      summary.tracked < summary.total ? 'warn' : ''));
     host.appendChild(tiles);
 
-    // Needs attention
+    // The whole fleet in one table: where each one is, and how far off she is.
+    // The rail beside this is filtered and searched; this is not.
     var panel = h('div', 'panel');
-    panel.appendChild(h('div', 'pane-title', 'Needs attention'));
+    panel.appendChild(h('div', 'pane-title', 'Where the fleet is'));
     var rows = h('div', 'rows');
-    if (!attention.length) {
-      rows.appendChild(h('div', 'empty', 'Nothing outstanding across the fleet.'));
+
+    var byDistance = window.Store.vessels.slice().sort(function (a, b) {
+      var da = a.derived.fromOffice, db = b.derived.fromOffice;
+      if (da == null && db == null) return a.yacht.name.localeCompare(b.yacht.name);
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da - db;
+    });
+
+    if (!byDistance.length) {
+      rows.appendChild(h('div', 'empty', 'No vessels in fleet.js.'));
     }
-    attention.forEach(function (item) {
-      rows.appendChild(attentionRow(item));
+    byDistance.forEach(function (v) {
+      var d = v.derived;
+      var row = h('div', 'row clickable');
+      row.dataset.yachtId = v.yacht.id;
+
+      var main = h('div', 'r-main', v.yacht.name);
+      row.appendChild(main);
+
+      var chip = h('span', 'state-pill');
+      chip.style.color = statusVar(d.status);
+      var swatch = h('span', 'swatch');
+      swatch.style.background = statusVar(d.status);
+      chip.appendChild(swatch);
+      chip.appendChild(h('span', null, window.Fmt.statusLabel(d.status)));
+      row.appendChild(chip);
+
+      var sub = whereText(v);
+      if (d.fromOffice != null) {
+        sub += '  ·  ' + window.Fmt.distance(d.fromOffice) + ' from ' + window.CONFIG.office.label;
+      }
+      sub += '  ·  fix ' + window.Fmt.age(v.fix && v.fix.at);
+      row.appendChild(h('div', 'r-sub', sub));
+      rows.appendChild(row);
     });
     panel.appendChild(rows);
     host.appendChild(panel);
-
-    // Upgrade opportunities
-    var sales = h('div', 'panel');
-    sales.appendChild(h('div', 'pane-title', 'Upgrade conversations'));
-    var salesRows = h('div', 'rows');
-    if (!upgrades.length) {
-      salesRows.appendChild(h('div', 'empty', 'Every installed system is inside its expected life.'));
-    }
-    upgrades.forEach(function (u) {
-      var row = h('div', 'row clickable');
-      row.dataset.yachtId = u.vessel.yacht.id;
-      var main = h('div', 'r-main');
-      main.appendChild(lineBadge(u.system.line));
-      main.appendChild(document.createTextNode('  ' + u.vessel.yacht.name));
-      row.appendChild(main);
-      var chip = h('span', 'chip due');
-      chip.appendChild(h('span', null, u.years.toFixed(0) + ' yrs'));
-      row.appendChild(chip);
-      row.appendChild(h('div', 'r-sub',
-        (u.system.product || 'System') + ' · installed ' + window.Fmt.shortDate(u.system.installed) +
-        ' · past ' + u.limit + '-year mark'));
-      salesRows.appendChild(row);
-    });
-    sales.appendChild(salesRows);
-    host.appendChild(sales);
-  }
-
-  function attentionRow(item) {
-    var row = h('div', 'row clickable');
-    row.dataset.yachtId = item.vessel.yacht.id;
-    row.appendChild(h('div', 'r-main', item.label));
-    var chipClass = item.severity === 'overdue' ? 'overdue'
-                  : item.kind === 'part' ? 'part'
-                  : item.kind === 'yard' ? 'yard' : 'due';
-    var chip = h('span', 'chip ' + chipClass);
-    chip.appendChild(h('span', null, glyphFor(item.kind, item.severity)));
-    chip.appendChild(h('span', null, item.note));
-    row.appendChild(chip);
-
-    var sub = window.Fmt.fullName(item.vessel.yacht);
-    if (item.kind === 'part' && item.port) {
-      var d = item.vessel.derived;
-      sub += d.port && d.port.name === item.port
-        ? ' · already at ' + item.port
-        : ' · currently ' + whereText(item.vessel);
-    } else {
-      sub += ' · ' + whereText(item.vessel);
-    }
-    row.appendChild(h('div', 'r-sub', sub));
-    return row;
-  }
-
-  function glyphFor(kind, severity) {
-    if (severity === 'overdue') return '!';
-    if (kind === 'part') return '⬤';
-    if (kind === 'yard') return '⚓';
-    return '▲';
   }
 
   function tile(label, figure, note, variant) {
@@ -489,20 +364,6 @@
     return node;
   }
 
-  function lineBadge(line) {
-    var badge = h('span', 'line-badge');
-    var swatch = h('span', 'swatch');
-    swatch.style.background = LINE_COLOUR[line] || 'var(--text-muted)';
-    badge.appendChild(swatch);
-    badge.appendChild(document.createTextNode(line));
-    return badge;
-  }
-
-  /* --- Vessel detail ------------------------------------------------------- */
-
-  // Her photograph if fleet.js carries one, otherwise a drawn profile. The band
-  // is proportioned to the rig, because a sloop's profile is a tall picture
-  // where a motor yacht's is a wide one.
   function vesselVisual(y) {
     var band = h('div', 'detail-profile');
     // A drawing knows its own proportions and the band takes them. A photograph
@@ -531,7 +392,7 @@
   }
 
   function renderDetail(host, v) {
-    var y = v.yacht, d = v.derived, s = y.service || {};
+    var y = v.yacht, d = v.derived;
 
     var head = h('div', 'detail-head');
     var titleBlock = h('div');
@@ -554,7 +415,11 @@
      [window.Fmt.year(y.yearBuilt), 'built'], [window.Fmt.year(y.lastRefit), 'refit'],
      ['IMO ' + window.Fmt.text(y.imo), ''], ['MMSI ' + window.Fmt.text(y.mmsi), ''],
      [window.Fmt.text(y.classSociety), ''], [window.Fmt.text(y.builder), '']
-    ].forEach(function (pair) {
+    ].filter(function (pair) {
+      // A sparse record otherwise reads as a row of em dashes. Show what is
+      // known and say nothing about the rest.
+      return pair[0] && pair[0].indexOf('—') === -1;
+    }).forEach(function (pair) {
       var span = h('span');
       span.appendChild(h('b', null, pair[0]));
       if (pair[1]) span.appendChild(document.createTextNode(' ' + pair[1]));
@@ -605,85 +470,49 @@
       host.appendChild(localPanel);
     }
 
-    // Attention for this vessel first — it is why you opened the record.
-    var attention = attentionFor(v);
-    if (attention.length) {
-      var alertPanel = h('div', 'panel');
-      alertPanel.appendChild(h('div', 'pane-title', 'Needs attention'));
-      var alertRows = h('div', 'rows');
-      attention.forEach(function (item) {
-        var row = h('div', 'row');
-        row.appendChild(h('div', 'r-main', item.label));
-        var chip = h('span', 'chip ' + (item.severity === 'overdue' ? 'overdue' : 'due'));
-        chip.appendChild(h('span', null, glyphFor(item.kind, item.severity)));
-        chip.appendChild(h('span', null, item.note));
-        row.appendChild(chip);
-        alertRows.appendChild(row);
-      });
-      alertPanel.appendChild(alertRows);
-      host.appendChild(alertPanel);
-    }
+    // The position, in full. The chart pane shows the same fix as a picture and
+    // narrow layouts drop that pane entirely, so the numbers live here.
+    var posPanel = h('div', 'panel');
+    posPanel.appendChild(h('div', 'pane-title', 'Position'));
+    var posRows = h('div', 'rows');
 
-    // Service
-    var servicePanel = h('div', 'panel');
-    servicePanel.appendChild(h('div', 'pane-title', 'Service'));
-    var serviceRows = h('div', 'rows');
-    serviceRows.appendChild(kvRow('Next event', s.nextEvent || '—',
-      s.nextEventDate ? window.Fmt.date(s.nextEventDate) + ' · ' + window.Fmt.until(s.nextEventDate).text : null));
-    serviceRows.appendChild(kvRow('Open jobs', String(s.openJobs != null ? s.openJobs : '—'),
-      s.urgentJobs ? s.urgentJobs + ' urgent' : null));
-    serviceRows.appendChild(kvRow('Engineer', s.engineer || '—', null));
-    if (s.yardPeriod) {
-      serviceRows.appendChild(kvRow('Yard period', s.yardPeriod.yard,
-        window.Fmt.shortDate(s.yardPeriod.from) + ' – ' + window.Fmt.shortDate(s.yardPeriod.to)));
-    }
-    (s.partsOnOrder || []).forEach(function (part) {
-      serviceRows.appendChild(kvRow('Part on order', part.item,
-        window.Fmt.shortDate(part.eta) + ' · ' + part.port));
-    });
-    if (!(s.partsOnOrder || []).length) {
-      serviceRows.appendChild(kvRow('Parts on order', 'None', null));
-    }
-    servicePanel.appendChild(serviceRows);
-    host.appendChild(servicePanel);
-
-    // Installed systems
-    var sysPanel = h('div', 'panel');
-    sysPanel.appendChild(h('div', 'pane-title', 'Installed systems'));
-    var sysList = h('div', 'systems');
-    var thresholds = window.CONFIG.fleetConsole.systemAgeYears;
-    (y.systems || []).forEach(function (sys) {
-      var row = h('div', 'system-row');
-      row.appendChild(lineBadge(sys.line));
-      row.appendChild(h('div', 's-product', sys.product || 'Not installed'));
-      var age = systemAge(sys);
-      var limit = thresholds[sys.line];
-      var ageNode;
-      if (age == null) {
-        ageNode = h('div', 's-age none', '—');
-      } else {
-        var flagged = limit != null && age >= limit;
-        ageNode = h('div', 's-age' + (flagged ? ' flag' : ''),
-          age.toFixed(1) + ' yrs' + (flagged ? '  ▲' : ''));
-        ageNode.title = 'Installed ' + window.Fmt.date(sys.installed);
+    if (d.lat == null) {
+      posRows.appendChild(h('div', 'empty', 'This vessel has never reported to this console.'));
+    } else {
+      posRows.appendChild(kvRow('Coordinates',
+        d.discreet ? 'Withheld' : window.Fmt.latitude(d.lat) + '   ' + window.Fmt.longitude(d.lon),
+        d.discreet ? 'discreet — set on this vessel, or on the whole board' : null));
+      posRows.appendChild(kvRow('Nearest port', whereText(v), null));
+      posRows.appendChild(kvRow('Last fix', window.Fmt.age(v.fix && v.fix.at),
+        v.fix && v.fix.at ? window.Fmt.date(v.fix.at) : null));
+      if (v.fix && !d.discreet) {
+        posRows.appendChild(kvRow('Speed & course',
+          v.fix.sog != null ? window.Fmt.speed(v.fix.sog) : '—',
+          v.fix.cog != null ? 'course ' + window.Fmt.bearing(v.fix.cog) : null));
       }
-      row.appendChild(ageNode);
-      sysList.appendChild(row);
-    });
-    if (!(y.systems || []).length) sysList.appendChild(h('div', 'empty', 'No systems recorded.'));
-    sysPanel.appendChild(sysList);
-    host.appendChild(sysPanel);
+      posRows.appendChild(kvRow('From ' + window.CONFIG.office.label,
+        d.fromOffice != null ? window.Fmt.distance(d.fromOffice) : '—', null));
+      posRows.appendChild(kvRow('Run, 24 h',
+        d.distance24h > 0.5 ? window.Fmt.distance(d.distance24h) : '—', null));
+      posRows.appendChild(kvRow('Run, 7 days',
+        d.distance7d > 0.5 ? window.Fmt.distance(d.distance7d) : '—', null));
+    }
+    posPanel.appendChild(posRows);
+    host.appendChild(posPanel);
 
-    // Contacts — console only, never on the office display.
-    if ((y.contacts || []).length) {
-      var contactPanel = h('div', 'panel');
-      contactPanel.appendChild(h('div', 'pane-title', 'Aboard'));
-      var contactRows = h('div', 'rows');
-      y.contacts.forEach(function (c) {
-        contactRows.appendChild(kvRow(c.role, c.name, c.email || c.phone || null));
-      });
-      contactPanel.appendChild(contactRows);
-      host.appendChild(contactPanel);
+    // What the crew have typed into the AIS static message, where they have.
+    if (v.voyage && !d.discreet && (v.voyage.destination || v.voyage.eta || v.voyage.draught)) {
+      var voyPanel = h('div', 'panel');
+      voyPanel.appendChild(h('div', 'pane-title', 'Voyage, as reported'));
+      var voyRows = h('div', 'rows');
+      voyRows.appendChild(kvRow('Bound for', v.voyage.destination || '—', null));
+      voyRows.appendChild(kvRow('ETA', v.voyage.eta || '—', null));
+      voyRows.appendChild(kvRow('Draught',
+        v.voyage.draught ? v.voyage.draught.toFixed(1) + ' m' : '—', null));
+      voyPanel.appendChild(voyRows);
+      voyPanel.appendChild(h('div', 'sheet-note',
+        'Typed by the crew, not measured. Treat it as intent rather than fact.'));
+      host.appendChild(voyPanel);
     }
 
     var danger = h('div', 'danger-zone');
@@ -733,7 +562,7 @@
       var grid = h('div', 'readout-grid');
       grid.appendChild(readoutCell('Reporting', summary.tracked + ' of ' + summary.total));
       grid.appendChild(readoutCell('Underway', String(summary.counts.underway || 0)));
-      grid.appendChild(readoutCell('In refit', String(summary.counts.refit || 0)));
+      grid.appendChild(readoutCell('Alongside', String(summary.counts.moored || 0)));
       grid.appendChild(readoutCell('Run, 7 days', window.Fmt.distance(summary.distance7d)));
       host.appendChild(grid);
       return;

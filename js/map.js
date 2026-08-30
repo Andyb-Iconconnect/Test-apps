@@ -74,7 +74,6 @@
       underway: v('--status-underway', '#3987e5'),
       anchored: v('--status-anchored', '#199e70'),
       moored: v('--status-moored', '#8b98a8'),
-      refit: v('--status-refit', '#d95926'),
       dark: v('--status-dark', '#6c7a8c'),
       label: v('--text-primary', '#ffffff'),
       labelDim: v('--text-secondary', '#c3c2b7'),
@@ -532,7 +531,7 @@
   }
 
   function rank(status) {
-    return { moored: 0, refit: 1, dark: 2, anchored: 3, underway: 4, unknown: 0 }[status] || 0;
+    return { moored: 0, dark: 2, anchored: 3, underway: 4, unknown: 0 }[status] || 0;
   }
 
   // With the world repeating, pick the copy of this longitude nearest the centre

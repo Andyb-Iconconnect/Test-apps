@@ -6,9 +6,9 @@
  * contents; they live here now so that swapping fleet.js for your own boats
  * cannot break the test suite. Nothing in the apps loads this file.
  *
- * It is also the fullest example of a record there is — every optional field
- * populated, a sailing yacht, a discreet yacht, and each shape of `demo` block.
- * Worth copying from when you add a vessel by hand.
+ * It is also the fullest example of a record there is — every field populated,
+ * a sailing yacht, a discreet yacht, and each shape of `demo` block. Worth
+ * copying from when you add a vessel by hand.
  * -------------------------------------------------------------------------- */
 
 window.FLEET_SAMPLE = [
@@ -27,29 +27,6 @@ window.FLEET_SAMPLE = [
     classSociety: "Lloyd's Register",
     photo: null,
     discreet: false,
-    service: {
-      nextEvent: 'Annual class survey',
-      nextEventDate: '2026-10-14',
-      engineer: 'A. Placeholder',
-      openJobs: 3,
-      urgentJobs: 0,
-      partsOnOrder: [
-        { item: 'Stabiliser seal kit', eta: '2026-09-04', port: 'Palma' }
-      ],
-      yardPeriod: null
-    },
-    // What we have installed, along our own service lines. This is the table
-    // that answers both "what am I supporting on this boat" and "which boats
-    // are due a conversation" — the console flags anything past its age.
-    systems: [
-      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2024-06' },
-      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2024-06' },
-      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2019-04' }
-    ],
-    contacts: [
-      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
-      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
-    ],
     demo: {
       status: 'underway',
       speed: 12.4,
@@ -75,27 +52,6 @@ window.FLEET_SAMPLE = [
     classSociety: 'RINA',
     photo: null,
     discreet: false,
-    service: {
-      nextEvent: 'Warranty inspection',
-      nextEventDate: '2026-09-08',
-      engineer: 'B. Placeholder',
-      openJobs: 1,
-      urgentJobs: 0,
-      partsOnOrder: [],
-      yardPeriod: null
-    },
-    // What we have installed, along our own service lines. This is the table
-    // that answers both "what am I supporting on this boat" and "which boats
-    // are due a conversation" — the console flags anything past its age.
-    systems: [
-      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2021-03' },
-      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2021-03' },
-      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2021-03' }
-    ],
-    contacts: [
-      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
-      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
-    ],
     demo: {
       status: 'anchored',
       speed: 0.2,
@@ -120,32 +76,8 @@ window.FLEET_SAMPLE = [
     classSociety: "Lloyd's Register",
     photo: null,
     discreet: false,
-    service: {
-      nextEvent: 'Five-yearly special survey',
-      nextEventDate: '2026-11-30',
-      engineer: 'C. Placeholder',
-      openJobs: 6,
-      urgentJobs: 1,
-      partsOnOrder: [
-        { item: 'Main engine injector set', eta: '2026-09-12', port: 'Antigua' },
-        { item: 'Tender davit ram', eta: '2026-09-19', port: 'Antigua' }
-      ],
-      yardPeriod: null
-    },
     // Demonstrates the state you WILL see in real life: a yacht mid-ocean with
     // no terrestrial AIS coverage. The board shows its last known fix and ages it.
-    // What we have installed, along our own service lines. This is the table
-    // that answers both "what am I supporting on this boat" and "which boats
-    // are due a conversation" — the console flags anything past its age.
-    systems: [
-      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2023-09' },
-      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2016-02' },
-      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2023-09' }
-    ],
-    contacts: [
-      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
-      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
-    ],
     demo: {
       status: 'dark',
       speed: 15.1,
@@ -172,27 +104,6 @@ window.FLEET_SAMPLE = [
     classSociety: 'Bureau Veritas',
     photo: null,
     discreet: false,
-    service: {
-      nextEvent: 'Tender service',
-      nextEventDate: '2026-09-02',
-      engineer: 'A. Placeholder',
-      openJobs: 2,
-      urgentJobs: 0,
-      partsOnOrder: [],
-      yardPeriod: null
-    },
-    // What we have installed, along our own service lines. This is the table
-    // that answers both "what am I supporting on this boat" and "which boats
-    // are due a conversation" — the console flags anything past its age.
-    systems: [
-      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2022-05' },
-      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2022-05' },
-      { line: 'Security', product: null, installed: null }
-    ],
-    contacts: [
-      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
-      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
-    ],
     demo: {
       status: 'moored',
       speed: 0,
@@ -219,27 +130,6 @@ window.FLEET_SAMPLE = [
     // Marked discreet: this one is never shown at an exact position, even when
     // the rest of the board is in full-detail mode.
     discreet: true,
-    service: {
-      nextEvent: 'Interim survey',
-      nextEventDate: '2027-01-22',
-      engineer: 'D. Placeholder',
-      openJobs: 0,
-      urgentJobs: 0,
-      partsOnOrder: [],
-      yardPeriod: null
-    },
-    // What we have installed, along our own service lines. This is the table
-    // that answers both "what am I supporting on this boat" and "which boats
-    // are due a conversation" — the console flags anything past its age.
-    systems: [
-      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2025-04' },
-      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2025-04' },
-      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2018-07' }
-    ],
-    contacts: [
-      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
-      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
-    ],
     demo: {
       status: 'underway',
       speed: 10.8,
@@ -264,31 +154,8 @@ window.FLEET_SAMPLE = [
     classSociety: 'DNV',
     photo: null,
     discreet: false,
-    service: {
-      nextEvent: 'Refit — sea trials',
-      nextEventDate: '2026-10-03',
-      engineer: 'E. Placeholder',
-      openJobs: 24,
-      urgentJobs: 2,
-      partsOnOrder: [
-        { item: 'Bow thruster bearing', eta: '2026-09-01', port: 'Rotterdam' }
-      ],
-      yardPeriod: { yard: 'Placeholder Refit Yard', from: '2026-06-15', to: '2026-10-10' }
-    },
-    // What we have installed, along our own service lines. This is the table
-    // that answers both "what am I supporting on this boat" and "which boats
-    // are due a conversation" — the console flags anything past its age.
-    systems: [
-      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2026-07' },
-      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2014-11' },
-      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2026-07' }
-    ],
-    contacts: [
-      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
-      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
-    ],
     demo: {
-      status: 'refit',
+      status: 'moored',
       speed: 0,
       position: [4.3900, 51.9050]    // Rotterdam
     }
@@ -309,29 +176,6 @@ window.FLEET_SAMPLE = [
     classSociety: 'Bureau Veritas',
     photo: null,
     discreet: false,
-    service: {
-      nextEvent: 'Rig inspection',
-      nextEventDate: '2026-09-26',
-      engineer: 'C. Placeholder',
-      openJobs: 4,
-      urgentJobs: 0,
-      partsOnOrder: [
-        { item: 'Furler bearing set', eta: '2026-09-05', port: 'St Barths' }
-      ],
-      yardPeriod: null
-    },
-    // What we have installed, along our own service lines. This is the table
-    // that answers both "what am I supporting on this boat" and "which boats
-    // are due a conversation" — the console flags anything past its age.
-    systems: [
-      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2020-08' },
-      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2020-08' },
-      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2020-08' }
-    ],
-    contacts: [
-      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
-      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
-    ],
     demo: {
       status: 'underway',
       speed: 8.9,
@@ -356,27 +200,6 @@ window.FLEET_SAMPLE = [
     classSociety: 'RINA',
     photo: null,
     discreet: false,
-    service: {
-      nextEvent: 'Annual class survey',
-      nextEventDate: '2026-08-31',
-      engineer: 'B. Placeholder',
-      openJobs: 5,
-      urgentJobs: 1,
-      partsOnOrder: [],
-      yardPeriod: null
-    },
-    // What we have installed, along our own service lines. This is the table
-    // that answers both "what am I supporting on this boat" and "which boats
-    // are due a conversation" — the console flags anything past its age.
-    systems: [
-      { line: 'AV',     product: 'Placeholder control & entertainment', installed: '2023-02' },
-      { line: 'IT',     product: 'Placeholder network & Wi-Fi core', installed: '2023-02' },
-      { line: 'Security', product: 'Placeholder CCTV & access control', installed: '2023-02' }
-    ],
-    contacts: [
-      { role: 'Captain', name: 'Placeholder Name', email: 'captain@example.invalid' },
-      { role: 'Chief Engineer', name: 'Placeholder Name', email: 'engineer@example.invalid' }
-    ],
     demo: {
       status: 'anchored',
       speed: 0.3,

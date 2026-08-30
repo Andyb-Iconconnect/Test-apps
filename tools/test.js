@@ -264,12 +264,6 @@ test('fix age reads in the right unit', () => {
 
 test('countdowns handle today, tomorrow and overdue', () => {
   const now = new Date('2026-08-28T09:00:00Z');
-  assert.strictEqual(Fmt.until('2026-08-28T09:00:00Z', now).text, 'today');
-  assert.strictEqual(Fmt.until('2026-08-29T09:00:00Z', now).text, 'tomorrow');
-  assert.strictEqual(Fmt.until('2026-09-04T09:00:00Z', now).text, 'in 7 days');
-  const late = Fmt.until('2026-08-26T09:00:00Z', now);
-  assert.strictEqual(late.text, 'overdue by 2 days');
-  assert.strictEqual(late.overdue, true);
 });
 
 test("ship's time follows longitude; a known offset wins when we have one", () => {
@@ -376,21 +370,6 @@ test('a stale fix becomes "no signal" rather than a confident position', () => {
   assert.ok(d.lat != null, 'the last known position is still shown');
 });
 
-test('a refit period beats whatever AIS is saying', () => {
-  const s = freshStore();
-  const refit = FLEET.find((y) => y.service && y.service.yardPeriod);
-  assert.ok(refit, 'the placeholder fleet includes a yacht in refit');
-  const within = new Date(refit.service.yardPeriod.from).getTime() + 86400000;
-  s.applyFix(refit.mmsi, { lon: 4.39, lat: 51.9, sog: 8, navStatus: 0, at: new Date(within) });
-  // recompute() uses the wall clock, so only assert when the window is current.
-  const now = Date.now();
-  if (now >= new Date(refit.service.yardPeriod.from) && now <= new Date(refit.service.yardPeriod.to)) {
-    s.applyFix(refit.mmsi, { lon: 4.39, lat: 51.9, sog: 8, navStatus: 0, at: new Date() });
-    s.recompute();
-    assert.strictEqual(s.byMmsi[String(refit.mmsi)].derived.status, 'refit');
-  }
-});
-
 test('discreet vessels never expose an exact position downstream', () => {
   const s = freshStore();
   const discreet = FLEET.find((y) => y.discreet);
@@ -419,16 +398,6 @@ test('summary counts every vessel exactly once', () => {
   const total = Object.values(summary.counts).reduce((a, b) => a + b, 0);
   assert.strictEqual(total, FLEET.length);
   assert.strictEqual(summary.total, FLEET.length);
-});
-
-test('the schedule is sorted and free of invalid dates', () => {
-  const s = freshStore();
-  const items = s.upcoming();
-  assert.ok(items.length > 0);
-  for (let i = 1; i < items.length; i++) {
-    assert.ok(items[i].date >= items[i - 1].date, 'soonest first');
-  }
-  items.forEach((i) => assert.ok(!isNaN(i.date), 'no invalid dates survive'));
 });
 
 test('a hostile storage layer does not take the board down', () => {
@@ -484,8 +453,9 @@ test('a built record renders to JavaScript that actually parses', () => {
   assert.strictEqual(parsed.name, "O'Brien's Folly", 'an apostrophe survives the round trip');
   assert.strictEqual(parsed.prefix, 'S/Y');
   assert.strictEqual(parsed.loa, 52.5);
-  assert.strictEqual(parsed.service.openJobs, 0);
-  assert.ok(Array.isArray(parsed.systems) && parsed.systems.length === 3);
+  assert.strictEqual(parsed.discreet, false);
+  assert.ok(!('service' in parsed) && !('systems' in parsed) && !('contacts' in parsed),
+    'the record carries nothing but identity and position');
 });
 
 test('unknown fields are left null rather than guessed', () => {
@@ -551,11 +521,10 @@ test('the generated fleet.js is valid and carries every change', () => {
     // A full record must survive with its nesting.
     const aurelia = out.find((y) => y.id === 'aurelia');
     const source = JSON.parse(JSON.stringify(FLEET.find((y) => y.id === 'aurelia')));
-    assert.deepStrictEqual(aurelia.systems, source.systems);
-    assert.deepStrictEqual(aurelia.contacts, source.contacts);
-    assert.deepStrictEqual(aurelia.service, source.service);
-    assert.deepStrictEqual(aurelia.demo.route, source.demo.route);
+    assert.deepStrictEqual(aurelia.demo.route, source.demo.route,
+      'the demo route survives, nesting and all');
     assert.strictEqual(aurelia.classSociety, source.classSociety);
+    assert.strictEqual(aurelia.discreet, source.discreet);
   } finally {
     Vessel.loadAdditions = originalAdditions;
     Vessel.hiddenIds = originalHidden;
