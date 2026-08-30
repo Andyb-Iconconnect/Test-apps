@@ -77,26 +77,34 @@
 
   /* Chart. Land is stepped up from the wallpaper's blue-slate until it clears
      the sea in daylight (4.6:1) and still reads under full night (1.9:1). */
-  --map-ocean:      #0F2032;
-  --map-ocean-deep: #0A1826;
-  --map-land:       #5E8CB2;
-  --map-coast:      #93BEDC;
-  --map-graticule:  #1E3752;
+  /* Figure and ground. The land was a mid blue-grey and the sea near-black, so
+     both were blue and the LIGHTER one was the land — which is backwards from
+     every chart ever printed, and the reason the eye kept reading the sea as
+     landmasses and the whole thing as flat.
+     Now: land is a warm graphite that is barely blue at all, the water is blue
+     and lighter than it, and depth takes the water darker as it deepens. Land
+     dark, water lit, coast glowing between them — which is what a plotter looks
+     like at night, and what makes a cyan marker read instantly. */
+  --map-ocean:      #1E3A55;
+  --map-ocean-deep: #16293E;
+  --map-land:       #171A1F;
+  --map-coast:      #6E8FA8;
+  --map-graticule:  #24435F;
 
   /* Depth. Natural Earth's bands are "deeper than N", nested with the abyss
      innermost, so these DARKEN outward from the coast: --map-ocean is the
      shelf and needs no band of its own, and each contour beyond it drops a
      step. Shallow-reads-lighter is how a paper chart does it, and how anyone
      who has looked at the sea expects it. */
-  --map-depth-200:  #0B1826;   /* beyond the 200 m contour */
-  --map-depth-1000: #081220;   /* beyond 1000 m */
+  --map-depth-200:  #17304A;   /* beyond the 200 m contour */
+  --map-depth-1000: #112640;   /* beyond 1000 m */
   --map-border:      rgba(147, 190, 220, 0.22);
   --map-course:      rgba(60, 180, 228, 0.45);   /* the leg still to run */
   --map-wind:        rgba(147, 190, 220, 0.60);
   /* Place names. Water reads light on the sea; land reads dark on the land,
      because the land fill is the lightest thing on the chart. */
   --map-place-water: rgba(147, 190, 220, 0.55);
-  --map-place-land:  rgba(18, 36, 58, 0.78);
+  --map-place-land:  rgba(150, 172, 194, 0.55);
 
   /* Dusk, in the order it happens, filled between successive solar-altitude
      contours and composited with `multiply`.

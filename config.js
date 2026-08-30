@@ -149,6 +149,10 @@ window.CONFIG = {
   display: {
     // Slow drift keeps an OLED panel happy and stops the image feeling frozen.
     ambientMotion: true,
+    // Light off the north-west of every landmass, shade off the south-east, and
+    // a glow where the coast meets the water. Without it the chart is two flat
+    // colours with a line between them.
+    landShading: true,
     // Nudge the whole layout a few pixels every few minutes (burn-in insurance).
     pixelShift: true,
     pixelShiftMinutes: 7,

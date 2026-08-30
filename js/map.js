@@ -24,9 +24,24 @@
   // Below this many degrees across the screen the fine coastline is worth its
   // cost; above it the difference is under a pixel and the cost is all there is.
   var DETAIL_BELOW_DEGREES = 90;
+
+  // Offscreen buffer for the shading pass. Kept at half resolution: it is only
+  // ever blurred, and blurring at full size costs several times as much to
+  // produce an image nobody can tell apart.
+  // The chart under the fleet — ocean, depth, graticule, coast glow, land,
+  // relief, borders — composited once and kept. None of it changes unless the
+  // camera does, and rebuilding it every frame meant three full-canvas blend
+  // passes per frame for an image identical to the last one.
+  var basemap = null, baseCtx = null, baseKey = '';
+  var shade = null, shadeCtx = null;       // crisp land mask
+  var blurBuf = null, blurCtx = null;      // the same mask, blurred
+  var bevelBuf = null, bevelCtx = null;    // mask minus an offset copy: one edge
+  var blurBuf2 = null, blurCtx2 = null;
+  var SHADE_DIVISOR = 4;
   var depth = null, depthBounds = null;      // [band][ring]
   var borders = null, borderBounds = null;
   var theme = {};
+  var themeKey = '';
   var nightPath = null, nightComputedAt = 0;
 
   // Camera in normalised world units. `scale` is the pixel width of the whole
@@ -95,6 +110,7 @@
       var raw = s.getPropertyValue(name);
       return (raw && raw.trim()) || fallback;
     }
+    themeKey = String(Math.random());     // any retint invalidates the basemap
     theme = {
       ocean: v('--map-ocean', '#0a141d'),
       oceanDeep: v('--map-ocean-deep', '#07101a'),
@@ -123,7 +139,7 @@
       placeLand: v('--map-place-land', 'rgba(20, 40, 62, 0.75)')
     };
   }
-  Map.readTheme = readTheme;
+  Map.readTheme = function () { readTheme(); baseKey = ''; };
 
   Map.resize = function () {
     if (!canvas) return;
@@ -240,36 +256,42 @@
     ctx.save();
     ctx.translate(driftPx, driftPy);
 
-    if (Map.profile) {
-      var mark = function (name, fn) {
-        var t = performance.now(); fn(); Map.profile[name] = (Map.profile[name] || 0) + (performance.now() - t);
-      };
-      mark('ocean', drawOcean); mark('depth', drawDepth); mark('graticule', drawGraticule);
-      mark('land', drawLand); mark('borders', drawBorders);
-    } else {
-      drawOcean();
-      drawDepth();
-      drawGraticule();
-      drawLand();
-      drawBorders();
-    }
+    drawBasemap();
     if (opts.showNight !== false) drawNight(now);
 
     // Vessel labels are laid out before anything else is written over the chart,
     // so the port names can be told which space is already spoken for. Yachts
     // win; ports yield. Then everything is painted in z-order.
     var placed = locateVessels(vessels);
-    var labels = opts.labels === false ? [] : layoutLabels(placed, opts);
-    var claimed = labels.map(function (l) { return l.box; }).concat(markerBoxes(placed));
-    // Place names go under the ports and the fleet, and yield to both.
-    claimed = claimed.concat(drawPlaces(claimed, opts));
-    drawPorts(claimed);
-    drawCourses(vessels);
-    drawTracks(vessels);
-    paintMarkers(placed, opts, now);
-    drawWind(placed);
-    paintLabels(labels);
-    drawScaleBar(opts);
+    var labels, claimed;
+    if (Map.profile) {
+      var m2 = function (name, fn) {
+        var t = performance.now(); var r = fn();
+        Map.profile[name] = (Map.profile[name] || 0) + (performance.now() - t); return r;
+      };
+      labels = m2('layout', function () { return opts.labels === false ? [] : layoutLabels(placed, opts); });
+      claimed = labels.map(function (l) { return l.box; }).concat(markerBoxes(placed));
+      claimed = claimed.concat(m2('places', function () { return drawPlaces(claimed, opts); }));
+      m2('ports', function () { drawPorts(claimed); });
+      m2('courses', function () { drawCourses(vessels); });
+      m2('tracks', function () { drawTracks(vessels); });
+      m2('markers', function () { paintMarkers(placed, opts, now); });
+      m2('wind', function () { drawWind(placed); });
+      m2('labels', function () { paintLabels(labels); });
+      m2('scale', function () { drawScaleBar(opts); });
+    } else {
+      labels = opts.labels === false ? [] : layoutLabels(placed, opts);
+      claimed = labels.map(function (l) { return l.box; }).concat(markerBoxes(placed));
+      // Place names go under the ports and the fleet, and yield to both.
+      claimed = claimed.concat(drawPlaces(claimed, opts));
+      drawPorts(claimed);
+      drawCourses(vessels);
+      drawTracks(vessels);
+      paintMarkers(placed, opts, now);
+      drawWind(placed);
+      paintLabels(labels);
+      drawScaleBar(opts);
+    }
 
     ctx.restore();
 
@@ -297,6 +319,46 @@
     }
     return best;
   };
+
+  /**
+   * The static chart, drawn once per camera position and blitted thereafter.
+   *
+   * Ambient drift is a translate of the whole scene, so it does not invalidate
+   * this; only a real camera move does. On a board that holds a view for
+   * seventy-five seconds at a time, that is one rebuild and two thousand
+   * blits.
+   */
+  function drawBasemap() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var key = [cam.cx.toFixed(4), cam.cy.toFixed(4), cam.scale.toFixed(2),
+               width, height, themeKey].join('|');
+
+    if (!basemap) { basemap = document.createElement('canvas'); baseCtx = basemap.getContext('2d'); }
+    if (basemap.width !== Math.round(width * dpr) || basemap.height !== Math.round(height * dpr)) {
+      basemap.width = Math.round(width * dpr);
+      basemap.height = Math.round(height * dpr);
+      baseKey = '';
+    }
+
+    if (key !== baseKey) {
+      baseKey = key;
+      var main = ctx;
+      ctx = baseCtx;                       // the draw functions all write to `ctx`
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      drawOcean();
+      drawDepth();
+      drawGraticule();
+      pickDetail();
+      buildShadeMask();
+      drawCoastGlow();
+      drawLand();
+      drawLandRelief();
+      drawBorders();
+      ctx = main;
+    }
+    ctx.drawImage(basemap, 0, 0, width, height);
+  }
 
   function drawOcean() {
     ctx.fillStyle = theme.oceanDeep;
@@ -432,11 +494,133 @@
     ctx.setLineDash([]);
   }
 
-  function drawLand() {
-    var repeats = worldRepeats();
+  /**
+   * Everything that stops the chart reading as two flat colours.
+   *
+   * The land silhouette goes once into a half-size offscreen buffer — it is
+   * only ever blurred, and blurring at full size costs several times as much
+   * for an image nobody can tell apart. That one mask then does two jobs, on
+   * either side of the land fill:
+   *
+   *   before — blurred wide and screened on, it throws a glow off every coast
+   *            into the water. Drawn BEFORE the fill so the land itself paints
+   *            over the middle of it and only the spill shows; drawn after, it
+   *            washes the fill out, and canvas has no inverse clip to fix that.
+   *
+   *   after  — blurred tight, offset up-left and screened, then down-right and
+   *            multiplied. An emboss. It is not topography and does not pretend
+   *            to be, there being no free global relief raster this can reach,
+   *            but it gives a landmass a body instead of a flat fill, which is
+   *            what flat meant.
+   */
+  function buildShadeMask() {
+    if (!window.CONFIG.display.landShading) return false;
+    var w = Math.max(1, Math.round(width / SHADE_DIVISOR));
+    var h = Math.max(1, Math.round(height / SHADE_DIVISOR));
+    if (!shade) { shade = document.createElement('canvas'); shadeCtx = shade.getContext('2d'); }
+    if (shade.width !== w || shade.height !== h) { shade.width = w; shade.height = h; }
+
+    shadeCtx.setTransform(1 / SHADE_DIVISOR, 0, 0, 1 / SHADE_DIVISOR, 0, 0);
+    shadeCtx.clearRect(0, 0, width, height);
+    shadeCtx.fillStyle = '#ffffff';
+    shadeCtx.beginPath();
+    traceVisibleLand(shadeCtx);
+    shadeCtx.fill('evenodd');
+    return true;
+  }
+
+  /**
+   * Blur the mask into the small buffer and hand it back.
+   *
+   * The blur happens here, at a quarter resolution, and never on the main
+   * canvas: a 30-pixel blur across 1920x1080 measured 117 ms a frame, where the
+   * same effect on a quarter-size buffer with a quarter-size kernel is a
+   * fraction of a millisecond. Scaling the result back up smooths it further,
+   * for free.
+   */
+  function blurredMask(mainCanvasPx) {
+    if (!blurBuf) { blurBuf = document.createElement('canvas'); blurCtx = blurBuf.getContext('2d'); }
+    if (blurBuf.width !== shade.width || blurBuf.height !== shade.height) {
+      blurBuf.width = shade.width; blurBuf.height = shade.height;
+    }
+    blurCtx.setTransform(1, 0, 0, 1, 0, 0);
+    blurCtx.clearRect(0, 0, blurBuf.width, blurBuf.height);
+    blurCtx.filter = 'blur(' + (mainCanvasPx / SHADE_DIVISOR).toFixed(2) + 'px)';
+    blurCtx.drawImage(shade, 0, 0);
+    blurCtx.filter = 'none';
+    return blurBuf;
+  }
+
+  function drawCoastGlow() {
+    if (!shade || !window.CONFIG.display.landShading) return;
+    var glow = blurredMask(Math.min(34, Math.max(8, cam.scale / 2400)));
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.45;
+    ctx.drawImage(glow, 0, 0, width, height);
+    ctx.restore();
+  }
+
+  /**
+   * A crescent of the mask along one side: the land, minus the same land shifted.
+   *
+   * Screening and multiplying the WHOLE mask, offset each way, was the obvious
+   * emboss and the wrong one — both passes cover the interior, so the interior
+   * came out darker than the fill and every landmass lost its colour. Taking
+   * the difference leaves the flat middle untouched and puts the light and the
+   * shade only where there is an edge, which is what a bevel is.
+   */
+  function bevelMask(dx, dy, blurPx) {
+    if (!bevelBuf) { bevelBuf = document.createElement('canvas'); bevelCtx = bevelBuf.getContext('2d'); }
+    if (bevelBuf.width !== shade.width || bevelBuf.height !== shade.height) {
+      bevelBuf.width = shade.width; bevelBuf.height = shade.height;
+    }
+    var k = SHADE_DIVISOR;
+    bevelCtx.setTransform(1, 0, 0, 1, 0, 0);
+    bevelCtx.globalCompositeOperation = 'source-over';
+    bevelCtx.clearRect(0, 0, bevelBuf.width, bevelBuf.height);
+    bevelCtx.drawImage(shade, 0, 0);
+    bevelCtx.globalCompositeOperation = 'destination-out';
+    bevelCtx.drawImage(shade, dx / k, dy / k);
+    bevelCtx.globalCompositeOperation = 'source-over';
+
+    // Soften the crescent. Done on this buffer, never on the main canvas.
+    if (!blurBuf2) { blurBuf2 = document.createElement('canvas'); blurCtx2 = blurBuf2.getContext('2d'); }
+    if (blurBuf2.width !== shade.width || blurBuf2.height !== shade.height) {
+      blurBuf2.width = shade.width; blurBuf2.height = shade.height;
+    }
+    blurCtx2.setTransform(1, 0, 0, 1, 0, 0);
+    blurCtx2.clearRect(0, 0, blurBuf2.width, blurBuf2.height);
+    blurCtx2.filter = 'blur(' + (blurPx / k).toFixed(2) + 'px)';
+    blurCtx2.drawImage(bevelBuf, 0, 0);
+    blurCtx2.filter = 'none';
+    return blurBuf2;
+  }
+
+  function drawLandRelief() {
+    if (!shade || !window.CONFIG.display.landShading) return;
+    var reliefPx = Math.min(14, Math.max(3.5, cam.scale / 6000));
+    var d = Math.max(1.5, reliefPx * 0.8);
+
+    ctx.save();
+    // Light off the north-west shore.
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(bevelMask(d, d, reliefPx), 0, 0, width, height);
+    // Shade along the south-east.
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 0.45;
+    ctx.drawImage(bevelMask(-d, -d, reliefPx), 0, 0, width, height);
+    ctx.restore();
+  }
+
+  function pickDetail() {
     var useFine = fineLand && ((width / cam.scale) * 360) < DETAIL_BELOW_DEGREES;
     land = useFine ? fineLand : coarseLand;
     landBounds = useFine ? fineBounds : coarseBounds;
+  }
+
+  function drawLand() {
     // Stride: when zoomed out there is no point emitting a lineTo for detail
     // finer than a pixel.
     var degPerPx = (width / cam.scale) * 360 / width;
@@ -447,19 +631,7 @@
     var stride = degPerPx > 0.15 ? 8 : degPerPx > 0.06 ? 4 : degPerPx > 0.02 ? 2 : 1;
 
     ctx.beginPath();
-    for (var r = -repeats; r <= repeats; r++) {
-      for (var i = 0; i < land.length; i++) {
-        var b = landBounds[i];
-        // Cull: off-screen, or smaller than a couple of pixels.
-        if (b.spanX * cam.scale < 1.5 && b.spanY * cam.scale < 1.5) continue;
-        var left = sx(b.minX + r), right = sx(b.maxX + r);
-        if (right < -40 || left > width + 40) continue;
-        var top = sy(b.minY), bottom = sy(b.maxY);
-        if (bottom < -40 || top > height + 40) continue;
-
-        traceRing(land[i], r, stride);
-      }
-    }
+    traceVisibleLand(ctx);
     ctx.fillStyle = theme.land;
     ctx.fill('evenodd');          // interior rings punch out lakes and inland seas
     // A hairline coast is what separates land from sea where the fill alone
@@ -475,13 +647,34 @@
     }
   }
 
-  function traceRing(ring, worldOffset, stride) {
+  function traceRing(ring, worldOffset, stride, into) {
+    var target = into || ctx;
     var n = ring.length;
-    ctx.moveTo(sx(window.Geo.worldX(ring[0]) + worldOffset), sy(window.Geo.worldY(ring[1])));
+    target.moveTo(sx(window.Geo.worldX(ring[0]) + worldOffset), sy(window.Geo.worldY(ring[1])));
     for (var i = 2 * stride; i < n; i += 2 * stride) {
-      ctx.lineTo(sx(window.Geo.worldX(ring[i]) + worldOffset), sy(window.Geo.worldY(ring[i + 1])));
+      target.lineTo(sx(window.Geo.worldX(ring[i]) + worldOffset), sy(window.Geo.worldY(ring[i + 1])));
     }
-    ctx.closePath();
+    target.closePath();
+  }
+
+  // Every land ring currently on screen, traced into whichever context is given.
+  // Shared by the fill and by the shading buffer so the two can never disagree
+  // about where the coast is.
+  function traceVisibleLand(into) {
+    var repeats = worldRepeats();
+    var degPerPx = (width / cam.scale) * 360 / width;
+    var stride = degPerPx > 0.15 ? 8 : degPerPx > 0.06 ? 4 : degPerPx > 0.02 ? 2 : 1;
+    for (var r = -repeats; r <= repeats; r++) {
+      for (var i = 0; i < land.length; i++) {
+        var b = landBounds[i];
+        if (b.spanX * cam.scale < 1.5 && b.spanY * cam.scale < 1.5) continue;
+        var left = sx(b.minX + r), right = sx(b.maxX + r);
+        if (right < -40 || left > width + 40) continue;
+        var top = sy(b.minY), bottom = sy(b.maxY);
+        if (bottom < -40 || top > height + 40) continue;
+        traceRing(land[i], r, stride, into);
+      }
+    }
   }
 
   /* --- Night ------------------------------------------------------------- */
@@ -1170,6 +1363,7 @@
   // once for the whole board rather than per view.
   Map.landRings = function () { return land; };
   Map._greatCircle = greatCircle;   // for tests
+  Map._camScale = function () { return cam.scale; };
   Map.landBounds = function () { return landBounds; };
 
   Map.camera = cam;
