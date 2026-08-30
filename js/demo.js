@@ -49,6 +49,18 @@
     });
   }
 
+  // [lon, lat] for a port in data/ports.js, matched on name without regard to
+  // case or accents, so 'Gocek' finds 'Göcek'.
+  function portNamed(name) {
+    var want = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    for (var i = 0; i < window.PORTS.length; i++) {
+      var p = window.PORTS[i];
+      var have = p[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      if (have === want) return [p[2], p[3]];
+    }
+    return null;
+  }
+
   function makeAgent(v) {
     var d = v.yacht.demo;
     if (!d) return null;
@@ -72,6 +84,19 @@
       agent.home = d.position.slice();
       agent.lon = d.position[0];
       agent.lat = d.position[1];
+    } else if (d.port) {
+      // A port by name, so a yacht sitting still can be placed without anyone
+      // looking up coordinates for her. Names come from data/ports.js.
+      var found = portNamed(d.port);
+      if (!found) {
+        console.warn('demo: no port named "' + d.port + '" in data/ports.js — ' +
+                     v.yacht.name + ' has no position. Add it there, or use ' +
+                     'position: [lon, lat].');
+        return null;
+      }
+      agent.home = found.slice();
+      agent.lon = found[0];
+      agent.lat = found[1];
     } else {
       return null;
     }

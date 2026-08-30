@@ -573,6 +573,29 @@ test('writing the file out and reading it back is stable', () => {
 
 /* --- Fleet data ---------------------------------------------------------- */
 
+test('every port named in a demo block exists in data/ports.js', () => {
+  // A demo block naming a port that is not in the list leaves that yacht with
+  // no position at all, which looks exactly like a yacht that is simply not
+  // showing up. Catch the typo here instead.
+  const norm = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const known = new Set(PORTS.map((p) => norm(p[0])));
+  FLEET.concat(REAL_FLEET).forEach((y) => {
+    if (!y.demo || !y.demo.port) return;
+    assert.ok(known.has(norm(y.demo.port)),
+      `${y.name}: no port named "${y.demo.port}" in data/ports.js`);
+  });
+});
+
+test('a vessel that demo mode cannot place is a fault worth naming', () => {
+  // Every record needs a route, a position or a port, or it never reaches the
+  // chart while looking for all the world like a record that simply is not there.
+  REAL_FLEET.forEach((y) => {
+    assert.ok(y.demo, `${y.name}: no demo block, so demo mode gives her no position`);
+    assert.ok(y.demo.route || y.demo.position || y.demo.port,
+      `${y.name}: demo block has no route, position or port`);
+  });
+});
+
 test('the fleet file is internally consistent', () => {
   const ids = new Set(), mmsis = new Set();
   assert.ok(REAL_FLEET.length, 'fleet.js has at least one vessel in it');

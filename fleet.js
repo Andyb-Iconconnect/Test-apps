@@ -66,16 +66,14 @@ window.FLEET = [
       { line: 'Security', product: null, installed: null }
     ],
     contacts: [],
-    // DEMO MODE ONLY, and invented. Without this block she has no simulated
-    // position, so she sits in the list as "no signal" and never reaches the
-    // chart. Once CONFIG.aisStreamApiKey is set, live AIS on her MMSI replaces
-    // all of it and this is ignored.
+    // DEMO MODE ONLY, and invented — nothing here is a real position. Change
+    // `port` to wherever she actually is (any name in data/ports.js), or give
+    // `position: [lon, lat]`. The only way to show where she really is, is to
+    // put an AISstream key in config.js: live AIS tracks her on her MMSI and
+    // this whole block is ignored.
     demo: {
-      status: 'underway',
-      speed: 11.5,
-      route: [[7.42, 43.73], [5.37, 43.18], [3.05, 42.30], [2.63, 39.57]],
-      destination: 'PALMA',
-      etaHours: 26
+      status: 'moored',
+      port: 'Göcek'
     }
   }
 ];
