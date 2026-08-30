@@ -103,6 +103,45 @@
   // is recorded as a local hide and paired with the instruction to delete its
   // entry. Same bargain as adding: it takes effect here immediately, and the
   // file is what makes it true for everybody.
+  /* --- Edits to vessels that came from fleet.js ---------------------------- */
+
+  // fleet.js is read-only at runtime, so editing one of its vessels is stored
+  // as an override keyed on id and applied over the top when the fleet is
+  // merged. Writing the file out bakes them in and they can then be cleared.
+  var OVERRIDE_KEY = 'fleetwatch.overrides.v1';
+
+  Vessel.loadOverrides = function () {
+    var raw;
+    try { raw = localStorage.getItem(OVERRIDE_KEY); } catch (e) { return {}; }
+    if (!raw) return {};
+    try {
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (e) { return {}; }
+  };
+
+  function saveOverrides(map) {
+    try { localStorage.setItem(OVERRIDE_KEY, JSON.stringify(map)); return true; }
+    catch (e) { return false; }
+  }
+
+  Vessel.setOverride = function (id, record) {
+    var map = Vessel.loadOverrides();
+    map[id] = record;
+    return saveOverrides(map);
+  };
+
+  Vessel.clearOverride = function (id) {
+    var map = Vessel.loadOverrides();
+    if (!(id in map)) return false;
+    delete map[id];
+    return saveOverrides(map);
+  };
+
+  Vessel.clearAllOverrides = function () { return saveOverrides({}); };
+
+  Vessel.overriddenIds = function () { return Object.keys(Vessel.loadOverrides()); };
+
   var HIDDEN_KEY = 'fleetwatch.hidden.v1';
 
   Vessel.hiddenIds = function () {
@@ -132,6 +171,17 @@
 
   Vessel.unhideAll = function () { return saveHidden([]); };
 
+  Vessel.updateAddition = function (id, record) {
+    var list = Vessel.loadAdditions();
+    var i = list.findIndex ? list.findIndex(function (r) { return r.id === id; }) : -1;
+    if (i === -1) {
+      for (var j = 0; j < list.length; j++) { if (list[j].id === id) { i = j; break; } }
+    }
+    if (i === -1) return false;
+    list[i] = record;
+    return saveAdditions(list);
+  };
+
   Vessel.removeAddition = function (id) {
     var list = Vessel.loadAdditions().filter(function (r) { return r.id !== id; });
     return saveAdditions(list);
@@ -143,6 +193,8 @@
     var hidden = Vessel.hiddenIds();
     var isHidden = function (y) { return hidden.indexOf(y.id) !== -1; };
 
+    var overrides = Vessel.loadOverrides();
+
     var additions = Vessel.loadAdditions().map(function (r) {
       var copy = JSON.parse(JSON.stringify(r));
       copy.addedLocally = true;
@@ -151,7 +203,18 @@
     var taken = {};
     base.forEach(function (y) { taken[y.mmsi] = true; taken[y.id] = true; });
 
-    return base
+    // An override replaces the fleet.js record outright rather than merging
+    // field by field: the form hands back a whole record, and a half-applied
+    // edit would be worse than either version.
+    var edited = base.map(function (y) {
+      if (!overrides[y.id]) return y;
+      var copy = JSON.parse(JSON.stringify(overrides[y.id]));
+      copy.id = y.id;
+      copy.editedLocally = true;
+      return copy;
+    });
+
+    return edited
       .concat(additions.filter(function (r) { return !taken[r.mmsi] && !taken[r.id]; }))
       .filter(function (y) { return !isHidden(y); });
   };
@@ -171,27 +234,90 @@
       .replace(/^-+|-+$/g, '') || 'vessel';
   };
 
-  // Everything not asked for on the form is left null rather than guessed, so
-  // the record never quietly asserts something nobody checked.
+  var text = function (v) {
+    if (v == null) return null;
+    var t = String(v).trim();
+    return t.length ? t : null;
+  };
+  var num = function (v) {
+    if (v == null || v === '') return null;
+    var n = Number(v);
+    return isFinite(n) ? n : null;
+  };
+
+  // Everything not filled in is left null rather than guessed, so the record
+  // never quietly asserts something nobody checked.
   Vessel.buildRecord = function (fields) {
     return {
-      id: Vessel.slugify(fields.name) + '-' + String(fields.mmsi).slice(-4),
+      id: fields.id || (Vessel.slugify(fields.name) + '-' + String(fields.mmsi).slice(-4)),
       name: fields.name,
       prefix: fields.prefix || 'M/Y',
       mmsi: fields.mmsi,
       imo: fields.imo,
-      callSign: fields.callSign || null,
-      flag: fields.flag || null,
-      flagCode: null,
-      loa: fields.loa != null ? fields.loa : null,
-      beam: null,
-      grossTonnage: null,
-      builder: fields.builder || null,
-      yearBuilt: fields.yearBuilt != null ? fields.yearBuilt : null,
-      lastRefit: null,
-      classSociety: null,
-      photo: null,
-      discreet: !!fields.discreet
+      callSign: text(fields.callSign),
+      flag: text(fields.flag),
+      flagCode: text(fields.flagCode) ? text(fields.flagCode).toUpperCase() : null,
+      loa: num(fields.loa),
+      beam: num(fields.beam),
+      grossTonnage: num(fields.grossTonnage),
+      builder: text(fields.builder),
+      yearBuilt: num(fields.yearBuilt),
+      lastRefit: num(fields.lastRefit),
+      classSociety: text(fields.classSociety),
+      photo: text(fields.photo),
+      discreet: !!fields.discreet,
+      demo: Vessel.buildDemo(fields)
+    };
+  };
+
+  /**
+   * The demo block, from form fields.
+   *
+   * Without one, demo mode gives a vessel no position at all and she never
+   * reaches the chart — which looks exactly like a vessel that was never added.
+   * So this always returns a block, falling back to the office if nothing else
+   * was given, rather than returning null and losing her.
+   *
+   * An existing hand-written `route` is preserved: routes are more than a form
+   * can sensibly edit, and silently flattening one to a single point would
+   * throw away work.
+   */
+  Vessel.buildDemo = function (fields) {
+    var demo = {
+      status: fields.demoStatus || 'moored'
+    };
+    if (fields.demoRoute && fields.demoRoute.length >= 2) {
+      demo.route = fields.demoRoute;
+    } else if (num(fields.demoLat) != null && num(fields.demoLon) != null) {
+      demo.position = [num(fields.demoLon), num(fields.demoLat)];
+    } else if (text(fields.demoPort)) {
+      demo.port = text(fields.demoPort);
+    } else {
+      demo.port = (window.CONFIG && window.CONFIG.office && window.CONFIG.office.label) || 'Palma';
+    }
+    if (num(fields.demoSpeed) != null) demo.speed = num(fields.demoSpeed);
+    if (text(fields.demoDestination)) demo.destination = text(fields.demoDestination).toUpperCase();
+    if (num(fields.demoEtaHours) != null) demo.etaHours = num(fields.demoEtaHours);
+    return demo;
+  };
+
+  // The reverse: a record back into flat form fields.
+  Vessel.toFields = function (y) {
+    var d = y.demo || {};
+    return {
+      id: y.id, name: y.name, prefix: y.prefix, mmsi: y.mmsi, imo: y.imo,
+      callSign: y.callSign, flag: y.flag, flagCode: y.flagCode,
+      loa: y.loa, beam: y.beam, grossTonnage: y.grossTonnage,
+      builder: y.builder, yearBuilt: y.yearBuilt, lastRefit: y.lastRefit,
+      classSociety: y.classSociety, photo: y.photo, discreet: !!y.discreet,
+      demoStatus: d.status || 'moored',
+      demoPort: d.port || null,
+      demoLat: d.position ? d.position[1] : null,
+      demoLon: d.position ? d.position[0] : null,
+      demoRoute: d.route || null,
+      demoSpeed: d.speed != null ? d.speed : null,
+      demoDestination: d.destination || null,
+      demoEtaHours: d.etaHours != null ? d.etaHours : null
     };
   };
 
@@ -221,7 +347,9 @@
         return padInner + literal(v, depth + 1);
       }).join(',\n') + '\n' + pad + ']';
     }
-    var keys = Object.keys(value).filter(function (k) { return k !== 'addedLocally'; });
+    var keys = Object.keys(value).filter(function (k) {
+      return k !== 'addedLocally' && k !== 'editedLocally';
+    });
     if (!keys.length) return '{}';
     var inline = keys.every(function (k) {
       var v = value[k];
@@ -256,35 +384,14 @@
 
   /* --- fleet.js snippet ---------------------------------------------------- */
 
-  function js(value) {
-    if (value == null) return 'null';
-    if (typeof value === 'number') return String(value);
-    if (typeof value === 'boolean') return String(value);
-    return "'" + String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
-  }
-
   // Rendered to match the hand-written entries around it, so a pasted vessel is
   // indistinguishable from one typed in.
+  // One entry, rendered exactly as the whole-file writer renders it. Written
+  // by hand once, it drifted from the file the moment a field was added — most
+  // recently `demo`, whose absence leaves a pasted vessel with no position at
+  // all. Same serializer, no drift.
   Vessel.toSnippet = function (r) {
-    var lines = [
-      '  {',
-      '    id: ' + js(r.id) + ',',
-      '    name: ' + js(r.name) + ',',
-      '    prefix: ' + js(r.prefix) + ',',
-      '    mmsi: ' + js(r.mmsi) + ',',
-      '    imo: ' + js(r.imo) + ',',
-      '    callSign: ' + js(r.callSign) + ',',
-      '    flag: ' + js(r.flag) + ',',
-      '    flagCode: ' + js(r.flagCode) + ',',
-      '    loa: ' + js(r.loa) + ', beam: ' + js(r.beam) + ', grossTonnage: ' + js(r.grossTonnage) + ',',
-      '    builder: ' + js(r.builder) + ',',
-      '    yearBuilt: ' + js(r.yearBuilt) + ', lastRefit: ' + js(r.lastRefit) + ',',
-      '    classSociety: ' + js(r.classSociety) + ',',
-      '    photo: null,',
-      '    discreet: ' + js(r.discreet),
-      '  }'
-    ];
-    return lines.join('\n');
+    return INDENT + literal(r, 1);
   };
 
   window.Vessel = Vessel;

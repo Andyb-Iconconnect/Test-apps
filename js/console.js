@@ -427,6 +427,11 @@
     pill.appendChild(swatch);
     pill.appendChild(h('span', null, window.Fmt.statusLabel(d.status)));
     head.appendChild(pill);
+
+    var editButton = h('button', 'button-quiet head-edit', 'Edit');
+    editButton.type = 'button';
+    editButton.addEventListener('click', function () { openVesselDialog(v); });
+    head.appendChild(editButton);
     host.appendChild(head);
 
     var spec = h('div', 'detail-spec');
@@ -590,6 +595,27 @@
       voyPanel.appendChild(h('div', 'sheet-note',
         'Typed by the crew, not measured. Treat it as intent rather than fact.'));
       host.appendChild(voyPanel);
+    }
+
+    if (y.editedLocally) {
+      var editedPanel = h('div', 'panel');
+      var editedHead = h('div', 'pane-title');
+      editedHead.appendChild(document.createTextNode('Edited here '));
+      editedHead.appendChild(h('span', 'local-flag', 'not yet in fleet.js'));
+      editedPanel.appendChild(editedHead);
+      editedPanel.appendChild(h('div', 'sheet-note',
+        'This record is shown over the top of what fleet.js says. Save the fleet ' +
+        'file to make it the real one, or revert to drop the edit.'));
+      var editedActions = h('div', 'sheet-actions');
+      var revert = h('button', 'button-quiet', 'Revert to fleet.js');
+      revert.type = 'button';
+      revert.addEventListener('click', function () {
+        window.Vessel.clearOverride(y.id);
+        reloadFleet(y.id);
+      });
+      editedActions.appendChild(revert);
+      editedPanel.appendChild(editedActions);
+      host.appendChild(editedPanel);
     }
 
     var danger = h('div', 'danger-zone');
@@ -766,96 +792,263 @@
 
   /* --- Adding a vessel ----------------------------------------------------- */
 
+  /* --- The vessel form ----------------------------------------------------- */
+
+  // One form does add and edit. Two forms drift: a field added to one and not
+  // the other is invisible until someone tries to correct it and finds it gone.
+  var FORM_FIELDS = [
+    'name', 'prefix', 'mmsi', 'imo', 'callSign', 'flag', 'flagCode',
+    'loa', 'beam', 'grossTonnage', 'builder', 'yearBuilt', 'lastRefit',
+    'classSociety', 'photo',
+    'demoStatus', 'demoPort', 'demoSpeed', 'demoLat', 'demoLon',
+    'demoDestination', 'demoEtaHours'
+  ];
+  var ERROR_FIELDS = ['name', 'mmsi', 'imo', 'photo', 'demoPort', 'demoLat', 'demoLon'];
+
+  // Which vessel is being edited, or null when adding.
+  var editing = null;
+
   function wireAddDialog() {
     var dialog = el('add-dialog');
-    el('add-vessel').addEventListener('click', function () { openAddDialog(); });
+    el('add-vessel').addEventListener('click', function () { openVesselDialog(null); });
     el('add-cancel').addEventListener('click', function () { dialog.close(); });
     el('add-cancel-2').addEventListener('click', function () { dialog.close(); });
     el('done-close').addEventListener('click', function () { dialog.close(); });
     el('add-form').addEventListener('submit', onAddSubmit);
     el('copy-snippet').addEventListener('click', onCopySnippet);
+    el('done-save-file').addEventListener('click', function () {
+      dialog.close();
+      openFileDialog();
+    });
 
     // Clear a field's error as soon as it is edited; nagging while someone types
     // is worse than saying nothing.
-    ['imo', 'mmsi', 'name'].forEach(function (key) {
-      el('f-' + key).addEventListener('input', function () {
-        setFieldError(key, '');
-      });
+    ERROR_FIELDS.forEach(function (key) {
+      var input = el('f-' + key);
+      if (input) input.addEventListener('input', function () { setFieldError(key, ''); });
     });
+
+    // The preview is the only honest test of a photo URL: plenty of hosts serve
+    // it here and refuse it from the board, and both look identical in the field.
+    el('f-photo').addEventListener('input', debounce(updatePhotoPreview, 400));
+
+    fillPortList();
   }
 
-  function openAddDialog() {
+  function debounce(fn, ms) {
+    var timer = null;
+    return function () {
+      clearTimeout(timer);
+      timer = setTimeout(fn, ms);
+    };
+  }
+
+  function fillPortList() {
+    var list = el('port-names');
+    list.textContent = '';
+    window.PORTS.slice()
+      .sort(function (a, b) { return a[0].localeCompare(b[0]); })
+      .forEach(function (p) {
+        var option = document.createElement('option');
+        option.value = p[0];
+        option.label = p[0] + ' · ' + p[1];
+        list.appendChild(option);
+      });
+  }
+
+  function updatePhotoPreview() {
+    var host = el('photo-preview');
+    var url = el('f-photo').value.trim();
+    host.textContent = '';
+    setFieldError('photo', '');
+    if (!url) {
+      host.appendChild(h('span', 'photo-preview-empty', 'No photo'));
+      return;
+    }
+    host.appendChild(h('span', 'photo-preview-empty', 'Loading…'));
+    var img = document.createElement('img');
+    img.alt = '';
+    img.addEventListener('load', function () {
+      host.textContent = '';
+      host.appendChild(img);
+    });
+    img.addEventListener('error', function () {
+      host.textContent = '';
+      host.appendChild(h('span', 'photo-preview-empty bad', 'Will not load'));
+      setFieldError('photo', 'Nothing loaded from there. If the file is real, the ' +
+        'host is probably refusing to serve it to another site — copy it into ' +
+        'assets/photos/ instead.');
+    });
+    img.src = url;
+  }
+
+  function openVesselDialog(vessel) {
+    editing = vessel || null;
     var form = el('add-form');
     form.reset();
-    ['imo', 'mmsi', 'name'].forEach(function (k) { setFieldError(k, ''); });
+    ERROR_FIELDS.forEach(function (k) { setFieldError(k, ''); });
     el('add-status').textContent = '';
+
+    var fields = vessel
+      ? window.Vessel.toFields(vessel.yacht)
+      : { prefix: 'M/Y', demoStatus: 'moored' };
+
+    FORM_FIELDS.forEach(function (key) {
+      var input = el('f-' + key);
+      if (!input) return;
+      input.value = fields[key] != null ? String(fields[key]) : '';
+    });
+    el('f-discreet').checked = !!fields.discreet;
+
+    // A hand-written route survives an edit; say so rather than appearing to
+    // have lost it because the position boxes are empty.
+    el('route-note').hidden = !(fields.demoRoute && fields.demoRoute.length >= 2);
+
+    el('add-title').textContent = vessel
+      ? 'Edit ' + window.Fmt.fullName(vessel.yacht)
+      : 'Add a vessel';
+    el('add-submit').textContent = vessel ? 'Save changes' : 'Add vessel';
+
+    updatePhotoPreview();
     form.hidden = false;
     el('add-done').hidden = true;
     el('add-dialog').showModal();
-    el('f-imo').focus();
+    el('add-body').scrollTop = 0;
+    // preventScroll, or focusing the first field scrolls the section heading and
+    // the note explaining MMSI straight off the top of the sheet.
+    el('f-name').focus({ preventScroll: true });
   }
 
   function setFieldError(key, message) {
-    el('e-' + key).textContent = message || '';
-    el('f-' + key).setAttribute('aria-invalid', message ? 'true' : 'false');
+    var error = el('e-' + key), input = el('f-' + key);
+    if (error) error.textContent = message || '';
+    if (input) input.setAttribute('aria-invalid', message ? 'true' : 'false');
+  }
+
+  function readForm() {
+    var out = {};
+    FORM_FIELDS.forEach(function (key) {
+      var input = el('f-' + key);
+      out[key] = input ? input.value.trim() : '';
+    });
+    out.discreet = el('f-discreet').checked;
+    return out;
   }
 
   function onAddSubmit(event) {
     event.preventDefault();
+    var raw = readForm();
 
-    var imo = window.Vessel.validateImo(el('f-imo').value);
-    var mmsi = window.Vessel.validateMmsi(el('f-mmsi').value);
-    var name = el('f-name').value.trim();
+    var imo = window.Vessel.validateImo(raw.imo);
+    var mmsi = window.Vessel.validateMmsi(raw.mmsi);
+    var name = raw.name;
 
     setFieldError('imo', imo.ok ? '' : imo.error);
     setFieldError('mmsi', mmsi.ok ? '' : mmsi.error);
     setFieldError('name', name ? '' : 'Give the vessel a name.');
 
-    if (!imo.ok) { el('f-imo').focus(); return; }
-    if (!mmsi.ok) { el('f-mmsi').focus(); return; }
     if (!name) { el('f-name').focus(); return; }
+    if (!mmsi.ok) { el('f-mmsi').focus(); return; }
+    if (!imo.ok) { el('f-imo').focus(); return; }
 
-    // Refuse a duplicate rather than quietly shadowing an existing record.
+    // A duplicate would quietly shadow an existing record. Editing a vessel
+    // does not clash with herself.
     var clash = window.FLEET.filter(function (y) {
+      if (editing && y.id === editing.yacht.id) return false;
       return y.mmsi === mmsi.value || y.imo === imo.value;
     })[0];
     if (clash) {
       setFieldError('mmsi', clash.name + ' is already on the list with that ' +
         (clash.mmsi === mmsi.value ? 'MMSI' : 'IMO') + '.');
+      el('f-mmsi').focus();
       return;
     }
 
-    var record = window.Vessel.buildRecord({
-      name: name,
-      prefix: el('f-prefix').value,
-      mmsi: mmsi.value,
-      imo: imo.value,
-      flag: el('f-flag').value.trim() || null,
-      builder: el('f-builder').value.trim() || null,
-      loa: numberOrNull(el('f-loa').value),
-      yearBuilt: numberOrNull(el('f-year').value),
-      discreet: el('f-discreet').checked
-    });
+    if (!validateDemoPlacement(raw)) return;
 
-    var stored = window.Vessel.addAddition(record);
+    var fields = Object.assign({}, raw, {
+      name: name, mmsi: mmsi.value, imo: imo.value,
+      id: editing ? editing.yacht.id : null,
+      demoRoute: editing ? window.Vessel.toFields(editing.yacht).demoRoute : null
+    });
+    var record = window.Vessel.buildRecord(fields);
+
+    var stored, lede;
+    if (!editing) {
+      stored = window.Vessel.addAddition(record);
+      lede = window.Fmt.fullName(record) + ' is on your list and, with live AIS ' +
+        'running, is tracked from now. She lives in this browser only until ' +
+        'fleet.js carries her.';
+    } else if (editing.yacht.addedLocally) {
+      stored = window.Vessel.updateAddition(record.id, record);
+      lede = window.Fmt.fullName(record) + ' is updated in this browser. She is ' +
+        'still not in fleet.js.';
+    } else {
+      stored = window.Vessel.setOverride(record.id, record);
+      lede = window.Fmt.fullName(record) + ' is edited in this browser, over the ' +
+        'top of what fleet.js says. Save the file to make it the real record.';
+    }
+
     reloadFleet(record.id);
 
-    el('done-name').textContent = window.Fmt.fullName(record);
+    el('done-title').textContent = editing ? 'Saved — now make it permanent'
+                                           : 'Added — now make it permanent';
+    el('done-lede').textContent = lede;
     el('done-snippet').textContent = window.Vessel.toSnippet(record) + ',';
     el('copy-status').textContent = stored ? ''
-      : 'This browser is blocking storage, so the vessel will be gone on reload — the entry below is the only copy.';
+      : 'This browser is blocking storage, so the change will be gone on reload — ' +
+        'the entry below is the only copy.';
     el('add-form').hidden = true;
     el('add-done').hidden = false;
-    el('done-close').focus();
+    editing = null;
   }
 
-  function numberOrNull(value) {
-    var n = parseFloat(String(value).replace(',', '.'));
-    return isFinite(n) ? n : null;
+  // A vessel demo mode cannot place never reaches the chart, which looks exactly
+  // like a vessel that was never added. Catch it at the point of entry.
+  function validateDemoPlacement(raw) {
+    var hasLat = raw.demoLat !== '', hasLon = raw.demoLon !== '';
+    setFieldError('demoLat', '');
+    setFieldError('demoLon', '');
+    setFieldError('demoPort', '');
+
+    if (hasLat !== hasLon) {
+      setFieldError(hasLat ? 'demoLon' : 'demoLat', 'Give both, or neither.');
+      el('f-demo' + (hasLat ? 'Lon' : 'Lat')).focus();
+      return false;
+    }
+    if (hasLat) {
+      var lat = Number(raw.demoLat), lon = Number(raw.demoLon);
+      if (!isFinite(lat) || Math.abs(lat) > 90) {
+        setFieldError('demoLat', 'Latitude runs -90 to 90.');
+        el('f-demoLat').focus();
+        return false;
+      }
+      if (!isFinite(lon) || Math.abs(lon) > 180) {
+        setFieldError('demoLon', 'Longitude runs -180 to 180.');
+        el('f-demoLon').focus();
+        return false;
+      }
+      return true;
+    }
+    if (raw.demoPort) {
+      var known = window.PORTS.some(function (p) {
+        return normalisePort(p[0]) === normalisePort(raw.demoPort);
+      });
+      if (!known) {
+        setFieldError('demoPort', 'No port of that name in data/ports.js. Pick one ' +
+          'from the list, or give a latitude and longitude instead.');
+        el('f-demoPort').focus();
+        return false;
+      }
+    }
+    return true;
   }
 
-  // Rebuild the fleet from file plus local additions, and point the feeds at the
-  // new list — a vessel added mid-session has to be subscribed to.
+  function normalisePort(name) {
+    return String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().trim();
+  }
+
   function reloadFleet(selectId) {
     window.FLEET = window.Vessel.mergedFleet(BASE_FLEET);
     window.Store.init(window.FLEET);
@@ -947,7 +1140,9 @@
   // file with them applied, which is the one action that actually removes a
   // vessel for good.
   function localChangeCount() {
-    return window.Vessel.loadAdditions().length + window.Vessel.hiddenIds().length;
+    return window.Vessel.loadAdditions().length +
+           window.Vessel.hiddenIds().length +
+           window.Vessel.overriddenIds().length;
   }
 
   function renderSaveButton() {
@@ -960,11 +1155,13 @@
   function openFileDialog() {
     var added = window.Vessel.loadAdditions().length;
     var hidden = window.Vessel.hiddenIds().length;
+    var edited = window.Vessel.overriddenIds().length;
     var parts = [];
     if (added) parts.push(added + (added === 1 ? ' vessel added' : ' vessels added'));
+    if (edited) parts.push(edited + (edited === 1 ? ' vessel edited' : ' vessels edited'));
     if (hidden) parts.push(hidden + (hidden === 1 ? ' vessel removed' : ' vessels removed'));
     el('file-summary').textContent = parts.length
-      ? parts.join(' and ') + ' in this browser.'
+      ? parts.join(', ') + ' in this browser.'
       : 'No local changes — this is the fleet exactly as the file already has it.';
     el('file-content').textContent = window.Vessel.toFleetFile(window.FLEET);
     el('file-status').textContent = '';

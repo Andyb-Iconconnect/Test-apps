@@ -119,6 +119,25 @@
       return null;
     }
 
+    // Told she is underway but given only a point to sit on, she would report
+    // zero knots and derive as alongside — the console offers "underway" as a
+    // choice, so it has to mean something. Steer her from that point towards
+    // wherever she says she is bound, and out to sea if that is nowhere known.
+    if (d.status === 'underway' && !agent.route) {
+      var from = [agent.lon, agent.lat];
+      var to = d.destination ? portNamed(d.destination) : null;
+      if (!to) {
+        var bearing = d.course != null ? d.course : 90;
+        to = window.Geo.destination(from[0], from[1], bearing, 120);
+      }
+      agent.speed = agent.speed || 10;
+      agent.route = [from, to];
+      agent.leg = 0;
+      agent.legProgress = 0;
+      agent.direction = 1;
+      delete agent.home;
+    }
+
     if (d.status === 'dark') {
       agent.frozenAt = new Date(Date.now() - (d.lastSeenHoursAgo || 24) * 3600000);
       agent.course = d.course != null ? d.course : 270;
@@ -271,6 +290,8 @@
   function jitter(value, amount) {
     return Math.max(0, value + (Math.random() - 0.5) * amount);
   }
+
+  Demo._makeAgent = makeAgent;   // for tests
 
   window.Demo = Demo;
 })();

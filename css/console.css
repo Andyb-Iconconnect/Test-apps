@@ -612,6 +612,15 @@ html, body {
 
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.9rem; }
 
+/* The form stacks a dozen of these. Without room between the rows a label
+   crowds the field above it and reads as belonging to it. */
+.sheet-body .field-grid,
+.sheet-body > .form-section > .field-pair { margin-bottom: 0.9rem; }
+.sheet-body .field-grid:last-child,
+.sheet-body .form-section > .field-pair:last-child { margin-bottom: 0; }
+.form-section + .form-section { margin-top: 1.1rem; }
+.form-section .sheet-note { margin-bottom: 0.9rem; }
+
 .checkline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.86rem; color: var(--text-secondary); cursor: pointer; }
 .checkline input { accent-color: var(--brand-cyan); width: 1rem; height: 1rem; }
 
@@ -870,4 +879,72 @@ html, body {
   font-size: 0.78rem;
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+/* --- The vessel form ------------------------------------------------------- */
+
+.sheet-wide { max-width: 54rem; }
+
+.form-section { padding: 0.9rem 0 0; border-top: 1px solid var(--border); }
+.form-section:first-child { border-top: 0; padding-top: 0; }
+.form-section h3 {
+  margin: 0 0 0.6rem;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.form-section .section-tag {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.25rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.field-pair label em {
+  font-style: normal;
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The preview sits beside the URL, because it is the answer to "will this
+   actually load" and that question is asked while typing the URL. */
+.photo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 11rem;
+  gap: 1rem;
+  align-items: start;
+}
+.photo-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 3 / 2;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--map-ocean-deep);
+  overflow: hidden;
+}
+.photo-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-preview-empty {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.photo-preview-empty.bad { color: var(--critical); }
+
+.head-edit { margin-left: auto; }
+
+@media (max-width: 720px) {
+  .photo-row { grid-template-columns: minmax(0, 1fr); }
+  .photo-preview { max-width: 14rem; }
 }

@@ -21,9 +21,10 @@ global.localStorage = {
 
 const load = (f) => require(path.join(__dirname, '..', f));
 ['config.js', 'fleet.js', 'data/ports.js', 'data/world-land.js',
- 'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js'].forEach(load);
+ 'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js',
+ 'js/demo.js'].forEach(load);
 
-const { Geo, Fmt, Store, Ais, Vessel, PORTS, CONFIG } = window;
+const { Geo, Fmt, Store, Ais, Vessel, Demo, PORTS, CONFIG } = window;
 
 // The behavioural tests run against a fixed sample fleet, NOT against fleet.js.
 // fleet.js is the file you replace with your own boats; a suite that failed the
@@ -686,6 +687,142 @@ test('a discreet vessel reports no set and drift either', () => {
   s.applyFix(y.mmsi, { lon: 2, lat: 39, sog: 10, cog: 90, heading: 70, at: new Date() });
   s.recompute();
   assert.strictEqual(s.byMmsi[String(y.mmsi)].derived.setAndDrift, null);
+});
+
+test('a record built from the form carries a demo block that can place her', () => {
+  // The failure this prevents: a vessel added through the console with nothing
+  // in the position fields, which then never appears on the chart and looks for
+  // all the world like a vessel that was never added.
+  const bare = Vessel.buildRecord({ name: 'Bare', mmsi: 319000999, imo: 9074729 });
+  assert.ok(bare.demo, 'there is always a demo block');
+  assert.ok(bare.demo.route || bare.demo.position || bare.demo.port,
+    'and it can always place her');
+
+  const byPort = Vessel.buildRecord({
+    name: 'Ported', mmsi: 319000998, imo: 9074729, demoStatus: 'anchored', demoPort: 'Göcek'
+  });
+  assert.strictEqual(byPort.demo.port, 'Göcek');
+  assert.strictEqual(byPort.demo.status, 'anchored');
+
+  // An exact position wins over a port.
+  const byFix = Vessel.buildRecord({
+    name: 'Fixed', mmsi: 319000997, imo: 9074729,
+    demoPort: 'Göcek', demoLat: 36.75, demoLon: 28.94
+  });
+  assert.deepStrictEqual(byFix.demo.position, [28.94, 36.75], 'stored [lon, lat]');
+  assert.ok(!('port' in byFix.demo), 'and the port is not also kept');
+});
+
+test('an existing route survives an edit through the form', () => {
+  // A route is more than the form can edit. Flattening it to a single point
+  // because the position boxes were empty would throw away the work.
+  const source = FLEET.find((y) => y.demo && y.demo.route);
+  assert.ok(source, 'the sample fleet still has a routed vessel');
+  const fields = Vessel.toFields(source);
+  fields.name = 'Renamed';
+  const rebuilt = Vessel.buildRecord(fields);
+  assert.deepStrictEqual(rebuilt.demo.route, source.demo.route);
+  assert.strictEqual(rebuilt.name, 'Renamed');
+});
+
+test('a record survives a round trip through the form fields', () => {
+  const source = FLEET.find((y) => y.id === 'silver-meridian');
+  const rebuilt = Vessel.buildRecord(Vessel.toFields(source));
+  ['id', 'name', 'prefix', 'mmsi', 'imo', 'callSign', 'flag', 'flagCode',
+   'loa', 'beam', 'grossTonnage', 'builder', 'yearBuilt', 'lastRefit',
+   'classSociety', 'photo', 'discreet'].forEach((key) => {
+    assert.deepStrictEqual(rebuilt[key], source[key], key + ' survives');
+  });
+  assert.deepStrictEqual(rebuilt.demo, source.demo, 'and so does the demo block');
+});
+
+test('editing a fleet.js vessel overrides it without touching the file', () => {
+  const originalOverrides = Vessel.loadOverrides;
+  const target = FLEET.find((y) => y.id === 'corvina');
+  const edited = Vessel.buildRecord(
+    Object.assign(Vessel.toFields(target), { name: 'Corvina II', loa: 41.2 })
+  );
+  Vessel.loadOverrides = () => ({ corvina: edited });
+  try {
+    const merged = Vessel.mergedFleet(FLEET);
+    assert.strictEqual(merged.length, FLEET.length, 'still one record, not two');
+    const out = merged.find((y) => y.id === 'corvina');
+    assert.strictEqual(out.name, 'Corvina II');
+    assert.strictEqual(out.loa, 41.2);
+    assert.strictEqual(out.editedLocally, true, 'and it is marked as a local edit');
+    // Everyone else is untouched.
+    assert.strictEqual(merged.find((y) => y.id === 'aurelia').name, 'Aurelia');
+  } finally {
+    Vessel.loadOverrides = originalOverrides;
+  }
+});
+
+test('a local edit is never written into the file as a marker', () => {
+  const originalOverrides = Vessel.loadOverrides;
+  const target = FLEET.find((y) => y.id === 'corvina');
+  const edited = Vessel.buildRecord(
+    Object.assign(Vessel.toFields(target), { name: 'Corvina II' })
+  );
+  Vessel.loadOverrides = () => ({ corvina: edited });
+  try {
+    const file = Vessel.toFleetFile(Vessel.mergedFleet(FLEET));
+    assert.ok(!/editedLocally/.test(file), 'the marker stays out of the file');
+    assert.ok(!/addedLocally/.test(file), 'and so does the other one');
+    const sandbox = { window: {} };
+    require('vm').runInNewContext(file, sandbox);
+    assert.strictEqual(
+      sandbox.window.FLEET.find((y) => y.id === 'corvina').name, 'Corvina II',
+      'the edit is baked in');
+  } finally {
+    Vessel.loadOverrides = originalOverrides;
+  }
+});
+
+test('a pasted entry says the same thing the written file does', () => {
+  // toSnippet was written by hand and drifted from the file writer, most
+  // recently over `demo` — whose absence leaves a pasted vessel unplaceable.
+  const y = FLEET.find((v) => v.id === 'wind-verity');
+  const snippet = Vessel.toSnippet(y);
+  const fromSnippet = new Function('return [' + snippet + '][0]')();
+  const sandbox = { window: {} };
+  require('vm').runInNewContext(Vessel.toFleetFile([y]), sandbox);
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(fromSnippet)),
+    JSON.parse(JSON.stringify(sandbox.window.FLEET[0])),
+    'entry and file agree field for field');
+});
+
+test('a demo vessel told she is underway actually makes way', () => {
+  // The console offers "underway" as a choice, so it has to mean something. Given
+  // only a point to sit on she would report zero knots and derive as alongside,
+  // which is the opposite of what was asked for.
+  const withPort = Demo._makeAgent({ yacht: {
+    name: 'Test', mmsi: 319000001,
+    demo: { status: 'underway', port: 'Bodrum', destination: 'RHODES', speed: 12 }
+  } });
+  assert.ok(withPort.route, 'she is given a route');
+  assert.strictEqual(withPort.route.length, 2);
+  const rhodes = PORTS.find((p) => p[0] === 'Rhodes');
+  assert.ok(Geo.distanceNm(withPort.route[1][0], withPort.route[1][1], rhodes[2], rhodes[3]) < 1,
+    'and it heads for the port she says she is bound for');
+
+  // A destination nobody has heard of still gets her to sea rather than stuck.
+  const unknown = Demo._makeAgent({ yacht: {
+    name: 'Test', mmsi: 319000002,
+    demo: { status: 'underway', port: 'Bodrum', destination: 'NOWHERE' }
+  } });
+  assert.ok(unknown.route, 'still under way');
+  assert.ok(unknown.speed > 0, 'and at some speed');
+  assert.ok(Geo.distanceNm(unknown.route[0][0], unknown.route[0][1],
+                           unknown.route[1][0], unknown.route[1][1]) > 50,
+    'headed somewhere, not in circles');
+
+  // Alongside stays put.
+  const alongside = Demo._makeAgent({ yacht: {
+    name: 'Test', mmsi: 319000003, demo: { status: 'moored', port: 'Bodrum' }
+  } });
+  assert.ok(!alongside.route, 'a vessel alongside is not given a route');
+  assert.ok(alongside.home, 'she has a berth');
 });
 
 test('every port named in a demo block exists in data/ports.js', () => {

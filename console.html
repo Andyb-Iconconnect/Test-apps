@@ -109,7 +109,7 @@
     </div>
   </dialog>
 
-  <dialog class="sheet" id="add-dialog" aria-labelledby="add-title">
+  <dialog class="sheet sheet-wide" id="add-dialog" aria-labelledby="add-title">
     <form method="dialog" id="add-form" novalidate>
       <header class="sheet-head">
         <h2 id="add-title">Add a vessel</h2>
@@ -117,67 +117,185 @@
       </header>
 
       <div class="sheet-body" id="add-body">
-        <p class="sheet-note">
-          The IMO number is checked against its own check digit, so a mistyped one
-          is caught here rather than three weeks later.
-        </p>
 
-        <div class="field-pair">
-          <label for="f-imo">IMO number</label>
-          <input id="f-imo" name="imo" inputmode="numeric" autocomplete="off" placeholder="7 digits" required>
-          <p class="field-error" id="e-imo" role="alert"></p>
-        </div>
-
-        <div class="field-pair">
-          <label for="f-mmsi">MMSI</label>
-          <input id="f-mmsi" name="mmsi" inputmode="numeric" autocomplete="off" placeholder="9 digits" required>
-          <p class="field-hint">
-            AIS broadcasts on MMSI, not IMO. There is no free way to look one up from
-            the other, so this has to come off the ship's radio licence or her AIS unit
-            — without it the vessel is on the list but cannot be tracked.
+        <div class="form-section">
+          <h3>Identity</h3>
+          <p class="sheet-note">
+            MMSI is the only field live tracking actually needs — AIS broadcasts on
+            MMSI and never on IMO, and there is no free way to look one up from the
+            other. It comes off the ship's radio licence or her AIS unit. The IMO
+            number is checked against its own check digit, so a mistyped one is
+            caught here rather than three weeks later.
           </p>
-          <p class="field-error" id="e-mmsi" role="alert"></p>
+
+          <div class="field-grid">
+            <div class="field-pair">
+              <label for="f-name">Name <em>required</em></label>
+              <input id="f-name" name="name" autocomplete="off" placeholder="Without the M/Y" required>
+              <p class="field-error" id="e-name" role="alert"></p>
+            </div>
+            <div class="field-pair">
+              <label for="f-prefix">Type</label>
+              <select id="f-prefix" name="prefix">
+                <option value="M/Y">M/Y — motor</option>
+                <option value="S/Y">S/Y — sailing</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div class="field-pair">
+              <label for="f-mmsi">MMSI <em>required</em></label>
+              <input id="f-mmsi" name="mmsi" inputmode="numeric" autocomplete="off" placeholder="9 digits" required>
+              <p class="field-error" id="e-mmsi" role="alert"></p>
+            </div>
+            <div class="field-pair">
+              <label for="f-imo">IMO number <em>required</em></label>
+              <input id="f-imo" name="imo" inputmode="numeric" autocomplete="off" placeholder="7 digits" required>
+              <p class="field-error" id="e-imo" role="alert"></p>
+            </div>
+            <div class="field-pair">
+              <label for="f-callSign">Call sign</label>
+              <input id="f-callSign" name="callSign" autocomplete="off" placeholder="e.g. ZGAA1">
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div class="field-pair">
+              <label for="f-flag">Flag</label>
+              <input id="f-flag" name="flag" autocomplete="off" placeholder="e.g. Cayman Islands">
+            </div>
+            <div class="field-pair">
+              <label for="f-flagCode">Flag code</label>
+              <input id="f-flagCode" name="flagCode" autocomplete="off" placeholder="KY" maxlength="2">
+            </div>
+          </div>
         </div>
 
-        <div class="field-pair">
-          <label for="f-name">Name</label>
-          <input id="f-name" name="name" autocomplete="off" placeholder="Without the M/Y" required>
-          <p class="field-error" id="e-name" role="alert"></p>
+        <div class="form-section">
+          <h3>Dimensions and build</h3>
+          <div class="field-grid">
+            <div class="field-pair">
+              <label for="f-loa">LOA (m)</label>
+              <input id="f-loa" name="loa" inputmode="decimal" autocomplete="off" placeholder="48.5">
+            </div>
+            <div class="field-pair">
+              <label for="f-beam">Beam (m)</label>
+              <input id="f-beam" name="beam" inputmode="decimal" autocomplete="off" placeholder="9.2">
+            </div>
+            <div class="field-pair">
+              <label for="f-grossTonnage">Gross tonnage</label>
+              <input id="f-grossTonnage" name="grossTonnage" inputmode="numeric" autocomplete="off" placeholder="499">
+            </div>
+          </div>
+          <div class="field-grid">
+            <div class="field-pair">
+              <label for="f-builder">Builder</label>
+              <input id="f-builder" name="builder" autocomplete="off" placeholder="e.g. Abeking &amp; Rasmussen">
+            </div>
+            <div class="field-pair">
+              <label for="f-yearBuilt">Year built</label>
+              <input id="f-yearBuilt" name="yearBuilt" inputmode="numeric" autocomplete="off" placeholder="2021">
+            </div>
+            <div class="field-pair">
+              <label for="f-lastRefit">Last refit</label>
+              <input id="f-lastRefit" name="lastRefit" inputmode="numeric" autocomplete="off" placeholder="2026">
+            </div>
+          </div>
+          <div class="field-pair">
+            <label for="f-classSociety">Class society</label>
+            <input id="f-classSociety" name="classSociety" autocomplete="off" placeholder="e.g. Lloyd's Register">
+          </div>
         </div>
 
-        <div class="field-grid">
-          <div class="field-pair">
-            <label for="f-prefix">Type</label>
-            <select id="f-prefix" name="prefix">
-              <option value="M/Y">M/Y — motor</option>
-              <option value="S/Y">S/Y — sailing</option>
-            </select>
-          </div>
-          <div class="field-pair">
-            <label for="f-loa">LOA (m)</label>
-            <input id="f-loa" name="loa" inputmode="decimal" autocomplete="off" placeholder="e.g. 48.5">
-          </div>
-          <div class="field-pair">
-            <label for="f-year">Year built</label>
-            <input id="f-year" name="yearBuilt" inputmode="numeric" autocomplete="off" placeholder="e.g. 2021">
-          </div>
-        </div>
-
-        <div class="field-grid">
-          <div class="field-pair">
-            <label for="f-flag">Flag</label>
-            <input id="f-flag" name="flag" autocomplete="off" placeholder="e.g. Cayman Islands">
-          </div>
-          <div class="field-pair">
-            <label for="f-builder">Builder</label>
-            <input id="f-builder" name="builder" autocomplete="off">
+        <div class="form-section">
+          <h3>Photograph</h3>
+          <div class="photo-row">
+            <div class="field-pair">
+              <label for="f-photo">Image URL or path</label>
+              <input id="f-photo" name="photo" autocomplete="off" type="url"
+                     placeholder="assets/photos/cloudbreak.jpg  ·  or  https://…">
+              <p class="field-hint">
+                Leave it empty and she gets a drawn side profile instead. The preview
+                is the real test: many image hosts refuse to serve to another site, and
+                a blocked photo looks exactly like one nobody added.
+              </p>
+              <p class="field-error" id="e-photo" role="alert"></p>
+            </div>
+            <div class="photo-preview" id="photo-preview">
+              <span class="photo-preview-empty">No photo</span>
+            </div>
           </div>
         </div>
 
-        <label class="checkline">
-          <input type="checkbox" id="f-discreet" name="discreet">
-          <span>Discreet — never show an exact position for this vessel</span>
-        </label>
+        <div class="form-section">
+          <h3>Where she is <span class="section-tag">demo mode only</span></h3>
+          <p class="sheet-note">
+            Ignored the moment an AISstream key is set in <code>config.js</code>, when
+            live AIS takes over. Until then it is the only thing that puts her on the
+            chart — a vessel with nothing here is on the list but never appears.
+          </p>
+          <div class="field-grid">
+            <div class="field-pair">
+              <label for="f-demoStatus">State</label>
+              <select id="f-demoStatus" name="demoStatus">
+                <option value="moored">Alongside</option>
+                <option value="anchored">At anchor</option>
+                <option value="underway">Underway</option>
+                <option value="dark">No signal</option>
+              </select>
+            </div>
+            <div class="field-pair">
+              <label for="f-demoPort">Port</label>
+              <input id="f-demoPort" name="demoPort" autocomplete="off" list="port-names"
+                     placeholder="Start typing…">
+              <datalist id="port-names"></datalist>
+              <p class="field-error" id="e-demoPort" role="alert"></p>
+            </div>
+            <div class="field-pair">
+              <label for="f-demoSpeed">Speed (kn)</label>
+              <input id="f-demoSpeed" name="demoSpeed" inputmode="decimal" autocomplete="off" placeholder="11.5">
+            </div>
+          </div>
+          <p class="field-hint">
+            Or give an exact position instead, which wins over the port.
+          </p>
+          <div class="field-grid">
+            <div class="field-pair">
+              <label for="f-demoLat">Latitude</label>
+              <input id="f-demoLat" name="demoLat" inputmode="decimal" autocomplete="off" placeholder="36.7530">
+              <p class="field-error" id="e-demoLat" role="alert"></p>
+            </div>
+            <div class="field-pair">
+              <label for="f-demoLon">Longitude</label>
+              <input id="f-demoLon" name="demoLon" inputmode="decimal" autocomplete="off" placeholder="28.9400">
+              <p class="field-error" id="e-demoLon" role="alert"></p>
+            </div>
+          </div>
+          <div class="field-grid">
+            <div class="field-pair">
+              <label for="f-demoDestination">Bound for</label>
+              <input id="f-demoDestination" name="demoDestination" autocomplete="off" placeholder="PALMA">
+            </div>
+            <div class="field-pair">
+              <label for="f-demoEtaHours">ETA in (hours)</label>
+              <input id="f-demoEtaHours" name="demoEtaHours" inputmode="numeric" autocomplete="off" placeholder="26">
+            </div>
+          </div>
+          <p class="field-hint" id="route-note" hidden>
+            She has a hand-written route in <code>fleet.js</code>. It is kept as it is
+            — a route is more than this form can edit, and flattening it to one point
+            would throw the work away. Give a position or a port to replace it.
+          </p>
+        </div>
+
+        <div class="form-section">
+          <label class="checkline">
+            <input type="checkbox" id="f-discreet" name="discreet">
+            <span>Discreet — never show an exact position for this vessel, whatever
+              the board is set to</span>
+          </label>
+        </div>
       </div>
 
       <footer class="sheet-foot">
@@ -187,22 +305,18 @@
       </footer>
     </form>
 
-    <!-- Shown after a successful add. -->
+    <!-- Shown after a successful add or edit. -->
     <div class="sheet-done" id="add-done" hidden>
       <header class="sheet-head">
-        <h2 id="done-title">Added — now make it permanent</h2>
+        <h2 id="done-title">Saved — now make it permanent</h2>
         <button class="sheet-close" id="done-close" type="button" aria-label="Close">&times;</button>
       </header>
       <div class="sheet-body">
-        <p class="sheet-note">
-          <b id="done-name"></b> is on your list and, with live AIS running, is being
-          tracked from now. But it lives in this browser only. Paste the entry below
-          into <code>fleet.js</code>, before the closing <code>];</code>, and it becomes
-          part of the fleet everybody sees — including the office display.
-        </p>
+        <p class="sheet-note" id="done-lede"></p>
         <pre class="snippet" id="done-snippet"></pre>
         <div class="sheet-actions">
           <button class="button-primary" id="copy-snippet" type="button">Copy entry</button>
+          <button class="button-quiet" id="done-save-file" type="button">Save whole file…</button>
           <span class="sheet-foot-note" id="copy-status"></span>
         </div>
       </div>
