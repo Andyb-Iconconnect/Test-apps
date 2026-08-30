@@ -300,9 +300,9 @@
     return {
       id: fields.id || (Vessel.slugify(fields.name) + '-' + String(fields.mmsi).slice(-4)),
       name: fields.name,
-      prefix: fields.prefix || 'M/Y',
+      prefix: text(fields.prefix),
       mmsi: fields.mmsi,
-      imo: fields.imo,
+      imo: num(fields.imo),
       callSign: text(fields.callSign),
       flag: text(fields.flag) || (fromMmsi && fromMmsi.flag) || null,
       flagCode: (text(fields.flagCode) ? text(fields.flagCode).toUpperCase() : null) ||

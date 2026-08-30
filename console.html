@@ -202,11 +202,12 @@
         <div class="form-section">
           <h3>Identity</h3>
           <p class="sheet-note">
-            MMSI is the only field live tracking actually needs — AIS broadcasts on
-            MMSI and never on IMO, and there is no free way to look one up from the
-            other. It comes off the ship's radio licence or her AIS unit. The IMO
-            number is checked against its own check digit, so a mistyped one is
-            caught here rather than three weeks later.
+            A name and an MMSI are all that is needed. AIS broadcasts on MMSI and
+            never on IMO, and there is no free way to look one up from the other, so
+            it has to come off her radio licence or her AIS unit — but everything
+            beside it here she broadcasts herself, and it is taken the first time she
+            is heard. Fill any of it in and it is checked against what she says
+            rather than replaced, which is what catches a wrong MMSI.
           </p>
 
           <div class="field-grid">
@@ -218,6 +219,7 @@
             <div class="field-pair">
               <label for="f-prefix">Type</label>
               <select id="f-prefix" name="prefix">
+                <option value="">She will tell us</option>
                 <option value="M/Y">M/Y — motor</option>
                 <option value="S/Y">S/Y — sailing</option>
               </select>
@@ -231,8 +233,9 @@
               <p class="field-error" id="e-mmsi" role="alert"></p>
             </div>
             <div class="field-pair">
-              <label for="f-imo">IMO number <em>required</em></label>
-              <input id="f-imo" name="imo" inputmode="numeric" autocomplete="off" placeholder="7 digits" required>
+              <label for="f-imo">IMO number</label>
+              <input id="f-imo" name="imo" inputmode="numeric" autocomplete="off"
+                     placeholder="she will tell us">
               <p class="field-error" id="e-imo" role="alert"></p>
             </div>
             <div class="field-pair">

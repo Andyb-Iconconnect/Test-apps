@@ -136,6 +136,14 @@ window.CONFIG = {
   /* --- Console ----------------------------------------------------------- */
 
   // Settings for console.html, the desk tool. The office display ignores these.
+  // When a vessel broadcasts something her record has not got — her IMO, call
+  // sign, length, beam, or whether she is motor or sail — take it. Only ever
+  // fills a blank: a value somebody typed stays, and goes on being compared
+  // with what she broadcasts, which is what catches a wrong MMSI.
+  //
+  // Turn it off and the console offers the same fields on a button instead.
+  autoFillFromAis: true,
+
   /* --- Look -------------------------------------------------------------- */
 
   display: {

@@ -1332,18 +1332,33 @@ test('a spreadsheet says yes in a dozen ways', () => {
   });
 });
 
-test('the template has the columns the importer reads', () => {
-  // If these drift, somebody fills in a sheet the importer then ignores.
-  const template = Csv.parse(Csv.template());
-  const exported = Csv.parse(Csv.fromFleet(FLEET, Vessel.toFields));
-  assert.deepStrictEqual(template[0], exported[0],
-    'template headings match the export headings exactly');
+test('the template asks only for what cannot be worked out', () => {
+  const template = Csv.parse(Csv.template())[0];
+  const exported = Csv.parse(Csv.fromFleet(FLEET, Vessel.toFields))[0];
 
-  const mapping = Csv.mapColumns(template[0]);
-  assert.ok(mapping.indexOf('name') !== -1, 'and every one of them maps to a field');
-  assert.ok(mapping.indexOf('mmsi') !== -1);
+  // Every heading it does ask for must be one the importer recognises, or
+  // somebody fills in a sheet that is then ignored.
+  const mapping = Csv.mapColumns(template);
   assert.strictEqual(mapping.filter((f) => f === '').length, 0,
     'no column in our own template is left unrecognised');
+  assert.ok(mapping.indexOf('name') !== -1);
+  assert.ok(mapping.indexOf('mmsi') !== -1);
+
+  // And every one must exist in the export, so the round trip carries them.
+  template.forEach((heading) => {
+    assert.ok(exported.indexOf(heading) !== -1,
+      heading + ' is in the export too');
+  });
+
+  // The point of the exercise: it is shorter, and specifically it does not ask
+  // for anything derived from the MMSI or broadcast by the vessel.
+  assert.ok(template.length < exported.length - 5,
+    'the template is materially shorter than everything we hold');
+  ['Flag', 'Flag code', 'IMO', 'Call sign', 'LOA (m)', 'Beam (m)', 'Type',
+   'Bound for', 'Speed (kn)', 'ETA (hours)'].forEach((heading) => {
+    assert.strictEqual(template.indexOf(heading), -1,
+      heading + ' is not asked for — it is derived or broadcast');
+  });
 });
 
 test('a flag falls out of the MMSI rather than being typed', () => {
@@ -1430,8 +1445,6 @@ test('the template example refuses to be imported by accident', () => {
   assert.strictEqual(mmsi.ok, false, 'and its MMSI cannot be a real ship station');
 
   // Everything else in the row is valid, so it teaches the format correctly.
-  assert.strictEqual(Vessel.validateImo(fields.imo).ok, true);
-  assert.strictEqual(fields.prefix, 'M/Y');
   assert.strictEqual(fields.discreet, false);
   assert.strictEqual(Vessel.normaliseStatus(fields.demoStatus), 'moored');
   assert.ok(PORTS.some((p) => p[0] === fields.demoPort),

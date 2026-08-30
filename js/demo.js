@@ -72,7 +72,11 @@
       name: y.name ? y.name.toUpperCase() : null,
       callSign: y.callSign || null,
       imo: y.imo || null,
-      shipType: (y.prefix || '').toUpperCase().indexOf('S') === 0 ? 36 : 37,
+      // Only where the record already says. Reporting 37 for a vessel with no
+      // rig recorded would have demo mode inventing the very fact the auto-fill
+      // is meant to learn from a real transponder.
+      shipType: !y.prefix ? null
+        : (y.prefix.toUpperCase().indexOf('S') === 0 ? 36 : 37),
       fixType: 1,
       loa: y.loa ? Math.round(y.loa) : null,
       beam: y.beam ? Math.round(y.beam) : null

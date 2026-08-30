@@ -170,6 +170,9 @@
 
   /* --- Writing one out ------------------------------------------------------ */
 
+  // Everything, for writing a fleet out. Reading one back accepts all of these
+  // and more besides; what a person is ASKED for is TEMPLATE_COLUMNS, which is
+  // a good deal shorter.
   var EXPORT_COLUMNS = [
     ['name', 'Name'], ['prefix', 'Type'], ['mmsi', 'MMSI'], ['imo', 'IMO'],
     ['callSign', 'Call sign'], ['flag', 'Flag'], ['flagCode', 'Flag code'],
@@ -239,34 +242,57 @@
     demoEtaHours: ''
   };
 
+  /**
+   * The columns a person actually has to fill in.
+   *
+   * Everything left out of this is either derived from the MMSI (the flag) or
+   * broadcast by the vessel herself (IMO, call sign, length, beam, motor or
+   * sail, destination, speed, ETA) and is adopted automatically once she has
+   * been heard. Asking for them made the sheet twice as long as the work.
+   *
+   * The importer still accepts every one of them, so an existing sheet with
+   * the full set keeps working — and a value typed here is still worth having,
+   * because it gets checked against what she broadcasts.
+   */
+  var TEMPLATE_COLUMNS = [
+    'name', 'mmsi',
+    'grossTonnage', 'builder', 'yearBuilt', 'lastRefit', 'classSociety',
+    'photo', 'discreet',
+    'demoStatus', 'demoPort'
+  ];
+
   Csv.template = function () {
-    var head = EXPORT_COLUMNS.map(function (c) { return quote(c[1]); }).join(',');
-    var row = EXPORT_COLUMNS.map(function (c) { return quote(EXAMPLE[c[0]]); }).join(',');
+    var columns = EXPORT_COLUMNS.filter(function (c) {
+      return TEMPLATE_COLUMNS.indexOf(c[0]) !== -1;
+    });
+    var head = columns.map(function (c) { return quote(c[1]); }).join(',');
+    var row = columns.map(function (c) { return quote(EXAMPLE[c[0]]); }).join(',');
     return '\ufeff' + head + '\r\n' + row + '\r\n';
   };
 
+  Csv.TEMPLATE_COLUMNS = TEMPLATE_COLUMNS;
+
   // What each column will take, for the console to show beside the template.
   Csv.COLUMN_NOTES = [
-    ['Name and MMSI', 'The two that are actually required. MMSI is nine digits off ' +
-             'her radio licence or AIS unit — it is what live tracking uses, not ' +
-             'the IMO, and there is no way to look one up from the other.'],
-    ['Flag, Flag code', 'Leave blank. The first three digits of an MMSI are ' +
-             'allocated to a flag administration, so these are filled in from it.'],
-    ['IMO, Call sign, LOA (m), Beam (m), Type',
-             'Leave blank if you would rather not type them. Her transponder ' +
-             'broadcasts all five, and the console offers to fill in whichever ' +
-             'are still empty once it has heard her. Typing them is still worth ' +
-             'it — a value you have entered gets checked against what she ' +
-             'broadcasts, which is what catches a wrong MMSI.'],
+    ['Name and MMSI', 'All that is strictly needed. MMSI is nine digits off her ' +
+             'radio licence or AIS unit — it is what live tracking uses, not the ' +
+             'IMO, and there is no way to look one up from the other.'],
+    ['Not in this sheet, on purpose',
+             'Flag and flag code come out of the MMSI. IMO, call sign, LOA, beam, ' +
+             'motor or sail, destination, speed and ETA are broadcast by the ' +
+             'vessel and adopted the first time she is heard. Nine columns you ' +
+             'would otherwise be typing. The importer still accepts them all if ' +
+             'your own sheet has them.'],
     ['Gross tonnage, Builder, Year built, Last refit, Class society',
-             'Yours to fill in. None of it is broadcast over AIS: it lives in ' +
-             'registry and class records, and there is no free source this can ' +
-             'read.'],
+             'Yours to fill in — none of it is broadcast. It lives in registry ' +
+             'and class records, and there is no free source this can read.'],
+    ['Photo', 'A path or URL. Easier still: drop the images on the console and ' +
+             'they are matched to vessels by filename.'],
     ['Discreet', 'yes to never show her exact position, whatever the board is set to.'],
-    ['Status', 'alongside, at anchor, underway, or no signal.'],
-    ['Port', 'Any port in data/ports.js. Or give Latitude and Longitude instead, ' +
-             'which wins. Demo mode only — ignored once live AIS is on.'],
-    ['Bound for, Speed, ETA', 'Only used while she is underway, and only in demo mode.']
+    ['Status and Port', 'Where to put her until live AIS takes over — alongside, ' +
+             'at anchor, underway or no signal, at any port in data/ports.js. ' +
+             'Both are ignored the moment an AISstream key is set. A Latitude and ' +
+             'Longitude column will also be read if you would rather be exact.']
   ];
 
   window.Csv = Csv;

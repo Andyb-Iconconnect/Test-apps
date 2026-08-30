@@ -594,7 +594,7 @@
       // than have somebody type it back in.
       var fillable = window.Vessel.autoFill(y, a);
       var keys = Object.keys(fillable);
-      if (keys.length) {
+      if (keys.length && !window.CONFIG.autoFillFromAis) {
         var offer = h('div', 'sheet-actions');
         var fill = h('button', 'button-quiet',
           'Fill ' + keys.length + ' blank ' + (keys.length === 1 ? 'field' : 'fields'));
@@ -1343,16 +1343,45 @@
     el('import-apply').disabled = true;
   }
 
+  /**
+   * Take what the fleet is broadcasting into the fields their records have not
+   * got, without being asked.
+   *
+   * This runs on every store change, which sounds expensive and is not: the
+   * moment a field is filled it stops being fillable, so after the first pass
+   * over a vessel there is nothing to do and nothing is written. A record that
+   * never gets a static message is simply never touched.
+   *
+   * It writes an override, the same as an edit through the form, so what the
+   * app learns ends up in fleet.js when the file is saved rather than living
+   * only in one browser.
+   */
+  function adoptWhatWeHear() {
+    if (!window.CONFIG.autoFillFromAis) return;
+    var changed = 0;
+    window.Store.vessels.forEach(function (v) {
+      if (!v.ais) return;
+      var patch = window.Vessel.autoFill(v.yacht, v.ais);
+      if (!Object.keys(patch).length) return;
+      applyAutoFill(v, patch, true);
+      changed++;
+    });
+    if (changed) {
+      reloadFleet(App.selected);
+      renderSaveButton();
+    }
+  }
+
   // Adopt what AIS reports into the fields a record has not got. Stored the
   // same way an edit through the form is, so it goes into the file with
   // everything else.
-  function applyAutoFill(v, patch) {
+  function applyAutoFill(v, patch, deferReload) {
     var y = v.yacht;
     var fields = Object.assign(window.Vessel.toFields(y), patch, { id: y.id });
     var record = window.Vessel.buildRecord(fields);
     if (y.addedLocally) window.Vessel.updateAddition(y.id, record);
     else window.Vessel.setOverride(y.id, record);
-    reloadFleet(y.id);
+    if (!deferReload) reloadFleet(y.id);
   }
 
   /* --- The vessel form ----------------------------------------------------- */
@@ -1546,9 +1575,12 @@
     ERROR_FIELDS.forEach(function (k) { setFieldError(k, ''); });
     el('add-status').textContent = '';
 
+    // Prefix is deliberately blank on a new vessel: AIS ship type 36 or 37 says
+    // which she is, and defaulting to motor would leave every sloop wrong until
+    // somebody noticed.
     var fields = vessel
       ? window.Vessel.toFields(vessel.yacht)
-      : { prefix: 'M/Y', demoStatus: 'moored' };
+      : { prefix: '', demoStatus: 'moored' };
 
     FORM_FIELDS.forEach(function (key) {
       var input = el('f-' + key);
@@ -1597,9 +1629,11 @@
     event.preventDefault();
     var raw = readForm();
 
-    var imo = window.Vessel.validateImo(raw.imo);
     var mmsi = window.Vessel.validateMmsi(raw.mmsi);
     var name = raw.name;
+    // Optional: plenty of yachts under 300 GT have never been issued one, and
+    // she broadcasts it anyway. Checked when given, never demanded.
+    var imo = raw.imo ? window.Vessel.validateImo(raw.imo) : { ok: true, value: null };
 
     setFieldError('imo', imo.ok ? '' : imo.error);
     setFieldError('mmsi', mmsi.ok ? '' : mmsi.error);
@@ -1613,7 +1647,7 @@
     // does not clash with herself.
     var clash = window.FLEET.filter(function (y) {
       if (editing && y.id === editing.yacht.id) return false;
-      return y.mmsi === mmsi.value || y.imo === imo.value;
+      return y.mmsi === mmsi.value || (imo.value && y.imo === imo.value);
     })[0];
     if (clash) {
       setFieldError('mmsi', clash.name + ' is already on the list with that ' +
@@ -2096,6 +2130,7 @@
       retrying: 'Reconnecting', closed: 'Offline', starting: 'Starting'
     }[store.connection] || store.connection;
 
+    adoptWhatWeHear();
     renderRail(false);
     renderWork(false);
     renderReadout();
