@@ -546,10 +546,16 @@
 
     if (!a) {
       aisPanel.appendChild(h('div', 'empty',
-        window.Store.connection === 'demo'
-          ? 'Demo mode. Nothing here is from a transponder.'
-          : 'No static message heard yet. They come round every few minutes.'));
+        'No static message heard yet. They come round every few minutes.'));
     } else {
+      // In demo mode this panel is the record reflected back at itself, which
+      // looks exactly like a transponder agreeing with it. Say which it is.
+      if (window.Store.connection === 'demo') {
+        aisPanel.appendChild(h('div', 'sheet-note',
+          'Demo mode: this is her own record read back, not a transponder. With ' +
+          'live AIS it is what she is actually broadcasting, and the two are ' +
+          'compared.'));
+      }
       if (d.mismatches && d.mismatches.length) {
         var warn = h('div', 'mismatch');
         warn.appendChild(h('div', 'm-head',
@@ -583,6 +589,23 @@
                              : 'plain GNSS — worse than 10 m'));
       }
       aisPanel.appendChild(aisRows);
+
+      // Everything above is already known about her. Offer to keep it rather
+      // than have somebody type it back in.
+      var fillable = window.Vessel.autoFill(y, a);
+      var keys = Object.keys(fillable);
+      if (keys.length) {
+        var offer = h('div', 'sheet-actions');
+        var fill = h('button', 'button-quiet',
+          'Fill ' + keys.length + ' blank ' + (keys.length === 1 ? 'field' : 'fields'));
+        fill.type = 'button';
+        fill.addEventListener('click', function () { applyAutoFill(v, fillable); });
+        offer.appendChild(fill);
+        offer.appendChild(h('span', 'sheet-foot-note',
+          keys.map(function (k) { return FIELD_LABELS[k] || k; }).join(', ') +
+          ' — from what she is broadcasting. Nothing already filled in is touched.'));
+        aisPanel.appendChild(offer);
+      }
     }
     host.appendChild(aisPanel);
 
@@ -1320,6 +1343,18 @@
     el('import-apply').disabled = true;
   }
 
+  // Adopt what AIS reports into the fields a record has not got. Stored the
+  // same way an edit through the form is, so it goes into the file with
+  // everything else.
+  function applyAutoFill(v, patch) {
+    var y = v.yacht;
+    var fields = Object.assign(window.Vessel.toFields(y), patch, { id: y.id });
+    var record = window.Vessel.buildRecord(fields);
+    if (y.addedLocally) window.Vessel.updateAddition(y.id, record);
+    else window.Vessel.setOverride(y.id, record);
+    reloadFleet(y.id);
+  }
+
   /* --- The vessel form ----------------------------------------------------- */
 
   // One form does add and edit. Two forms drift: a field added to one and not
@@ -1366,6 +1401,15 @@
     // The preview is the only honest test of a photo URL: plenty of hosts serve
     // it here and refuse it from the board, and both look identical in the field.
     el('f-photo').addEventListener('input', debounce(updatePhotoPreview, 400));
+
+    // The flag is in the MMSI, so it fills itself as one is typed. Only into
+    // empty boxes: somebody who has typed a flag meant it.
+    el('f-mmsi').addEventListener('input', function () {
+      var flag = window.Vessel.flagFromMmsi(el('f-mmsi').value);
+      if (!flag) return;
+      if (!el('f-flag').value.trim()) el('f-flag').value = flag.flag;
+      if (!el('f-flagCode').value.trim()) el('f-flagCode').value = flag.flagCode;
+    });
 
     wirePhotoUpload();
     fillPortList();

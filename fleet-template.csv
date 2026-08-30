@@ -1,2 +1,2 @@
 ﻿Name,Type,MMSI,IMO,Call sign,Flag,Flag code,LOA (m),Beam (m),Gross tonnage,Builder,Year built,Last refit,Class society,Photo,Discreet,Status,Port,Latitude,Longitude,Bound for,Speed (kn),ETA (hours)
-EXAMPLE - delete this row,M/Y,999000000,9074729,ZGAA1,Cayman Islands,KY,48.5,9.2,499,"Feadship, Netherlands",2021,2026,Lloyd's Register,assets/photos/example.jpg,no,alongside,Palma,,,,,
+EXAMPLE - delete this row,M/Y,999000000,9074729,,,,48.5,,499,"Feadship, Netherlands",2021,2026,Lloyd's Register,assets/photos/example.jpg,no,alongside,Palma,,,,,

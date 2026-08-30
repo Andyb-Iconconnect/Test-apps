@@ -228,6 +228,53 @@
 
   /* --- Building a record --------------------------------------------------- */
 
+  /**
+   * Her flag, from her MMSI.
+   *
+   * The leading three digits are allocated by the ITU to a flag administration,
+   * so this is a fact about the number rather than a lookup: no network, no
+   * typing, and right the moment the MMSI is. Returns null for a MID that is
+   * not in the table, which leaves the field blank to be filled in by hand —
+   * honest, where a guess would not be.
+   */
+  Vessel.flagFromMmsi = function (mmsi) {
+    var digits = String(mmsi == null ? '' : mmsi).replace(/\D/g, '');
+    if (digits.length !== 9) return null;
+    var entry = window.MID && window.MID[Number(digits.slice(0, 3))];
+    return entry ? { flagCode: entry[0], flag: entry[1] } : null;
+  };
+
+  /**
+   * Fields the app can supply that a record has not got.
+   *
+   * Only ever fills a blank. A field somebody has typed stays as it is and goes
+   * on being cross-checked against what the transponder says — silently
+   * replacing it would destroy the very disagreement that catches a wrong MMSI.
+   */
+  Vessel.autoFill = function (yacht, ais) {
+    var out = {};
+    var blank = function (key) {
+      return yacht[key] == null || yacht[key] === '';
+    };
+
+    var flag = Vessel.flagFromMmsi(yacht.mmsi);
+    if (flag) {
+      if (blank('flag')) out.flag = flag.flag;
+      if (blank('flagCode')) out.flagCode = flag.flagCode;
+    }
+
+    if (!ais) return out;
+    if (blank('name') && ais.name) out.name = ais.name;
+    if (blank('imo') && ais.imo) out.imo = ais.imo;
+    if (blank('callSign') && ais.callSign) out.callSign = ais.callSign;
+    if (blank('loa') && ais.loa) out.loa = ais.loa;
+    if (blank('beam') && ais.beam) out.beam = ais.beam;
+    // 36 is a sailing vessel, 37 a pleasure craft. Nothing else tells us.
+    if (blank('prefix') && ais.shipType === 36) out.prefix = 'S/Y';
+    if (blank('prefix') && ais.shipType === 37) out.prefix = 'M/Y';
+    return out;
+  };
+
   Vessel.slugify = function (name) {
     return String(name).toLowerCase().trim()
       .replace(/[^a-z0-9]+/g, '-')
@@ -248,6 +295,8 @@
   // Everything not filled in is left null rather than guessed, so the record
   // never quietly asserts something nobody checked.
   Vessel.buildRecord = function (fields) {
+    // The flag is in the MMSI. Nobody should be typing it.
+    var fromMmsi = Vessel.flagFromMmsi(fields.mmsi);
     return {
       id: fields.id || (Vessel.slugify(fields.name) + '-' + String(fields.mmsi).slice(-4)),
       name: fields.name,
@@ -255,8 +304,9 @@
       mmsi: fields.mmsi,
       imo: fields.imo,
       callSign: text(fields.callSign),
-      flag: text(fields.flag),
-      flagCode: text(fields.flagCode) ? text(fields.flagCode).toUpperCase() : null,
+      flag: text(fields.flag) || (fromMmsi && fromMmsi.flag) || null,
+      flagCode: (text(fields.flagCode) ? text(fields.flagCode).toUpperCase() : null) ||
+                (fromMmsi && fromMmsi.flagCode) || null,
       loa: num(fields.loa),
       beam: num(fields.beam),
       grossTonnage: num(fields.grossTonnage),

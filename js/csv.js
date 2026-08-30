@@ -218,11 +218,11 @@
     prefix: 'M/Y',
     mmsi: '999000000',
     imo: '9074729',
-    callSign: 'ZGAA1',
-    flag: 'Cayman Islands',
-    flagCode: 'KY',
+    callSign: '',
+    flag: '',
+    flagCode: '',
     loa: '48.5',
-    beam: '9.2',
+    beam: '',
     grossTonnage: '499',
     builder: 'Feadship, Netherlands',
     yearBuilt: '2021',
@@ -247,17 +247,25 @@
 
   // What each column will take, for the console to show beside the template.
   Csv.COLUMN_NOTES = [
-    ['Name', 'Required. Without the M/Y or S/Y.'],
-    ['Type', 'motor or sailing. Anything starting with S reads as sailing.'],
-    ['MMSI', 'Required. Nine digits, off her radio licence or AIS unit. This is ' +
-             'what live tracking uses — not the IMO.'],
-    ['IMO', 'Seven digits, checked against its own check digit. Leave blank if ' +
-            'she has never been issued one.'],
-    ['LOA (m), Beam (m), Gross tonnage', 'Numbers. Units are metres and GT.'],
+    ['Name and MMSI', 'The two that are actually required. MMSI is nine digits off ' +
+             'her radio licence or AIS unit — it is what live tracking uses, not ' +
+             'the IMO, and there is no way to look one up from the other.'],
+    ['Flag, Flag code', 'Leave blank. The first three digits of an MMSI are ' +
+             'allocated to a flag administration, so these are filled in from it.'],
+    ['IMO, Call sign, LOA (m), Beam (m), Type',
+             'Leave blank if you would rather not type them. Her transponder ' +
+             'broadcasts all five, and the console offers to fill in whichever ' +
+             'are still empty once it has heard her. Typing them is still worth ' +
+             'it — a value you have entered gets checked against what she ' +
+             'broadcasts, which is what catches a wrong MMSI.'],
+    ['Gross tonnage, Builder, Year built, Last refit, Class society',
+             'Yours to fill in. None of it is broadcast over AIS: it lives in ' +
+             'registry and class records, and there is no free source this can ' +
+             'read.'],
     ['Discreet', 'yes to never show her exact position, whatever the board is set to.'],
     ['Status', 'alongside, at anchor, underway, or no signal.'],
     ['Port', 'Any port in data/ports.js. Or give Latitude and Longitude instead, ' +
-             'which wins.'],
+             'which wins. Demo mode only — ignored once live AIS is on.'],
     ['Bound for, Speed, ETA', 'Only used while she is underway, and only in demo mode.']
   ];
 

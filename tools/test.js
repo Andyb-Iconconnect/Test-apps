@@ -20,7 +20,7 @@ global.localStorage = {
 };
 
 const load = (f) => require(path.join(__dirname, '..', f));
-['config.js', 'fleet.js', 'data/ports.js', 'data/world-land.js',
+['config.js', 'fleet.js', 'data/mid.js', 'data/ports.js', 'data/world-land.js',
  'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js',
  'js/demo.js', 'js/csv.js'].forEach(load);
 
@@ -1344,6 +1344,71 @@ test('the template has the columns the importer reads', () => {
   assert.ok(mapping.indexOf('mmsi') !== -1);
   assert.strictEqual(mapping.filter((f) => f === '').length, 0,
     'no column in our own template is left unrecognised');
+});
+
+test('a flag falls out of the MMSI rather than being typed', () => {
+  // The leading three digits are an ITU allocation, so this is a fact about the
+  // number. Codes verified against the ITU MID list, not remembered.
+  const cases = {
+    319095800: ['KY', 'Cayman Islands'],
+    538000123: ['MH', 'Marshall Islands'],
+    215000001: ['MT', 'Malta'],
+    254000001: ['MC', 'Monaco'],
+    232000001: ['GB', 'United Kingdom'],
+    271000001: ['TR', 'Turkey'],
+    378000001: ['VG', 'British Virgin Islands'],
+    244000001: ['NL', 'Netherlands']
+  };
+  Object.keys(cases).forEach((mmsi) => {
+    const got = Vessel.flagFromMmsi(mmsi);
+    assert.strictEqual(got.flagCode, cases[mmsi][0], mmsi + ' code');
+    assert.strictEqual(got.flag, cases[mmsi][1], mmsi + ' country');
+  });
+
+  // An unknown or impossible MID leaves it blank rather than guessing.
+  assert.strictEqual(Vessel.flagFromMmsi(999000000), null, 'not a ship-station MID');
+  assert.strictEqual(Vessel.flagFromMmsi('31909580'), null, 'eight digits is not an MMSI');
+  assert.strictEqual(Vessel.flagFromMmsi(''), null);
+  assert.strictEqual(Vessel.flagFromMmsi(null), null);
+
+  // And it reaches the record without anyone asking.
+  const record = Vessel.buildRecord({ name: 'Test', mmsi: 319095800, imo: 9074729 });
+  assert.strictEqual(record.flag, 'Cayman Islands');
+  assert.strictEqual(record.flagCode, 'KY');
+
+  // A flag somebody typed is not overwritten by it.
+  const typed = Vessel.buildRecord({
+    name: 'Test', mmsi: 319095800, imo: 9074729, flag: 'Somewhere Else'
+  });
+  assert.strictEqual(typed.flag, 'Somewhere Else');
+});
+
+test('autoFill fills blanks and never overwrites', () => {
+  // Silently replacing a typed value would destroy the disagreement between
+  // record and transponder that catches a wrong MMSI.
+  const ais = { name: 'AURELIA', imo: 9900019, callSign: 'ZGAA1',
+                loa: 62, beam: 11, shipType: 37 };
+
+  const bare = { mmsi: 319095800, name: null, imo: null, callSign: null,
+                 loa: null, beam: null, prefix: null };
+  const filled = Vessel.autoFill(bare, ais);
+  assert.deepStrictEqual(filled, {
+    flag: 'Cayman Islands', flagCode: 'KY', name: 'AURELIA', imo: 9900019,
+    callSign: 'ZGAA1', loa: 62, beam: 11, prefix: 'M/Y'
+  });
+
+  const complete = { mmsi: 319095800, name: 'Aurelia', imo: 9074729,
+                     callSign: 'ZZZZ9', loa: 60, beam: 10, prefix: 'S/Y',
+                     flag: 'Malta', flagCode: 'MT' };
+  assert.deepStrictEqual(Vessel.autoFill(complete, ais), {},
+    'nothing already filled in is touched');
+
+  // A sailing vessel is read off the AIS ship type.
+  assert.strictEqual(
+    Vessel.autoFill({ mmsi: 319095800, prefix: null }, { shipType: 36 }).prefix, 'S/Y');
+  // With no static message heard yet, the flag still comes from the MMSI.
+  assert.deepStrictEqual(Vessel.autoFill({ mmsi: 254000001 }, null),
+    { flag: 'Monaco', flagCode: 'MC' });
 });
 
 test('the template committed to the repo matches the one the console makes', () => {
