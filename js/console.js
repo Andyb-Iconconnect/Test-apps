@@ -812,7 +812,12 @@
 
   function wireSheetImport() {
     var input = el('sheet-file');
-    el('import-sheet').addEventListener('click', function () { input.click(); });
+    // Opens on the template rather than straight into a file picker: somebody
+    // starting from nothing has no CSV to choose yet, and that is the case the
+    // template exists for.
+    el('import-sheet').addEventListener('click', openSheetStart);
+    el('sheet-choose').addEventListener('click', function () { input.click(); });
+    el('sheet-template').addEventListener('click', downloadTemplate);
     input.addEventListener('change', function () {
       if (input.files && input.files[0]) readSheetFile(input.files[0]);
       input.value = '';
@@ -821,6 +826,69 @@
     el('sheet-cancel').addEventListener('click', function () { el('sheet-dialog').close(); });
     el('sheet-apply').addEventListener('click', applySheet);
     el('file-csv').addEventListener('click', downloadCsv);
+    renderColumnNotes();
+  }
+
+  function renderColumnNotes() {
+    var host = el('column-notes');
+    host.textContent = '';
+    window.Csv.COLUMN_NOTES.forEach(function (pair) {
+      var row = h('div', 'column-note');
+      row.appendChild(h('div', 'n-head', pair[0]));
+      row.appendChild(h('div', 'n-body', pair[1]));
+      host.appendChild(row);
+    });
+  }
+
+  function openSheetStart() {
+    sheet = { rows: [], mapping: [], plan: [] };
+    el('sheet-note').textContent = '';
+    el('sheet-start').hidden = false;
+    el('sheet-columns-panel').hidden = true;
+    el('sheet-rows-title').textContent = 'Rows';
+    el('sheet-rows').textContent = '';
+    el('sheet-rows').appendChild(h('div', 'empty', 'Nothing loaded yet.'));
+    el('sheet-status').textContent = '';
+    el('sheet-template-status').textContent = '';
+    el('sheet-apply').disabled = true;
+    el('sheet-apply').textContent = 'Import';
+    el('sheet-dialog').showModal();
+  }
+
+  function downloadTemplate() {
+    saveText(window.Csv.template(), 'fleet-template.csv', 'text/csv',
+      el('sheet-template-status'),
+      'Saved. Fill it in, then Choose a CSV.');
+  }
+
+  /**
+   * Hand a file to whoever can save one here. Served from a folder that is an
+   * ordinary download; inside the artifact viewer the page cannot save anything
+   * itself and has to ask the host, which prompts the viewer.
+   */
+  function saveText(text, filename, mime, status, doneMessage) {
+    var blob = new Blob([text], { type: mime });
+    var host = (window.claude && typeof window.claude.use === 'function')
+      ? window.claude.use('downloads') : null;
+
+    if (!host) {
+      status.textContent = saveBlobDirect(blob, filename)
+        ? doneMessage : 'Downloads are blocked here.';
+      return;
+    }
+    status.textContent = 'Asking the viewer…';
+    Promise.resolve(host).then(function (downloads) {
+      if (!downloads) {
+        status.textContent = saveBlobDirect(blob, filename) ? doneMessage : '';
+        return;
+      }
+      return downloads.save({ filename: filename, data: blob })
+        .then(function () { status.textContent = doneMessage; })
+        .catch(function (error) {
+          status.textContent = (error && error.code) === 'declined'
+            ? 'Save cancelled.' : 'Could not save here.';
+        });
+    }).catch(function () { saveBlobDirect(blob, filename); });
   }
 
   function readSheetFile(file) {
@@ -828,6 +896,7 @@
     // beats failing at a file that looks perfectly reasonable to its owner.
     if (/\.(xlsx|xls|numbers|ods)$/i.test(file.name)) {
       el('sheet-note').textContent = '';
+      el('sheet-start').hidden = false;
       el('sheet-columns-panel').hidden = true;
       el('sheet-rows').textContent = '';
       el('sheet-rows').appendChild(h('div', 'empty',
@@ -850,6 +919,7 @@
   }
 
   function loadSheet(text, filename) {
+    el('sheet-start').hidden = true;
     el('sheet-columns-panel').hidden = false;
     var rows = window.Csv.parse(text);
     if (rows.length < 2) {
@@ -1043,28 +1113,9 @@
   }
 
   function downloadCsv() {
-    var text = window.Csv.fromFleet(window.FLEET, window.Vessel.toFields);
-    var status = el('file-status');
-    var blob = new Blob([text], { type: 'text/csv' });
-
-    var host = (window.claude && typeof window.claude.use === 'function')
-      ? window.claude.use('downloads') : null;
-    if (!host) {
-      status.textContent = saveBlobDirect(blob, 'fleet.csv')
-        ? 'Saving fleet.csv — edit it and drop it back on the console.'
-        : 'Downloads are blocked here.';
-      return;
-    }
-    status.textContent = 'Asking the viewer…';
-    Promise.resolve(host).then(function (downloads) {
-      if (!downloads) {
-        status.textContent = saveBlobDirect(blob, 'fleet.csv') ? 'Saving fleet.csv…' : '';
-        return;
-      }
-      return downloads.save({ filename: 'fleet.csv', data: blob }).then(function () {
-        status.textContent = 'Saved. Edit it and drop it back on the console.';
-      }).catch(function () { status.textContent = 'Save cancelled.'; });
-    }).catch(function () { saveBlobDirect(blob, 'fleet.csv'); });
+    saveText(window.Csv.fromFleet(window.FLEET, window.Vessel.toFields),
+      'fleet.csv', 'text/csv', el('file-status'),
+      'Saved. Edit it and drop it back on the console.');
   }
 
   /* --- Importing a pile of photographs ------------------------------------- */

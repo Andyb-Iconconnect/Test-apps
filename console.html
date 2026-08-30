@@ -83,6 +83,22 @@
       <div class="sheet-body">
         <p class="sheet-note" id="sheet-note"></p>
 
+        <div class="panel" id="sheet-start">
+          <div class="pane-title">Start from a template</div>
+          <p class="sheet-note">
+            A blank sheet with the headings this reads back, and one worked example
+            row to copy. Delete that row before importing — its MMSI is deliberately
+            impossible, so if it is left in it is refused by name rather than adding
+            a yacht called EXAMPLE to your fleet.
+          </p>
+          <div class="sheet-actions">
+            <button class="button-primary" id="sheet-template" type="button">Download the template</button>
+            <button class="button-quiet" id="sheet-choose" type="button">Choose a CSV…</button>
+            <span class="sheet-foot-note" id="sheet-template-status"></span>
+          </div>
+          <div class="column-notes" id="column-notes"></div>
+        </div>
+
         <div class="panel" id="sheet-columns-panel">
           <div class="pane-title">Columns</div>
           <p class="sheet-note">

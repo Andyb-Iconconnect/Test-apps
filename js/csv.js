@@ -109,7 +109,7 @@
     demoLat: ['latitude', 'lat'],
     demoLon: ['longitude', 'long', 'lng', 'lon'],
     demoDestination: ['destination', 'boundfor', 'nextport'],
-    demoSpeed: ['speed', 'sog'],
+    demoSpeed: ['speedknots', 'speedkn', 'speed', 'sog'],
     demoEtaHours: ['etahours', 'eta']
   };
 
@@ -203,6 +203,63 @@
     });
     return '﻿' + lines.join('\r\n') + '\r\n';
   };
+
+  /**
+   * A blank sheet with the headings this reads back, and one worked example.
+   *
+   * The example is there because a heading called "Status" does not tell anyone
+   * that "At anchor" is a thing you may write in it. Its MMSI is deliberately
+   * impossible — 999 is not a country — so that if the row is left in, the
+   * importer refuses it by name rather than quietly adding a yacht called
+   * EXAMPLE to the fleet.
+   */
+  var EXAMPLE = {
+    name: 'EXAMPLE - delete this row',
+    prefix: 'M/Y',
+    mmsi: '999000000',
+    imo: '9074729',
+    callSign: 'ZGAA1',
+    flag: 'Cayman Islands',
+    flagCode: 'KY',
+    loa: '48.5',
+    beam: '9.2',
+    grossTonnage: '499',
+    builder: 'Feadship, Netherlands',
+    yearBuilt: '2021',
+    lastRefit: '2026',
+    classSociety: "Lloyd's Register",
+    photo: 'assets/photos/example.jpg',
+    discreet: 'no',
+    demoStatus: 'alongside',
+    demoPort: 'Palma',
+    demoLat: '',
+    demoLon: '',
+    demoDestination: '',
+    demoSpeed: '',
+    demoEtaHours: ''
+  };
+
+  Csv.template = function () {
+    var head = EXPORT_COLUMNS.map(function (c) { return quote(c[1]); }).join(',');
+    var row = EXPORT_COLUMNS.map(function (c) { return quote(EXAMPLE[c[0]]); }).join(',');
+    return '\ufeff' + head + '\r\n' + row + '\r\n';
+  };
+
+  // What each column will take, for the console to show beside the template.
+  Csv.COLUMN_NOTES = [
+    ['Name', 'Required. Without the M/Y or S/Y.'],
+    ['Type', 'motor or sailing. Anything starting with S reads as sailing.'],
+    ['MMSI', 'Required. Nine digits, off her radio licence or AIS unit. This is ' +
+             'what live tracking uses — not the IMO.'],
+    ['IMO', 'Seven digits, checked against its own check digit. Leave blank if ' +
+            'she has never been issued one.'],
+    ['LOA (m), Beam (m), Gross tonnage', 'Numbers. Units are metres and GT.'],
+    ['Discreet', 'yes to never show her exact position, whatever the board is set to.'],
+    ['Status', 'alongside, at anchor, underway, or no signal.'],
+    ['Port', 'Any port in data/ports.js. Or give Latitude and Longitude instead, ' +
+             'which wins.'],
+    ['Bound for, Speed, ETA', 'Only used while she is underway, and only in demo mode.']
+  ];
 
   window.Csv = Csv;
 })();

@@ -1332,6 +1332,47 @@ test('a spreadsheet says yes in a dozen ways', () => {
   });
 });
 
+test('the template has the columns the importer reads', () => {
+  // If these drift, somebody fills in a sheet the importer then ignores.
+  const template = Csv.parse(Csv.template());
+  const exported = Csv.parse(Csv.fromFleet(FLEET, Vessel.toFields));
+  assert.deepStrictEqual(template[0], exported[0],
+    'template headings match the export headings exactly');
+
+  const mapping = Csv.mapColumns(template[0]);
+  assert.ok(mapping.indexOf('name') !== -1, 'and every one of them maps to a field');
+  assert.ok(mapping.indexOf('mmsi') !== -1);
+  assert.strictEqual(mapping.filter((f) => f === '').length, 0,
+    'no column in our own template is left unrecognised');
+});
+
+test('the template committed to the repo matches the one the console makes', () => {
+  // Two copies of the same thing drift. This is the one that catches it.
+  const onDisk = require('fs')
+    .readFileSync(path.join(__dirname, '..', 'fleet-template.csv'), 'utf8');
+  assert.strictEqual(onDisk, Csv.template(),
+    'fleet-template.csv is stale — regenerate it from js/csv.js');
+});
+
+test('the template example refuses to be imported by accident', () => {
+  // It is there to be copied, not kept. Left in, it must fail by name rather
+  // than adding a yacht called EXAMPLE to somebody's fleet.
+  const rows = Csv.parse(Csv.template());
+  const fields = Csv.rowToFields(rows[1], Csv.mapColumns(rows[0]));
+  assert.ok(/example/i.test(fields.name), 'it says what it is');
+
+  const mmsi = Vessel.validateMmsi(fields.mmsi);
+  assert.strictEqual(mmsi.ok, false, 'and its MMSI cannot be a real ship station');
+
+  // Everything else in the row is valid, so it teaches the format correctly.
+  assert.strictEqual(Vessel.validateImo(fields.imo).ok, true);
+  assert.strictEqual(fields.prefix, 'M/Y');
+  assert.strictEqual(fields.discreet, false);
+  assert.strictEqual(Vessel.normaliseStatus(fields.demoStatus), 'moored');
+  assert.ok(PORTS.some((p) => p[0] === fields.demoPort),
+    'and the port it names is a real one');
+});
+
 test('the fleet writes out to a spreadsheet and reads back the same', () => {
   // The round trip is the point: export, edit in Excel, drop it back.
   const text = Csv.fromFleet(FLEET, Vessel.toFields);
