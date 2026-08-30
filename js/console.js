@@ -19,6 +19,7 @@
 
   var CHART_FPS = 20;
   var RAIL_MIN_INTERVAL_MS = 3000;
+  var WORK_MIN_INTERVAL_MS = 3000;
 
   /* --- Small DOM helpers -------------------------------------------------- */
 
@@ -105,7 +106,7 @@
     renderRail(true);
     renderHiddenNote();
     renderSaveButton();
-    renderWork();
+    renderWork(true);
     aimChart();
     window.FleetMap.snap();
     requestAnimationFrame(frame);
@@ -276,11 +277,30 @@
 
   /* --- Work column --------------------------------------------------------- */
 
-  function renderWork() {
+  var lastWorkRender = 0;
+
+  /**
+   * Rebuild the work column.
+   *
+   * `force` for a selection change; without it this is throttled the way the
+   * rail is, because it runs on every store change and a position feed is
+   * chatty. It does have to run on them, though: an open record shows a live
+   * position, a fix age and an AIS cross-check, and before this it refreshed
+   * on none of them — a vessel underway sat frozen until you reselected her.
+   *
+   * Rebuilding throws away the scroll position, so put it back.
+   */
+  function renderWork(force) {
+    var now = Date.now();
+    if (!force && now - lastWorkRender < WORK_MIN_INTERVAL_MS) return;
+    lastWorkRender = now;
+
     var host = el('work');
+    var scroll = host.scrollTop;
     host.textContent = '';
     var v = selectedVessel();
     if (v) renderDetail(host, v); else renderOverview(host);
+    host.scrollTop = scroll;
   }
 
   function selectedVessel() {
@@ -496,9 +516,66 @@
         d.distance24h > 0.5 ? window.Fmt.distance(d.distance24h) : '—', null));
       posRows.appendChild(kvRow('Run, 7 days',
         d.distance7d > 0.5 ? window.Fmt.distance(d.distance7d) : '—', null));
+      if (d.setAndDrift) {
+        posRows.appendChild(kvRow('Set and drift',
+          d.setAndDrift.degrees + '° to ' + d.setAndDrift.side,
+          'her head and her track disagree — wind, tide, or both'));
+      }
+      if (v.fix && v.fix.turning && v.fix.turning !== 'steady') {
+        posRows.appendChild(kvRow('Turning', 'To ' + v.fix.turning, null));
+      }
     }
     posPanel.appendChild(posRows);
     host.appendChild(posPanel);
+
+    // Who the transponder says she is, and how well it knows where it is. The
+    // cross-check at the top is the point of the panel: a mistyped MMSI puts
+    // somebody else's yacht on the board and is otherwise completely silent.
+    var a = v.ais;
+    var aisPanel = h('div', 'panel');
+    aisPanel.appendChild(h('div', 'pane-title', 'What AIS reports'));
+
+    if (!a) {
+      aisPanel.appendChild(h('div', 'empty',
+        window.Store.connection === 'demo'
+          ? 'Demo mode. Nothing here is from a transponder.'
+          : 'No static message heard yet. They come round every few minutes.'));
+    } else {
+      if (d.mismatches && d.mismatches.length) {
+        var warn = h('div', 'mismatch');
+        warn.appendChild(h('div', 'm-head',
+          'This MMSI is reporting a different vessel'));
+        d.mismatches.forEach(function (m) {
+          var line = h('div', 'm-row');
+          line.appendChild(h('span', 'm-field', m.field));
+          line.appendChild(h('span', 'm-reported', m.reported));
+          line.appendChild(h('span', 'm-expected', 'fleet.js says ' + m.expected));
+          warn.appendChild(line);
+        });
+        warn.appendChild(h('div', 'm-note',
+          'Check the MMSI against her certificate. Until it matches, this record ' +
+          'is tracking whatever vessel does own ' + y.mmsi + '.'));
+        aisPanel.appendChild(warn);
+      }
+
+      var aisRows = h('div', 'rows');
+      aisRows.appendChild(kvRow('Name', a.name || '—', null));
+      aisRows.appendChild(kvRow('IMO', a.imo ? String(a.imo) : '—', null));
+      aisRows.appendChild(kvRow('Call sign', a.callSign || '—', null));
+      aisRows.appendChild(kvRow('Ship type', window.Fmt.shipType(a.shipType),
+        a.shipType != null ? 'code ' + a.shipType : null));
+      aisRows.appendChild(kvRow('Reported size',
+        a.loa ? a.loa + ' m' + (a.beam ? ' × ' + a.beam + ' m' : '') : '—',
+        a.loa ? 'measured from the antenna, not the registry' : null));
+      if (v.fix) {
+        aisRows.appendChild(kvRow('Fix source', window.Fmt.fixType(a.fixType),
+          v.fix.accurate == null ? null
+            : v.fix.accurate ? 'differential — better than 10 m'
+                             : 'plain GNSS — worse than 10 m'));
+      }
+      aisPanel.appendChild(aisRows);
+    }
+    host.appendChild(aisPanel);
 
     // What the crew have typed into the AIS static message, where they have.
     if (v.voyage && !d.discreet && (v.voyage.destination || v.voyage.eta || v.voyage.draught)) {
@@ -637,7 +714,7 @@
       : 'Fleet';
     el('clear-selection').hidden = !yachtId;
     renderRail(true);
-    renderWork();
+    renderWork(true);
     renderReadout();
     aimChart();
   }
@@ -683,7 +760,7 @@
 
     window.Store.recompute();
     renderRail(true);
-    renderWork();
+    renderWork(true);
     renderReadout();
   }
 
@@ -1019,6 +1096,7 @@
     }[store.connection] || store.connection;
 
     renderRail(false);
+    renderWork(false);
     renderReadout();
     if (App.selected) aimChart();
   }

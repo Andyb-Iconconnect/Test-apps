@@ -907,3 +907,14 @@ body.interactive .viewnav { opacity: 1; visibility: visible; }
   background: var(--bg);
   overflow-x: auto;
 }
+
+/* The transponder is reporting a different vessel than the record expects, so
+   this whole panel is about the wrong boat. */
+.mismatch-line {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-left: 3px solid var(--critical);
+  background: rgba(208, 59, 59, 0.09);
+  font-size: 0.86rem;
+  color: var(--critical);
+}

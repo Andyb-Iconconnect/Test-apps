@@ -19,6 +19,7 @@
 
   Demo.start = function (vessels) {
     Demo.agents = vessels.map(makeAgent).filter(Boolean);
+    Demo.agents.forEach(seedIdentity);
     seedHistory();
     Demo.running = true;
     window.Store.setConnection('demo');
@@ -59,6 +60,23 @@
       if (have === want) return [p[2], p[3]];
     }
     return null;
+  }
+
+  // Live AIS broadcasts who the transponder says she is, which the console shows
+  // and checks against the record. Demo mode reports the record back verbatim,
+  // so the panel is populated and the cross-check passes — the interesting case,
+  // a mismatch, only exists when a real MMSI belongs to a different vessel.
+  function seedIdentity(a) {
+    var y = a.vessel.yacht;
+    window.Store.applyIdentity(a.mmsi, {
+      name: y.name ? y.name.toUpperCase() : null,
+      callSign: y.callSign || null,
+      imo: y.imo || null,
+      shipType: (y.prefix || '').toUpperCase().indexOf('S') === 0 ? 36 : 37,
+      fixType: 1,
+      loa: y.loa ? Math.round(y.loa) : null,
+      beam: y.beam ? Math.round(y.beam) : null
+    });
   }
 
   function makeAgent(v) {
@@ -171,17 +189,25 @@
       if (a.kind === 'dark') return;         // stays exactly where it went quiet
 
       if (a.route) {
+        var before = a.course;
         advance(a, a.speed * simHours);
+        var swing = ((a.course - before + 540) % 360) - 180;
         window.Store.applyFix(a.mmsi, {
           lon: a.lon, lat: a.lat, cog: a.course, sog: jitter(a.speed, 0.3),
-          heading: a.course, navStatus: 0, at: now
+          // A degree or two off the heading: she is being set by wind and tide,
+          // which is what the real difference between the two usually is.
+          heading: (a.course - 3 + Math.sin(a.phase) * 6 + 360) % 360,
+          navStatus: 0, accurate: true, raim: true,
+          turning: Math.abs(swing) < 0.4 ? 'steady' : (swing > 0 ? 'starboard' : 'port'),
+          at: now
         });
       } else {
         var p = stationaryPosition(a, now.getTime());
         window.Store.applyFix(a.mmsi, {
           lon: p[0], lat: p[1], cog: p[2],
           sog: a.kind === 'anchored' ? jitter(a.speed, 0.15) : 0,
-          heading: p[2], navStatus: navStatusFor(a.kind), at: now
+          heading: p[2], navStatus: navStatusFor(a.kind),
+          accurate: true, raim: true, turning: 'steady', at: now
         });
       }
     });

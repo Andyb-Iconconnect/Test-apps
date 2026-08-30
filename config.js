@@ -28,6 +28,23 @@ window.CONFIG = {
   // Free API key from https://aisstream.io (sign in with GitHub, generate a key).
   // Leave empty and the board runs in DEMO MODE with simulated movement, so you
   // can see exactly how it will look before you sign up for anything.
+  //
+  // WHILE THIS IS EMPTY NOTHING ON THE BOARD IS REAL. Every position, every
+  // track, every figure is generated from the `demo` block in each fleet.js
+  // record. The "Demo data" chip in the corner is the only thing saying so.
+  //
+  // Filling it in changes three things worth expecting:
+  //   - Positions become real, keyed on MMSI. AIS broadcasts MMSI, never IMO,
+  //     so a wrong MMSI silently tracks a stranger. The console now checks the
+  //     name, IMO and size the transponder reports against each record and says
+  //     so when they disagree.
+  //   - Tracks start from empty. AISstream is a live stream with no history and
+  //     no backfill: the board draws a trail from the moment it first hears a
+  //     yacht, keeps it in this browser, and knows nothing of last week.
+  //   - Gaps become normal. Terrestrial receivers reach perhaps 40 nm offshore,
+  //     and a yacht crossing an ocean or running dark for the owner's privacy
+  //     simply stops reporting. The board ages the last fix rather than
+  //     pretending.
   aisStreamApiKey: '',
 
   // AISstream delivers terrestrial AIS. Mid-ocean gaps are normal and expected:

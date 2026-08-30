@@ -282,7 +282,23 @@
     if (v.voyage && v.voyage.destination && !d.discreet) {
       parts.push('bound for ' + v.voyage.destination + ' (as reported)');
     }
+    if (d.setAndDrift) {
+      parts.push('set ' + d.setAndDrift.degrees + '° to ' + d.setAndDrift.side);
+    }
     ageEl.textContent = parts.join('  ·  ');
+
+    // A transponder reporting a different vessel means this whole panel is
+    // about the wrong boat. Say so here rather than only in the console.
+    var warn = el('spot-mismatch');
+    if (d.mismatches && d.mismatches.length) {
+      warn.textContent = 'AIS reports ' +
+        d.mismatches.map(function (m) {
+          return m.field.toLowerCase() + ' ' + m.reported;
+        }).join(', ') + ' — check this MMSI';
+      warn.hidden = false;
+    } else {
+      warn.hidden = true;
+    }
 
     var extra = el('spot-position-extra');
     extra.textContent = '';

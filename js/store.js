@@ -31,6 +31,7 @@
         yacht: yacht,
         fix: null,             // { lon, lat, cog, heading, sog, navStatus, at }
         voyage: {},            // { destination, eta, draught } from AIS static messages
+        ais: null,             // who the transponder says she is — see applyIdentity
         track: [],             // [{ lon, lat, at }] newest last
         weather: null,
         derived: {}
@@ -62,6 +63,9 @@
       heading: fix.heading != null ? fix.heading : null,
       sog: fix.sog != null ? fix.sog : null,
       navStatus: fix.navStatus != null ? fix.navStatus : (v.fix ? v.fix.navStatus : null),
+      accurate: fix.accurate != null ? fix.accurate : null,
+      raim: fix.raim != null ? fix.raim : null,
+      turning: fix.turning != null ? fix.turning : null,
       at: at
     };
 
@@ -78,6 +82,21 @@
     if (data.eta != null) v.voyage.eta = data.eta;
     if (data.draught != null) v.voyage.draught = data.draught;
     if (data.callSign != null) v.voyage.callSign = data.callSign;
+    Store.lastMessageAt = new Date();
+    return true;
+  };
+
+  // Identity as the transponder broadcasts it: name, IMO, call sign, ship type
+  // and the dimensions she measures herself by. Merged rather than replaced,
+  // because the two messages that carry it do not carry all of it.
+  Store.applyIdentity = function (mmsi, data) {
+    var v = Store.byMmsi[String(mmsi)];
+    if (!v) return false;
+    v.ais = v.ais || {};
+    Object.keys(data).forEach(function (k) {
+      if (data[k] != null) v.ais[k] = data[k];
+    });
+    v.ais.at = new Date();
     Store.lastMessageAt = new Date();
     return true;
   };
@@ -149,9 +168,62 @@
 
       d.distance24h = trackDistance(v.track, now - 24 * 3600000);
       d.distance7d = trackDistance(v.track, now - 7 * 24 * 3600000);
+      d.mismatches = identityMismatches(v);
+      d.setAndDrift = setAndDrift(v, d);
     });
     notify();
   };
+
+  // Where the transponder disagrees with the record. Almost always the record
+  // is wrong — specifically, the MMSI is somebody else's, which subscribes the
+  // board to the wrong yacht and is otherwise completely silent.
+  //
+  // Names are compared loosely: AIS is upper case, often abbreviated, and the
+  // prefix may or may not be in there. Length is compared with a wide tolerance
+  // because AIS dimensions are integer metres from the antenna, not a
+  // registry LOA. Neither is worth a false alarm.
+  var NAME_NOISE = /[^A-Z0-9]/g;
+
+  function identityMismatches(v) {
+    var a = v.ais;
+    if (!a) return [];
+    var y = v.yacht;
+    var out = [];
+
+    if (a.name && y.name) {
+      var reported = a.name.toUpperCase().replace(NAME_NOISE, '');
+      var expected = String(y.name).toUpperCase().replace(NAME_NOISE, '');
+      if (reported.indexOf(expected) === -1 && expected.indexOf(reported) === -1) {
+        out.push({ field: 'Name', reported: a.name, expected: y.name });
+      }
+    }
+    if (a.imo && y.imo && Number(a.imo) !== Number(y.imo)) {
+      out.push({ field: 'IMO', reported: String(a.imo), expected: String(y.imo) });
+    }
+    if (a.callSign && y.callSign &&
+        a.callSign.toUpperCase().replace(NAME_NOISE, '') !==
+        String(y.callSign).toUpperCase().replace(NAME_NOISE, '')) {
+      out.push({ field: 'Call sign', reported: a.callSign, expected: y.callSign });
+    }
+    if (a.loa && y.loa && Math.abs(a.loa - y.loa) > Math.max(4, y.loa * 0.1)) {
+      out.push({
+        field: 'Length', reported: a.loa + ' m', expected: window.Fmt.metres(y.loa)
+      });
+    }
+    return out;
+  }
+
+  // The angle between where she is pointing and where she is actually going.
+  // Wind and current, in one number — and only meaningful with way on and both
+  // figures present, so it is null the rest of the time rather than noise.
+  function setAndDrift(v, d) {
+    if (!v.fix || d.discreet) return null;
+    if (v.fix.heading == null || v.fix.cog == null) return null;
+    if (v.fix.sog == null || v.fix.sog < 1) return null;
+    var diff = ((v.fix.cog - v.fix.heading + 540) % 360) - 180;
+    if (Math.abs(diff) < 4) return null;
+    return { degrees: Math.round(Math.abs(diff)), side: diff > 0 ? 'starboard' : 'port' };
+  }
 
   function deriveStatus(v, d, now) {
     if (!v.fix) return 'unknown';
@@ -207,8 +279,10 @@
         if (!v.fix) return;
         payload.vessels[v.yacht.mmsi] = {
           fix: { lon: v.fix.lon, lat: v.fix.lat, cog: v.fix.cog, heading: v.fix.heading,
-                 sog: v.fix.sog, navStatus: v.fix.navStatus, at: v.fix.at.getTime() },
+                 sog: v.fix.sog, navStatus: v.fix.navStatus, accurate: v.fix.accurate,
+                 raim: v.fix.raim, turning: v.fix.turning, at: v.fix.at.getTime() },
           voyage: v.voyage,
+          ais: v.ais || null,
           track: v.track.slice(-120).map(function (p) { return [p.lon, p.lat, p.at.getTime()]; })
         };
       });
@@ -232,10 +306,16 @@
         v.fix = {
           lon: saved.fix.lon, lat: saved.fix.lat, cog: saved.fix.cog,
           heading: saved.fix.heading, sog: saved.fix.sog,
-          navStatus: saved.fix.navStatus, at: new Date(saved.fix.at)
+          navStatus: saved.fix.navStatus, accurate: saved.fix.accurate,
+          raim: saved.fix.raim, turning: saved.fix.turning,
+          at: new Date(saved.fix.at)
         };
       }
       v.voyage = saved.voyage || {};
+      if (saved.ais) {
+        v.ais = saved.ais;
+        if (v.ais.at) v.ais.at = new Date(v.ais.at);
+      }
       v.track = (saved.track || []).map(function (p) {
         return { lon: p[0], lat: p[1], at: new Date(p[2]) };
       });

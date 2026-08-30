@@ -10,6 +10,10 @@
  * captain has switched the transponder off for the owner's privacy. Neither is
  * an error, and neither is treated as one — the store ages the last known fix
  * and the board says how old it is.
+ *
+ * It is a STREAM, and only a stream. There is no history endpoint and no
+ * backfill: a track begins the moment this board first hears the yacht, and
+ * everything before that is gone. What the board has, it kept itself.
  * -------------------------------------------------------------------------- */
 
 (function () {
@@ -21,6 +25,7 @@
   var COG_UNAVAILABLE = 360;
   var SOG_UNAVAILABLE = 102.3;
   var HEADING_UNAVAILABLE = 511;
+  var ROT_UNAVAILABLE = -128;
 
   Ais.start = function (apiKey, mmsiList) {
     Ais.apiKey = apiKey;
@@ -110,16 +115,23 @@
         applyPosition(mmsi, body.StandardClassBPositionReport, at);
         break;
       case 'ExtendedClassBPositionReport':
+        // Class B extended carries identity alongside the fix, which the
+        // standard Class B message does not.
         applyPosition(mmsi, body.ExtendedClassBPositionReport, at);
+        applyIdentity(mmsi, body.ExtendedClassBPositionReport);
         break;
       case 'ShipStaticData':
         applyStatic(mmsi, body.ShipStaticData);
+        applyIdentity(mmsi, body.ShipStaticData);
         break;
     }
   }
 
   function applyPosition(mmsi, report, at) {
     if (!report) return;
+    // The decoder marks a message it could not trust. Nothing good comes of
+    // plotting one.
+    if (report.Valid === false) return;
     var lat = report.Latitude, lon = report.Longitude;
     if (lat == null || lon == null) return;
     // AIS transmits 91/181 when a receiver has no fix to report.
@@ -132,8 +144,48 @@
       sog: report.Sog != null && report.Sog !== SOG_UNAVAILABLE ? report.Sog : null,
       heading: report.TrueHeading != null && report.TrueHeading !== HEADING_UNAVAILABLE
         ? report.TrueHeading : null,
+      // Class B position reports carry no navigational status at all; the store
+      // falls back to speed, which is why that fallback exists.
       navStatus: report.NavigationalStatus != null ? report.NavigationalStatus : null,
+      // True where the sender has a differential fix (better than 10 m), false
+      // where it is plain GNSS. It is the transponder's own claim, not a
+      // measurement, but it is the only quality signal AIS carries.
+      accurate: typeof report.PositionAccuracy === 'boolean' ? report.PositionAccuracy : null,
+      // Receiver Autonomous Integrity Monitoring: the fix was sanity-checked
+      // against redundant satellites.
+      raim: typeof report.Raim === 'boolean' ? report.Raim : null,
+      // Only ever used for its SIGN. AIS encodes rate of turn as a square-root
+      // scale, and whether a decoder hands back the raw byte or degrees per
+      // minute is its own business — so "turning to starboard" is safe to say
+      // and "turning at 12°/min" is not.
+      turning: turnDirection(report.RateOfTurn),
       at: at
+    });
+  }
+
+  function turnDirection(rot) {
+    if (rot == null || rot === ROT_UNAVAILABLE) return null;
+    if (rot > 0) return 'starboard';
+    if (rot < 0) return 'port';
+    return 'steady';
+  }
+
+  // Who the transponder says she is, and how she measures herself. Worth having
+  // for its own sake, and worth checking against the record: a mistyped MMSI
+  // subscribes the board to somebody else's yacht, and this is what catches it.
+  function applyIdentity(mmsi, data) {
+    if (!data || data.Valid === false) return;
+    var dim = data.Dimension || {};
+    var loa = dim.A != null && dim.B != null ? dim.A + dim.B : null;
+    var beam = dim.C != null && dim.D != null ? dim.C + dim.D : null;
+    window.Store.applyIdentity(mmsi, {
+      name: clean(data.Name),
+      callSign: clean(data.CallSign),
+      imo: data.ImoNumber || null,
+      shipType: data.Type != null ? data.Type : null,
+      fixType: data.FixType != null ? data.FixType : null,
+      loa: loa || null,
+      beam: beam || null
     });
   }
 

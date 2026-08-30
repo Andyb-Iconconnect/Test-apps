@@ -172,6 +172,39 @@
     return STATUS_LABELS[status] || STATUS_LABELS.unknown;
   };
 
+  /* --- AIS code tables ---------------------------------------------------- */
+
+  // Ship and cargo type, ITU-R M.1371 table 53. Only the codes a yacht fleet
+  // will actually meet are named; the rest fall back to their decade.
+  var SHIP_TYPES = {
+    30: 'Fishing', 31: 'Towing', 32: 'Towing, long', 33: 'Dredging',
+    34: 'Diving ops', 35: 'Military ops', 36: 'Sailing', 37: 'Pleasure craft',
+    50: 'Pilot vessel', 51: 'Search and rescue', 52: 'Tug', 53: 'Port tender',
+    55: 'Law enforcement', 58: 'Medical transport'
+  };
+  var TYPE_DECADES = {
+    2: 'Wing in ground', 4: 'High-speed craft', 6: 'Passenger',
+    7: 'Cargo', 8: 'Tanker', 9: 'Other'
+  };
+
+  Fmt.shipType = function (code) {
+    if (code == null) return '—';
+    if (SHIP_TYPES[code]) return SHIP_TYPES[code];
+    var decade = TYPE_DECADES[Math.floor(code / 10)];
+    return decade || 'Type ' + code;
+  };
+
+  // Electronic position fixing device, ITU-R M.1371 table 47.
+  var FIX_TYPES = {
+    1: 'GPS', 2: 'GLONASS', 3: 'GPS + GLONASS', 4: 'Loran-C', 5: 'Chayka',
+    6: 'Integrated navigation', 7: 'Surveyed', 8: 'Galileo'
+  };
+
+  Fmt.fixType = function (code) {
+    if (code == null || code === 0) return 'Undefined';
+    return FIX_TYPES[code] || 'Type ' + code;
+  };
+
   Fmt.fullName = function (yacht) {
     return yacht.prefix ? yacht.prefix + ' ' + yacht.name : yacht.name;
   };

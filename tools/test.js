@@ -542,6 +542,152 @@ test('writing the file out and reading it back is stable', () => {
 
 /* --- Fleet data ---------------------------------------------------------- */
 
+test('the AIS parser reads the fields AISstream actually sends', () => {
+  // Field names are from aisstream/ais-message-models. Getting one wrong yields
+  // undefined rather than an error, so it is worth pinning.
+  const s = freshStore();
+  const mmsi = FLEET[0].mmsi;
+  const original = window.Store;
+  window.Store = s;
+  try {
+    Ais._handle({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: mmsi, time_utc: new Date().toISOString() },
+      Message: { PositionReport: {
+        Valid: true, Latitude: 39.5, Longitude: 2.6, Cog: 91.2, Sog: 9.4,
+        TrueHeading: 88, NavigationalStatus: 0, RateOfTurn: -12,
+        PositionAccuracy: true, Raim: true
+      } }
+    });
+    Ais._handle({
+      MessageType: 'ShipStaticData',
+      MetaData: { MMSI: mmsi, time_utc: new Date().toISOString() },
+      Message: { ShipStaticData: {
+        Valid: true, Name: 'AURELIA@@@@', CallSign: 'ZGAA1@', ImoNumber: 9900019,
+        Type: 37, FixType: 1, MaximumStaticDraught: 3.4, Destination: 'PALMA@@',
+        Dimension: { A: 40, B: 22, C: 5, D: 6 },
+        Eta: { Month: 9, Day: 4, Hour: 6, Minute: 0 }
+      } }
+    });
+  } finally {
+    window.Store = original;
+  }
+
+  const v = s.byMmsi[String(mmsi)];
+  assert.strictEqual(v.fix.sog, 9.4);
+  assert.strictEqual(v.fix.accurate, true);
+  assert.strictEqual(v.fix.turning, 'port', 'a negative rate of turn is to port');
+  assert.strictEqual(v.ais.name, 'AURELIA', 'the @ padding is stripped');
+  assert.strictEqual(v.ais.callSign, 'ZGAA1');
+  assert.strictEqual(v.ais.imo, 9900019);
+  assert.strictEqual(v.ais.shipType, 37);
+  assert.strictEqual(v.ais.loa, 62, 'length is Dimension A + B');
+  assert.strictEqual(v.ais.beam, 11, 'beam is Dimension C + D');
+  assert.strictEqual(v.voyage.destination, 'PALMA');
+});
+
+test('a message the decoder marked invalid is dropped', () => {
+  const s = freshStore();
+  const mmsi = FLEET[0].mmsi;
+  const original = window.Store;
+  window.Store = s;
+  try {
+    Ais._handle({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: mmsi, time_utc: new Date().toISOString() },
+      Message: { PositionReport: { Valid: false, Latitude: 0, Longitude: 0 } }
+    });
+  } finally {
+    window.Store = original;
+  }
+  assert.strictEqual(s.byMmsi[String(mmsi)].fix, null, 'nothing was plotted');
+});
+
+test('AIS identity is merged across messages, not replaced', () => {
+  // Name and dimensions arrive in one message, IMO and call sign in another.
+  // Replacing wholesale would lose half of it on every update.
+  const s = freshStore();
+  const mmsi = FLEET[0].mmsi;
+  s.applyIdentity(mmsi, { name: 'AURELIA', loa: 62, beam: 11 });
+  s.applyIdentity(mmsi, { imo: 9900019, callSign: 'ZGAA1' });
+  const ais = s.byMmsi[String(mmsi)].ais;
+  assert.strictEqual(ais.name, 'AURELIA', 'the earlier message survives');
+  assert.strictEqual(ais.imo, 9900019);
+  assert.strictEqual(ais.loa, 62);
+});
+
+test('a transponder reporting another vessel is flagged', () => {
+  // The failure this exists for: an MMSI typed one digit out subscribes the
+  // board to a stranger, and every other thing on screen still looks right.
+  const s = freshStore();
+  const y = FLEET[0];
+  s.applyIdentity(y.mmsi, {
+    name: 'SOMEONE ELSE', imo: 9111111, loa: 24
+  });
+  s.applyFix(y.mmsi, { lon: 2, lat: 39, sog: 0, at: new Date() });
+  s.recompute();
+  const m = s.byMmsi[String(y.mmsi)].derived.mismatches;
+  const fields = m.map((x) => x.field).sort();
+  assert.deepStrictEqual(fields, ['IMO', 'Length', 'Name'], 'all three disagree');
+  assert.strictEqual(m.find((x) => x.field === 'Name').reported, 'SOMEONE ELSE');
+});
+
+test('the identity check does not cry wolf over AIS formatting', () => {
+  // AIS is upper case, often abbreviated, and its dimensions are integer metres
+  // from the antenna rather than a registry LOA. None of that is a mismatch.
+  const s = freshStore();
+  const y = FLEET[0];
+  s.applyIdentity(y.mmsi, {
+    name: 'M/Y ' + y.name.toUpperCase(),
+    imo: y.imo,
+    callSign: y.callSign ? y.callSign.toLowerCase() : null,
+    loa: Math.round(y.loa) - 2
+  });
+  s.applyFix(y.mmsi, { lon: 2, lat: 39, sog: 0, at: new Date() });
+  s.recompute();
+  assert.deepStrictEqual(s.byMmsi[String(y.mmsi)].derived.mismatches, [],
+    'no complaint about case, prefix, or a couple of metres');
+});
+
+test('set and drift is only reported when it means something', () => {
+  const s = freshStore();
+  const mmsi = FLEET[0].mmsi;
+  const at = new Date();
+
+  // Stationary: heading and course disagree freely and it signifies nothing.
+  s.applyFix(mmsi, { lon: 2, lat: 39, sog: 0.2, cog: 90, heading: 200, at });
+  s.recompute();
+  assert.strictEqual(s.byMmsi[String(mmsi)].derived.setAndDrift, null, 'not at rest');
+
+  // Underway and pointing where she is going: nothing to report.
+  s.applyFix(mmsi, { lon: 2, lat: 39, sog: 10, cog: 90, heading: 88, at });
+  s.recompute();
+  assert.strictEqual(s.byMmsi[String(mmsi)].derived.setAndDrift, null, 'not when tracking true');
+
+  // Crabbing: her head is 15 degrees left of her track, so she is set to starboard.
+  s.applyFix(mmsi, { lon: 2, lat: 39, sog: 10, cog: 90, heading: 75, at });
+  s.recompute();
+  const sd = s.byMmsi[String(mmsi)].derived.setAndDrift;
+  assert.strictEqual(sd.degrees, 15);
+  assert.strictEqual(sd.side, 'starboard');
+
+  // And the wrap at north is not 345 degrees of it.
+  s.applyFix(mmsi, { lon: 2, lat: 39, sog: 10, cog: 5, heading: 350, at });
+  s.recompute();
+  assert.strictEqual(s.byMmsi[String(mmsi)].derived.setAndDrift.degrees, 15,
+    'the compass wraps');
+});
+
+test('a discreet vessel reports no set and drift either', () => {
+  // It is derived from heading and course, which are exact even when the
+  // position shown has been blurred.
+  const s = freshStore();
+  const y = FLEET.find((v) => v.discreet);
+  s.applyFix(y.mmsi, { lon: 2, lat: 39, sog: 10, cog: 90, heading: 70, at: new Date() });
+  s.recompute();
+  assert.strictEqual(s.byMmsi[String(y.mmsi)].derived.setAndDrift, null);
+});
+
 test('every port named in a demo block exists in data/ports.js', () => {
   // A demo block naming a port that is not in the list leaves that yacht with
   // no position at all, which looks exactly like a yacht that is simply not
