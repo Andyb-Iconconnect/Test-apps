@@ -2129,7 +2129,8 @@
     pill.dataset.state = store.connection;
     el('connection-label').textContent = {
       demo: 'Demo data', open: 'Live AIS', connecting: 'Connecting',
-      retrying: 'Reconnecting', closed: 'Offline', starting: 'Starting'
+      retrying: 'Reconnecting', blocked: 'AIS unreachable',
+      closed: 'Offline', starting: 'Starting'
     }[store.connection] || store.connection;
 
     adoptWhatWeHear();

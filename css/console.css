@@ -162,7 +162,8 @@ html, body {
 .status-pill[data-state="demo"] .dot { background: var(--brand-cyan-bright); }
 .status-pill[data-state="connecting"] .dot,
 .status-pill[data-state="retrying"] .dot { background: var(--warning); }
-.status-pill[data-state="closed"] .dot { background: var(--critical); }
+.status-pill[data-state="closed"] .dot,
+.status-pill[data-state="blocked"] .dot { background: var(--critical); }
 
 .clock {
   font-family: var(--font-display);

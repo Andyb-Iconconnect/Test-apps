@@ -1690,4 +1690,25 @@ test('the published build carries no API key, offline or not', () => {
     'credential inside one goes wherever the file goes');
 });
 
+test('every connection state the feed can set has a label on both pages', () => {
+  // A state with no entry in a label map falls through to the raw word, so the
+  // board quietly shows "blocked" in lower case where it meant to explain
+  // itself. Collect the states actually set, and insist both pages name them.
+  const sources = ['js/ais.js', 'js/store.js', 'js/app.js', 'js/console.js']
+    .map(readRepo).join('\n');
+  const states = new Set(
+    [...sources.matchAll(/setConnection\(([\s\S]{0,300}?)\);/g)]
+      .flatMap((m) => [...m[1].matchAll(/'([a-z]+)'/g)].map((q) => q[1]))
+  );
+  assert.ok(states.has('blocked'), 'a socket that never opens says so');
+  assert.ok(states.has('open') && states.has('retrying'), 'and the ordinary states are there');
+
+  ['js/app.js', 'js/console.js'].forEach((f) => {
+    const src = readRepo(f);
+    states.forEach((state) => {
+      assert.ok(new RegExp(state + ":\\s*'").test(src), f + ' labels "' + state + '"');
+    });
+  });
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

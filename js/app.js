@@ -390,6 +390,7 @@
       open: 'Live AIS',
       connecting: 'Connecting',
       retrying: 'Reconnecting',
+      blocked: 'AIS unreachable',
       closed: 'Offline',
       starting: 'Starting'
     }[store.connection] || store.connection;

@@ -171,7 +171,8 @@ body.interactive { cursor: default; }
 .status-pill[data-state="demo"]  .dot { background: var(--brand-cyan-bright); }
 .status-pill[data-state="retrying"] .dot,
 .status-pill[data-state="connecting"] .dot { background: var(--warning); }
-.status-pill[data-state="closed"] .dot { background: var(--critical); }
+.status-pill[data-state="closed"] .dot,
+.status-pill[data-state="blocked"] .dot { background: var(--critical); }
 
 .status-pill[data-state="open"] .dot,
 .status-pill[data-state="demo"] .dot { animation: breathe 3.2s ease-in-out infinite; }

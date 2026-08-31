@@ -27,10 +27,17 @@
   var HEADING_UNAVAILABLE = 511;
   var ROT_UNAVAILABLE = -128;
 
+  // How many attempts may fail without the socket ever having opened before we
+  // stop calling it "reconnecting" and say what it actually is. Once it has
+  // opened even once, a drop really is a drop and this never applies again.
+  var BLOCKED_AFTER = 3;
+
   Ais.start = function (apiKey, mmsiList) {
     Ais.apiKey = apiKey;
     Ais.mmsiList = mmsiList.map(String);
     Ais.stopped = false;
+    Ais.everOpened = false;
+    Ais.attempt = 0;
     connect();
   };
 
@@ -59,6 +66,7 @@
 
     socket.onopen = function () {
       Ais.attempt = 0;
+      Ais.everOpened = true;
       // The subscription must be the first thing sent, within a second or so,
       // or the server drops the connection.
       socket.send(JSON.stringify({
@@ -94,7 +102,16 @@
     // if several screens are running off the same feed.
     delay = delay * (0.7 + Math.random() * 0.6);
     Ais.attempt++;
-    window.Store.setConnection('retrying');
+    /**
+     * A socket that has never once opened is not a flaky network. It is a key
+     * the server rejected, or an environment that forbids the connection
+     * outright — a published artifact blocks every outbound socket, and so do
+     * some corporate networks. "Reconnecting" forever is the least useful thing
+     * the board could say about either, so after a few tries it says the true
+     * thing instead.
+     */
+    window.Store.setConnection(
+      !Ais.everOpened && Ais.attempt >= BLOCKED_AFTER ? 'blocked' : 'retrying');
     clearTimeout(Ais.timer);
     Ais.timer = setTimeout(connect, delay);
   }

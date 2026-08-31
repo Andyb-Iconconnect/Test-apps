@@ -187,7 +187,16 @@
     var state = dialog.querySelector('#ais-state');
     var forget = dialog.querySelector('#ais-forget');
     var source = Settings.aisKeySource();
-    if (source === 'browser') {
+    var blocked = window.Store && window.Store.connection === 'blocked';
+    if (blocked) {
+      state.textContent = 'A key is stored, but the connection to aisstream.io ' +
+        'has never opened. That is usually one of two things: the key was ' +
+        'rejected, or outbound sockets are not permitted here — a published ' +
+        'page blocks them outright, and so do some office networks. Run the ' +
+        'board from a folder or from the single file on the machine itself ' +
+        'and the same key will connect.';
+      forget.hidden = false;
+    } else if (source === 'browser') {
       state.textContent = 'A key is stored in this browser and the board is ' +
         'tracking live. Paste a different one to replace it.';
       forget.hidden = false;
