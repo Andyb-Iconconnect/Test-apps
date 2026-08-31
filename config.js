@@ -83,12 +83,14 @@ window.CONFIG = {
   },
 
   // Office location — used for the "nearest to us" line and the header clock.
-  // Defaults to Palma de Mallorca; change to wherever the screen actually is.
+  // Change to wherever the screen actually is. The coordinates below are
+  // central London, near enough for a distance measured in hundreds of miles;
+  // put the building's own if you want the figure exact.
   office: {
-    label: 'Palma office',
-    lat: 39.5696,
-    lon: 2.6502,
-    timeZone: 'Europe/Madrid'   // any IANA zone; used for the header clock
+    label: 'London office',
+    lat: 51.5074,
+    lon: -0.1278,
+    timeZone: 'Europe/London'   // any IANA zone; used for the header clock
   },
 
   /* --- Rotation ---------------------------------------------------------- */
@@ -116,12 +118,19 @@ window.CONFIG = {
   discreetMode: false,
   discreetRoundingNm: 60,
 
-  // For the machine in reception. When locked, discretion is permanent: it is
-  // forced on at start-up and the D key stops working, so nobody passing the
-  // screen can reveal exact positions — deliberately not something a person has
-  // to remember to switch on when guests arrive. Set this true on the office
-  // display; leave it false on the console, where there is somebody present to
-  // use the toggle and to switch it back.
+  // For the machine in reception. When locked, the D key stops working, so
+  // whatever this build decided is what the screen shows — nobody passing it
+  // can change the setting in either direction.
+  //
+  // The lock does not itself turn discretion on. With `discreetMode: false`
+  // below, a locked board shows exact positions for the fleet and withholds
+  // only the yachts marked `discreet: true` in fleet.js. That marking is the
+  // protection that does not depend on anyone remembering, and it applies on
+  // every screen, locked or not. Set `discreetMode: true` as well if the whole
+  // board should be approximate.
+  //
+  // Set this true on the office display. Leave it false on the console, where
+  // there is somebody present to work the toggle and to put it back.
   discreetLocked: false,
 
   /* --- Demo mode --------------------------------------------------------- */

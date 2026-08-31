@@ -57,7 +57,6 @@
 
   function boot() {
     if (!fleetLoaded('the board')) return;
-    if (window.CONFIG.discreetLocked) window.CONFIG.discreetMode = true;
 
     // The console keeps additions, edits and removals in this browser's
     // localStorage until they are written back into fleet.js. The board read
@@ -541,7 +540,13 @@
       case '2': jumpToView('spotlight'); break;
       case '3': jumpToView('stats'); break;
       case 'd': case 'D':
-        // Locked installs cannot be talked out of discretion from the keyboard.
+        /**
+         * A locked screen's discretion is not up for discussion at the
+         * keyboard — in either direction. The lock fixes whatever the build
+         * decided; it does not itself decide anything. Yachts marked
+         * `discreet` in fleet.js are withheld regardless of any of this, which
+         * is the protection that does not depend on a person remembering.
+         */
         if (window.CONFIG.discreetLocked) break;
         window.CONFIG.discreetMode = !window.CONFIG.discreetMode;
         renderDiscreetFlag();

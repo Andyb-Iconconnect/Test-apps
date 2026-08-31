@@ -6,8 +6,11 @@
  * Useful when the board has to travel: one file to email, drop on a USB stick,
  * or open straight off disk with no server at all.
  *
- *   --display       the reception copy: discretion locked on, so nobody
- *                   passing the screen can reveal an exact position
+ *   --display       the reception copy: the D key is locked out, so the
+ *                   screen shows what this build decided and nobody passing
+ *                   it can change that. Yachts marked `discreet` in fleet.js
+ *                   are withheld regardless. Add --blur-all for a board where
+ *                   every position is approximate.
  *   --offline       force demo mode and switch the weather lookup off, for
  *                   sandboxes that block outbound requests
  *   --fragment      emit body content only (no doctype/html/head/body), for
@@ -31,6 +34,7 @@ const entry = entryFlag ? entryFlag.split('=')[1] : 'index.html';
 
 const offline = flags.has('--offline');
 const display = flags.has('--display');
+const blurAll = flags.has('--blur-all');
 const fragment = flags.has('--fragment');
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -68,20 +72,35 @@ if (offline) {
 /**
  * The reception copy.
  *
- * Discretion on a public screen cannot be something a person remembers to
- * switch on when guests arrive — by then the guests have seen it. Locked, it is
- * on from start-up and the D key stops working, so the board cannot be talked
- * out of it by anyone walking past.
+ * The lock takes the D key away, so the screen shows what this build decided
+ * and a visitor cannot change it in either direction. It does not itself
+ * withhold anything: that is `discreet: true` on the yachts that need it, which
+ * applies on every screen and does not depend on anyone remembering to press a
+ * key when guests arrive.
  *
- * Done here rather than by editing config.js so that the desk console, built
- * from the same repository a minute earlier, keeps its working toggle.
+ * --blur-all is the heavier option, for a board where no position at all should
+ * be legible: every yacht rounded to a region, permanently.
+ *
+ * Both are done here rather than by editing config.js, so that the desk
+ * console, built from the same repository a minute earlier, keeps its toggle.
  */
 if (display) {
-  const before = config;
-  config = config.replace(/discreetLocked: false/, 'discreetLocked: true');
-  if (config === before) {
-    throw new Error('--display could not find discreetLocked in config.js');
+  config = rewriteConfig(config, /discreetLocked: false/, 'discreetLocked: true',
+                         '--display', 'discreetLocked');
+}
+if (blurAll) {
+  config = rewriteConfig(config, /discreetMode: false/, 'discreetMode: true',
+                         '--blur-all', 'discreetMode');
+}
+
+// A silent no-op here ships an unlocked board to reception, which is the one
+// outcome worth crashing the build over.
+function rewriteConfig(text, pattern, replacement, flag, setting) {
+  const out = text.replace(pattern, replacement);
+  if (out === text) {
+    throw new Error(flag + ' could not find ' + setting + ' in config.js');
   }
+  return out;
 }
 
 // Fonts are referenced from the stylesheet by relative path, which means
@@ -175,7 +194,8 @@ fs.writeFileSync(outPath, out);
 console.log(`${entry}: ${scripts.length} scripts + ${styles.length} stylesheets inlined -> ` +
             `${path.relative(process.cwd(), outPath)} (${Math.round(out.length / 1024)} KB)` +
             (photoBytes ? ` [${Math.round(photoBytes / 1024)} KB of photos]` : '') +
-            (display ? ' [display: discretion locked]' : '') +
+            (display ? ' [display: D key locked]' : '') +
+            (blurAll ? ' [every position approximate]' : '') +
             (offline ? ' [offline]' : '') + (fragment ? ' [fragment]' : ''));
 
 // The artifact host refuses anything over 16 MB, and photographs are the only

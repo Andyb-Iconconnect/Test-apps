@@ -1808,17 +1808,77 @@ test('a socket that opened and then dropped is reconnecting, not blocked', () =>
 
 /* --- The reception build -------------------------------------------------- */
 
-test('the display build locks discretion, and only the display build', () => {
+test('the display build locks the key, and only the display build', () => {
   const build = readRepo('tools/build-single-file.js');
   assert.ok(/flags\.has\('--display'\)/.test(build), 'there is a --display mode');
   assert.ok(/discreetLocked: false/.test(build) && /discreetLocked: true/.test(build),
     'which rewrites the setting rather than asking someone to remember it');
-  assert.ok(/--display could not find discreetLocked/.test(build),
-    'and fails loudly if config.js is renamed under it, rather than shipping unlocked');
+  assert.ok(/flags\.has\('--blur-all'\)/.test(build),
+    'and a separate, heavier flag for a wholly approximate board');
+  assert.ok(/could not find/.test(build),
+    'a rewrite that silently matched nothing would ship an unlocked board to reception');
 
   // The repository default stays unlocked: the console has somebody present to
   // work the toggle, and a locked console cannot do its job.
   assert.strictEqual(CONFIG.discreetLocked, false, 'config.js itself is unlocked');
+  assert.strictEqual(CONFIG.discreetMode, false, 'and shows real positions by default');
+});
+
+test('locking the key does not itself withhold anything', () => {
+  // The lock used to force blanket discretion on at start-up, which made a
+  // reception board a set of sixty-mile circles — most of what makes it worth
+  // watching, gone. Locking now fixes whatever the build chose; what is
+  // withheld is decided per yacht.
+  const app = readRepo('js/app.js');
+  assert.ok(!/discreetLocked\)\s*window\.CONFIG\.discreetMode = true/.test(app),
+    'boot does not turn blanket discretion on just because the key is locked');
+  assert.ok(/discreetLocked\) break/.test(app), 'but the key really is locked');
+});
+
+test('a yacht marked discreet is withheld on every screen, however it is configured', () => {
+  const fleet = [
+    { id: 'open', name: 'Open', mmsi: 319000101, demo: { position: [7.42, 43.73] } },
+    { id: 'quiet', name: 'Quiet', mmsi: 319000102, discreet: true,
+      demo: { position: [7.12, 43.58] } }
+  ];
+  const locked = CONFIG.discreetLocked;
+  const mode = CONFIG.discreetMode;
+  try {
+    Store.init(fleet);
+    Store.applyFix(319000101, { lon: 7.42, lat: 43.73, at: new Date() });
+    Store.applyFix(319000102, { lon: 7.12, lat: 43.58, at: new Date() });
+
+    // The configuration a reception screen actually runs: key locked, blanket
+    // discretion off.
+    CONFIG.discreetLocked = true;
+    CONFIG.discreetMode = false;
+    Store.recompute();
+    const [open, quiet] = Store.vessels;
+    assert.strictEqual(open.derived.discreet, false, 'the ordinary yacht is shown');
+    assert.ok(Math.abs(open.derived.lat - 43.73) < 0.001, 'and shown exactly');
+    assert.strictEqual(quiet.derived.discreet, true, 'the marked one is not');
+    assert.ok(Math.abs(quiet.derived.lat - 43.58) > 0.05,
+      'her position is moved, not merely labelled — ' +
+      'a rounded fix that equals the real one protects nobody');
+
+    // And blanket mode still catches everyone, for the screen that wants it.
+    CONFIG.discreetMode = true;
+    Store.recompute();
+    assert.strictEqual(Store.vessels[0].derived.discreet, true, 'blur-all covers the fleet');
+  } finally {
+    CONFIG.discreetLocked = locked;
+    CONFIG.discreetMode = mode;
+  }
+});
+
+test('the office is where the board actually is', () => {
+  // The clock and the "from us" distances both read from this, and it spent the
+  // whole build set to the placeholder demo's Palma.
+  assert.strictEqual(CONFIG.office.timeZone, 'Europe/London');
+  assert.ok(/London/.test(CONFIG.office.label), 'labelled for the room it stands in');
+  assert.ok(Math.abs(CONFIG.office.lat - 51.5) < 0.5 &&
+            Math.abs(CONFIG.office.lon - -0.13) < 0.5,
+    'and the coordinates agree with the time zone');
 });
 
 test('a board showing approximate positions says so', () => {

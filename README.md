@@ -16,12 +16,20 @@ one is allowed to show.
 The reception screen and the desk tool have opposite defaults, and that is the
 point.
 
-Set **`discreetLocked: true`** in `config.js` on the office display. Discretion
-is then forced on at start-up and the `D` key stops working, so nobody passing
-the screen can reveal exact positions. It is deliberately *not* something
-somebody has to remember to switch on when guests arrive — that fails the first
-time it is forgotten, and the failure is showing a visitor exactly where a
-client's boat is.
+Build the office display with **`--display`**, which locks the `D` key. The
+screen then shows what the build decided and nobody passing it can change that
+in either direction.
+
+What is actually withheld is decided per yacht: `discreet: true` in `fleet.js`
+withholds that vessel on *every* screen, locked or not. That is the protection
+worth relying on, because it does not depend on somebody remembering to press a
+key when guests arrive — which fails the first time it is forgotten, and the
+failure is showing a visitor exactly where a client's boat is.
+
+If no position at all should be legible on that screen, add **`--blur-all`** and
+every yacht becomes a region. It is the safer setting and the duller board: a
+fleet chart of sixty-mile circles is most of the way to no fleet chart. Choose it
+deliberately, not by default.
 
 The console is the opposite: full detail by default, with a visible **Discreet**
 button and an unmissable banner for when somebody walks over. Crew contacts
@@ -69,9 +77,23 @@ node tools/build-single-file.js
 
 writes `dist/fleet-watch.html` with every script, style and the coastline data
 inlined — one file to email, drop on a USB stick, or open straight off disk.
-`--entry=console.html` bundles the desk tool the same way. Add `--offline` to
-force demo mode and switch the weather lookup off, for sandboxes that block
-outbound requests.
+`--entry=console.html` bundles the desk tool the same way.
+
+| flag | what it does |
+| --- | --- |
+| `--display` | the reception copy: locks the `D` key |
+| `--blur-all` | every position approximate, permanently |
+| `--offline` | demo data, weather off, for sandboxes that block outbound requests |
+| `--fragment` | body content only, for a host that supplies its own document |
+
+So the pair for a live install is:
+
+```
+node tools/build-single-file.js dist/reception.html --display
+node tools/build-single-file.js dist/console.html --entry=console.html
+```
+
+The AIS key is never in either file — enter it at the screen, once per machine.
 
 ### Kiosk mode
 
@@ -354,9 +376,16 @@ window publishes their whereabouts.
 
 - Set `discreet: true` on any yacht in `fleet.js` — that vessel is *always*
   shown as an area rather than a fix, its track is not drawn, and its speed,
-  course and destination are withheld.
-- Set `discreetMode: true` in `config.js`, or press **D**, to apply the same
-  treatment to the whole fleet. The footer says so while it is on.
+  course and destination are withheld. This holds on every screen and cannot be
+  switched off from the keyboard.
+- Set `discreetMode: true` in `config.js` (or build with `--blur-all`, or press
+  **D**) to apply the same treatment to the whole fleet. The footer says so
+  while it is on — a sixty-mile circle with nothing to label it is worse than no
+  circle, because read as a fix it is wrong by sixty miles and gives the reader
+  no way to know.
+- `discreetLocked: true` (or `--display`) takes the **D** key away. It does not
+  itself withhold anything: it fixes whatever the build chose, so a passer-by
+  can neither reveal nor conceal.
 
 Blurring happens in the store, before anything reaches the chart or the cards, so
 an exact position cannot leak into a label by accident. `discreetRoundingNm`
