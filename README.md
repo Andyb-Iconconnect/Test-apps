@@ -90,14 +90,30 @@ inlined — one file to email, drop on a USB stick, or open straight off disk.
 | `--offline` | demo data, weather off, for sandboxes that block outbound requests |
 | `--fragment` | body content only, for a host that supplies its own document |
 
-So the pair for a live install is:
+Three builds cover every screen Fleet Watch runs on:
 
 ```
 node tools/build-single-file.js dist/fleet-watch.html --display
+node tools/build-single-file.js dist/fleet-watch-unlocked.html
 node tools/build-single-file.js dist/fleet-console.html --entry=console.html
 ```
 
-The AIS key is never in either file — enter it at the screen, once per machine.
+| file | for | `D` key |
+| --- | --- | --- |
+| `fleet-watch.html` | a screen nobody is sitting at | locked |
+| `fleet-watch-unlocked.html` | a screen you are standing at — a client meeting, a demo, your own desk | works |
+| `fleet-console.html` | adding and editing the fleet | works, plus a button |
+
+The two Fleet Watch builds differ by one word in one line of config. The plain
+name carries the locked build on purpose: somebody grabbing a file in a hurry
+should get the safe one, and the variant that can be talked out of discretion
+should be the one you had to ask for.
+
+Every build withholds the yachts marked `discreet: true` in `fleet.js`,
+including the unlocked ones. That marking is not a toggle and no key turns it
+off.
+
+The AIS key is in none of them — enter it at the screen, once per machine.
 
 ### Kiosk mode
 

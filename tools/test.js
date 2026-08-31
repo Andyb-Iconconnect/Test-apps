@@ -1894,4 +1894,31 @@ test('a board showing approximate positions says so', () => {
     'the D key goes through the same function, so the two cannot disagree');
 });
 
+test('an unlocked board still withholds the yachts that are marked', () => {
+  // The whole point of the per-yacht flag is that it is not a toggle. A build
+  // with the D key working is the one where that is easiest to get wrong.
+  const fleet = [
+    { id: 'quiet', name: 'Quiet', mmsi: 319000102, discreet: true,
+      demo: { position: [7.12, 43.58] } }
+  ];
+  const locked = CONFIG.discreetLocked;
+  const mode = CONFIG.discreetMode;
+  try {
+    Store.init(fleet);
+    Store.applyFix(319000102, { lon: 7.12, lat: 43.58, at: new Date() });
+    CONFIG.discreetLocked = false;     // the D key works
+    CONFIG.discreetMode = false;       // and nobody has pressed it
+    Store.recompute();
+    const d = Store.vessels[0].derived;
+    assert.strictEqual(d.discreet, true,
+      'marked means withheld, with no key pressed and no lock in force');
+    assert.ok(Math.abs(d.lat - 43.58) > 0.05, 'and the position she publishes has moved');
+    assert.ok(/if \(d\.discreet\) return;/.test(readRepo('js/map.js')),
+      'her track is not drawn either — a track is a position over time');
+  } finally {
+    CONFIG.discreetLocked = locked;
+    CONFIG.discreetMode = mode;
+  }
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
