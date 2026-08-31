@@ -1,0 +1,100 @@
+/* -----------------------------------------------------------------------------
+ * settings.css — the AIS key sheet.
+ *
+ * The dialog is built in JavaScript so that both pages get the same one, which
+ * means it cannot rely on either page's own sheet styling: the console has it,
+ * the board has never needed a dialog at all. Everything here is scoped to the
+ * dialog's id, so it dresses itself on the board and quietly agrees with the
+ * console's other sheets rather than reaching into them.
+ * -------------------------------------------------------------------------- */
+
+#ais-dialog {
+  width: min(32rem, calc(100vw - 3rem));
+  /* Both pages reset margins globally, which drops the modal into the top-left
+     corner instead of the centre the UA stylesheet would have given it. */
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+#ais-dialog::backdrop { background: rgba(4, 9, 15, 0.72); }
+
+#ais-dialog form { display: flex; flex-direction: column; }
+
+#ais-dialog .sheet-head {
+  display: flex; align-items: center; gap: 0.8rem;
+  padding: 1.1rem 1.3rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+#ais-dialog .sheet-head h2 {
+  flex: 1; margin: 0; font-size: 1.05rem; font-weight: 600;
+  letter-spacing: 0.01em;
+}
+#ais-dialog .sheet-close {
+  border: none; background: none; color: var(--text-muted);
+  font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.2rem;
+}
+#ais-dialog .sheet-close:hover { color: var(--text-primary); }
+
+#ais-dialog .sheet-body {
+  display: flex; flex-direction: column; gap: 1rem;
+  padding: 1.1rem 1.3rem;
+}
+#ais-dialog .sheet-note {
+  margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary);
+}
+
+#ais-dialog .field-pair { display: flex; flex-direction: column; gap: 0.4rem; }
+#ais-dialog .field-pair label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-muted);
+}
+#ais-dialog input {
+  width: 100%; box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface-2); color: var(--text-primary);
+  font: inherit; font-size: 0.95rem;
+  /* A key is 40 undifferentiated hex characters; proportional type makes a
+     mistyped one impossible to spot. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.04em;
+}
+#ais-dialog input:focus { outline: none; border-color: var(--brand-cyan); }
+#ais-dialog .field-hint {
+  margin: 0; font-size: 0.76rem; line-height: 1.45; color: var(--text-muted);
+}
+#ais-dialog .field-error {
+  margin: 0; font-size: 0.78rem; line-height: 1.4; color: var(--critical);
+}
+#ais-dialog .field-error[hidden] { display: none; }
+
+#ais-dialog .sheet-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: 0.7rem;
+  padding: 0.9rem 1.3rem 1.1rem;
+  border-top: 1px solid var(--border);
+}
+#ais-dialog .button-primary {
+  padding: 0.5rem 1rem; border: none; border-radius: 8px;
+  background: var(--brand-cyan); color: #04202C;
+  font: inherit; font-weight: 600; font-size: 0.9rem; cursor: pointer;
+}
+#ais-dialog .button-primary:hover { filter: brightness(1.08); }
+#ais-dialog .button-quiet {
+  margin-right: auto;
+  padding: 0.5rem 0.6rem; border: none; background: none;
+  color: var(--text-muted); font: inherit; font-size: 0.9rem; cursor: pointer;
+}
+#ais-dialog .button-quiet:hover { color: var(--text-primary); }
+#ais-dialog .button-quiet[hidden] { display: none; }
+
+/* The connection pill is now the way into this sheet on both pages. */
+.status-pill-action { cursor: pointer; }
+.status-pill-action:hover { border-color: var(--border-strong); }
+.status-pill-action:focus-visible {
+  outline: 2px solid var(--brand-cyan); outline-offset: 2px;
+}

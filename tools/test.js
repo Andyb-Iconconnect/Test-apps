@@ -1584,4 +1584,110 @@ test('a great circle bends the right way and lands where it is aimed', () => {
   }
 });
 
+/* --- Both surfaces show the same fleet ---------------------------------- */
+
+/**
+ * The console kept additions in localStorage and merged them; the board read
+ * fleet.js and nothing else. So a yacht added in the console appeared in the
+ * console and never reached the board — indistinguishable, from the outside,
+ * from the add having silently failed.
+ *
+ * These are source checks rather than behavioural ones because the wiring is
+ * the thing that was wrong: both booted correctly in isolation.
+ */
+const fs = require('fs');
+const readRepo = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+
+test('both the board and the console merge locally added vessels', () => {
+  ['js/app.js', 'js/console.js'].forEach((f) => {
+    assert.ok(/Vessel\.mergedFleet\(/.test(readRepo(f)),
+      f + ' merges local additions rather than trusting fleet.js alone');
+  });
+});
+
+test('the board loads the modules it now depends on, before it uses them', () => {
+  const html = readRepo('index.html');
+  const at = (f) => html.indexOf('src="' + f + '"');
+  ['js/settings.js', 'js/vessel.js', 'js/app.js'].forEach((f) => {
+    assert.ok(at(f) !== -1, 'index.html loads ' + f);
+  });
+  assert.ok(at('js/vessel.js') < at('js/app.js'), 'vessel.js is defined before app.js runs');
+  assert.ok(at('js/settings.js') < at('js/app.js'), 'settings.js is defined before app.js runs');
+  assert.ok(at('data/mid.js') < at('js/vessel.js'), 'vessel.js has the MID table it reads');
+});
+
+test('neither app reads the AIS key straight out of config', () => {
+  // The single-file build strips the key out of config.js on purpose, so a key
+  // read from there alone can never reach a published board.
+  ['js/app.js', 'js/console.js'].forEach((f) => {
+    assert.ok(!/CONFIG\.aisStreamApiKey/.test(readRepo(f)),
+      f + ' goes through Settings, so a key typed into the app is honoured');
+    assert.ok(/Settings\.aisKey\(\)/.test(readRepo(f)), f + ' asks Settings for the key');
+  });
+});
+
+/* --- The AIS key ---------------------------------------------------------- */
+
+test('a key typed into the app wins over one baked into config', () => {
+  const store = {};
+  window.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; }
+  };
+  load('js/settings.js');
+  const { Settings } = window;
+
+  const configured = CONFIG.aisStreamApiKey;
+  try {
+    CONFIG.aisStreamApiKey = '';
+    assert.strictEqual(Settings.aisKey(), '', 'no key anywhere is demo mode, not an error');
+    assert.strictEqual(Settings.aisKeySource(), 'none');
+
+    CONFIG.aisStreamApiKey = 'from-config';
+    assert.strictEqual(Settings.aisKey(), 'from-config');
+    assert.strictEqual(Settings.aisKeySource(), 'config');
+
+    Settings.setAisKey('  from-the-app  ');
+    assert.strictEqual(Settings.aisKey(), 'from-the-app', 'trimmed, and it overrides config');
+    assert.strictEqual(Settings.aisKeySource(), 'browser');
+
+    Settings.setAisKey('');
+    assert.strictEqual(Settings.aisKey(), 'from-config', 'removing falls back, it does not blank');
+  } finally {
+    CONFIG.aisStreamApiKey = configured;
+  }
+});
+
+test('saving a key tells whoever is running a feed', () => {
+  const { Settings } = window;
+  let told = 0;
+  Settings.onChange(() => { told++; });
+  Settings.setAisKey('a'.repeat(40));
+  assert.strictEqual(told, 1, 'so the app can switch from simulated to live without a reload');
+  Settings.setAisKey('');
+  assert.strictEqual(told, 2, 'and back again');
+});
+
+test('a browser with site data blocked still boots', () => {
+  const { Settings } = window;
+  window.localStorage = {
+    getItem() { throw new Error('storage disabled'); },
+    setItem() { throw new Error('storage disabled'); },
+    removeItem() { throw new Error('storage disabled'); }
+  };
+  assert.doesNotThrow(() => Settings.aisKey(), 'reading a blocked store is not fatal');
+  assert.strictEqual(Settings.setAisKey('a'.repeat(40)), false, 'and it says so rather than pretending');
+});
+
+test('the published build carries no API key, offline or not', () => {
+  const build = readRepo('tools/build-single-file.js');
+  const blanking = build.indexOf('aisStreamApiKey: \'\'');
+  const offlineBlock = build.indexOf('if (offline) {');
+  assert.ok(blanking !== -1, 'the bundle blanks the key');
+  assert.ok(blanking < offlineBlock,
+    'and does it unconditionally — a bundle gets emailed and published, so a ' +
+    'credential inside one goes wherever the file goes');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

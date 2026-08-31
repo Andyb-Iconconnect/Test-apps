@@ -74,6 +74,10 @@
     renderBrand();
 
     window.Store.subscribe(onStoreChange);
+    el('connection').addEventListener('click', function () {
+      window.Settings.openAisDialog();
+    });
+    window.Settings.onChange(restartFeed);
     startFeed();
     window.Weather.start();
 
@@ -115,7 +119,7 @@
   }
 
   function startFeed() {
-    var key = (window.CONFIG.aisStreamApiKey || '').trim();
+    var key = window.Settings.aisKey();
     if (key) {
       window.Store.mode = 'live';
       window.Ais.start(key, window.FLEET.map(function (y) { return y.mmsi; }));
@@ -123,6 +127,12 @@
       window.Store.mode = 'demo';
       window.Demo.start(window.Store.vessels);
     }
+  }
+
+  function restartFeed() {
+    window.Ais.stop();
+    window.Demo.stop();
+    startFeed();
   }
 
   function renderBrand() {
@@ -1767,15 +1777,7 @@
   function reloadFleet(selectId) {
     window.FLEET = window.Vessel.mergedFleet(BASE_FLEET);
     window.Store.init(window.FLEET);
-
-    if (window.Store.mode === 'demo') {
-      window.Demo.stop();
-      window.Demo.start(window.Store.vessels);
-    } else {
-      window.Ais.stop();
-      window.Ais.start((window.CONFIG.aisStreamApiKey || '').trim(),
-        window.FLEET.map(function (y) { return y.mmsi; }));
-    }
+    restartFeed();
 
     window.Store.recompute();
     select(selectId || App.selected);

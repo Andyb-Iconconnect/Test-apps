@@ -40,9 +40,33 @@
     return false;
   }
 
+  /**
+   * fleet.js parsed and had vessels in it, but every one of them is hidden in
+   * this browser. Reusing the fleet.js error would blame the wrong thing.
+   */
+  function everyVesselHidden() {
+    document.body.innerHTML = '';
+    var box = document.createElement('div');
+    box.className = 'boot-error';
+    box.innerHTML =
+      '<h1>Every vessel is hidden</h1>' +
+      '<p>fleet.js loaded, but each yacht in it has been removed from view in ' +
+      'this browser. Put them back from the console, under the vessel list.</p>';
+    document.body.appendChild(box);
+  }
+
   function boot() {
     if (!fleetLoaded('the board')) return;
     if (window.CONFIG.discreetLocked) window.CONFIG.discreetMode = true;
+
+    // The console keeps additions, edits and removals in this browser's
+    // localStorage until they are written back into fleet.js. The board read
+    // only fleet.js, so a yacht added in the console never appeared here at all
+    // — which looks exactly like the add having failed. Same merge, same rules,
+    // including hidden vessels staying hidden.
+    window.FLEET = window.Vessel.mergedFleet(window.FLEET);
+    if (!window.FLEET.length) { everyVesselHidden(); return; }
+
     window.Store.init(window.FLEET);
     window.FleetMap.init(el('chart-canvas'));
 
@@ -59,6 +83,14 @@
     window.Weather.start();
 
     window.Store.subscribe(onStoreChange);
+
+    // The pill already says "Demo data"; making it the way in means the person
+    // standing at the screen does not have to know that K opens anything.
+    el('connection').addEventListener('click', function () {
+      window.Settings.openAisDialog();
+    });
+    window.Settings.onChange(restartFeed);
+
     window.addEventListener('resize', onResize);
     document.addEventListener('keydown', onKey);
     document.addEventListener('mousemove', onPointer);
@@ -142,7 +174,7 @@
   }
 
   function startFeed() {
-    var key = (window.CONFIG.aisStreamApiKey || '').trim();
+    var key = window.Settings.aisKey();
     if (key) {
       window.Store.mode = 'live';
       window.Ais.start(key, window.FLEET.map(function (y) { return y.mmsi; }));
@@ -151,6 +183,15 @@
       window.Demo.start(window.Store.vessels);
     }
     window.Store.recompute();
+  }
+
+  // Switching between simulated and live without a reload: stop whichever feed
+  // is running before starting the other, or the demo keeps writing invented
+  // fixes over the real ones.
+  function restartFeed() {
+    window.Ais.stop();
+    window.Demo.stop();
+    startFeed();
   }
 
   /* --- Scenes ------------------------------------------------------------ */
@@ -490,6 +531,7 @@
         else document.documentElement.requestFullscreen();
         break;
       case 'r': case 'R': location.reload(); break;
+      case 'k': case 'K': window.Settings.openAisDialog(); break;
     }
   }
 

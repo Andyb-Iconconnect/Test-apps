@@ -45,10 +45,20 @@ const styles = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map
 const guard = (js) => js.replace(/<\/script/gi, '<\\/script');
 
 let config = read('config.js');
+
+// The key never travels with the bundle, offline or not. A single file gets
+// emailed, dropped on a USB stick and published as a page, and a credential
+// baked into it goes wherever the file goes. The board asks for a key at the
+// screen instead (js/settings.js) and keeps it in that browser's localStorage.
+const hadKey = /aisStreamApiKey: '.+'/.test(config);
+config = config.replace(/aisStreamApiKey: '[^']*'/, "aisStreamApiKey: ''");
+if (hadKey) {
+  console.warn('  ! config.js has an AIS key; it has been left out of the bundle.\n' +
+               '    Enter it at the screen instead — click the status pill, or press K.');
+}
+
 if (offline) {
-  config = config
-    .replace(/(weather: \{\s*\n\s*)enabled: true/, '$1enabled: false')
-    .replace(/aisStreamApiKey: '[^']*'/, "aisStreamApiKey: ''");
+  config = config.replace(/(weather: \{\s*\n\s*)enabled: true/, '$1enabled: false');
   if (!/enabled: false/.test(config)) throw new Error('--offline could not disable the weather block');
 }
 

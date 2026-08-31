@@ -162,10 +162,20 @@ out later. The MMSI is checked too: the first three digits identify the flag and
 must be a ship station, not a coast station or a handheld.
 
 A vessel added this way is held in **that browser only**, and the console says so
-plainly wherever it appears. To make it permanent and shared — including with the
-office display — the form hands you the finished `fleet.js` entry to paste in,
-with a copy button. Until then it is marked "not in fleet.js" on its own record,
-with the snippet and a remove button.
+plainly wherever it appears. The board reads the same store, so on the same
+machine, in the same browser, she appears on the display straight away — with the
+position, port and status you gave her.
+
+"Same browser" is the whole of it, and it is worth being precise about, because
+it is the thing that catches people out. The board and the console published as
+two separate pages are two separate origins and share no storage at all; so are
+a laptop and the reception PC. A yacht added on one is invisible on the other
+until `fleet.js` itself carries her.
+
+To make her permanent and shared, then, the form hands you the finished
+`fleet.js` entry to paste in, with a copy button — or use **Save fleet.js** below
+for the whole file at once. Until you do, she is marked "not in fleet.js" on her
+own record, with the snippet and a remove button.
 
 ### Removing a vessel, and saving fleet.js
 
@@ -287,12 +297,20 @@ Out of the box the board runs in **demo mode**: eight simulated yachts, with tim
 compressed thirty-fold so the movement is actually visible. Everything you see is
 driven through the same code path live AIS uses.
 
-To go live, get a free API key from [aisstream.io](https://aisstream.io) (sign in
-with GitHub, generate a key) and put it in `config.js`:
+To go live, get a free API key from [aisstream.io](https://aisstream.io) — sign in
+with GitHub and generate one — then **enter it at the screen**: click the status
+pill in the top right (the one that says *Demo data*), or press `K`. It works the
+same on the board and in the console.
 
-```js
-aisStreamApiKey: 'your-key-here',
-```
+The key is kept in that browser's localStorage. It is never written into
+`fleet.js`, never committed, and deliberately left out of the single-file build —
+a bundle gets emailed, dropped on a USB stick and published as a page, and a
+credential baked into one travels wherever the file goes. The cost of that choice
+is that the key has to be entered once on each screen that shows the fleet.
+
+`config.js` still has an `aisStreamApiKey` field for an automated deploy that
+injects it at build time. A key typed at the screen overrides it, so a display can
+be corrected without a rebuild.
 
 The board opens one WebSocket, subscribes to your fleet's MMSIs only, and
 reconnects with backoff if the connection drops.
