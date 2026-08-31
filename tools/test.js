@@ -1711,4 +1711,99 @@ test('every connection state the feed can set has a label on both pages', () => 
   });
 });
 
+/* --- The socket, when it does not work ----------------------------------- */
+
+/**
+ * The retry used to hang off `onclose` alone, on the assumption — written in a
+ * comment, never checked — that a close always follows an error. A socket
+ * refused by Content-Security-Policy fires `error` and nothing else, so the
+ * retry was never scheduled and the board sat on "Connecting" forever. These
+ * drive the handlers directly, because that assumption is exactly the kind of
+ * thing only a fake socket can falsify.
+ */
+function withFakeSocket(run) {
+  const realWebSocket = global.WebSocket;
+  const sockets = [];
+  global.WebSocket = function () {
+    this.readyState = 0;                 // CONNECTING
+    this.sent = [];
+    this.send = (m) => this.sent.push(m);
+    this.close = () => { this.readyState = 3; };
+    sockets.push(this);
+  };
+  Store.init([{ id: 'x', name: 'X', mmsi: 319000001, demo: { position: [0, 0] } }]);
+  try {
+    run(sockets);
+  } finally {
+    Ais.stop();
+    global.WebSocket = realWebSocket;
+  }
+}
+
+test('a socket refused outright says so at once, without waiting three times', () => {
+  withFakeSocket((sockets) => {
+    // Refused before a single event: CLOSED the moment the constructor returns.
+    const realWebSocket = global.WebSocket;
+    global.WebSocket = function () {
+      this.readyState = 3;
+      this.send = () => {};
+      this.close = () => {};
+      sockets.push(this);
+    };
+    Ais.start('k'.repeat(40), [319000001]);
+    global.WebSocket = realWebSocket;
+    assert.strictEqual(Store.connection, 'blocked',
+      'policy is conclusive on the first try — there is nothing to learn from waiting');
+    assert.strictEqual(Ais.attempt, 1, 'and it still schedules a retry in case it lifts');
+  });
+});
+
+test('an error with no close behind it still schedules the retry', () => {
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    assert.strictEqual(Store.connection, 'connecting');
+    assert.strictEqual(sockets.length, 1);
+
+    sockets[0].readyState = 3;
+    sockets[0].onerror(new Error('refused'));
+
+    assert.strictEqual(Ais.attempt, 1, 'the attempt counter moved');
+    assert.strictEqual(Store.connection, 'blocked', 'and it is named for what it is');
+  });
+});
+
+test('one attempt produces one retry, however many events it ends with', () => {
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 3;
+    socket.onerror(new Error('refused'));
+    const after = Ais.attempt;
+    // A close arriving behind the error must not start a second reconnect
+    // racing the first.
+    if (socket.onclose) socket.onclose({ code: 1006 });
+    assert.strictEqual(Ais.attempt, after, 'the late close is a no-op');
+  });
+});
+
+test('a socket that opened and then dropped is reconnecting, not blocked', () => {
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    assert.strictEqual(Store.connection, 'open');
+
+    const sub = JSON.parse(socket.sent[0]);
+    assert.strictEqual(sub.APIKey, 'k'.repeat(40), 'the key goes up first');
+    assert.deepStrictEqual(sub.FiltersShipMMSI, ['319000001'], 'ours only, as strings');
+    assert.ok(sub.FilterMessageTypes.indexOf('ShipStaticData') !== -1,
+      'including the slow message that carries name and IMO');
+
+    socket.onclose({ code: 1006 });
+    assert.strictEqual(Store.connection, 'retrying',
+      'it worked once, so a drop is a drop — never "unreachable"');
+  });
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

@@ -41,15 +41,27 @@
     connect();
   };
 
+  // How long a socket may sit in CONNECTING before we give up on it. A network
+  // that silently swallows the connection never fails, it just never answers,
+  // and without this the board says "Connecting" for the rest of the day.
+  var CONNECT_TIMEOUT_MS = 12000;
+
   Ais.stop = function () {
     Ais.stopped = true;
     clearTimeout(Ais.timer);
+    clearTimeout(Ais.openTimer);
     if (Ais.socket) {
-      Ais.socket.onclose = null;
+      release(Ais.socket);
       try { Ais.socket.close(); } catch (e) {}
       Ais.socket = null;
     }
   };
+
+  // Every handler off a socket we are done with, so a late event from it cannot
+  // schedule a second reconnect alongside the one already running.
+  function release(socket) {
+    socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+  }
 
   function connect() {
     if (Ais.stopped) return;
@@ -64,7 +76,38 @@
     }
     Ais.socket = socket;
 
+    /**
+     * Exactly one of these outcomes per attempt.
+     *
+     * This used to hang off `onclose` alone, on the assumption — stated in a
+     * comment, never checked — that a close always follows an error. It does
+     * not. A socket refused by Content-Security-Policy fires `error` and
+     * nothing else: no close, ever. So the retry was never scheduled, the
+     * attempt counter never moved off zero, and the board sat on "Connecting"
+     * indefinitely, which is precisely what a published page does.
+     */
+    var settled = false;
+    function failed(refused) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(Ais.openTimer);
+      release(socket);
+      try { socket.close(); } catch (e) {}
+      if (Ais.socket === socket) Ais.socket = null;
+      if (!Ais.stopped) scheduleReconnect(refused);
+    }
+
+    // A socket that is already CLOSED before a single event has fired was
+    // refused outright rather than attempted — policy, not network. That is
+    // conclusive on the first try, so there is nothing to be learnt from
+    // waiting for three.
+    if (socket.readyState === 3) { failed(true); return; }
+
+    Ais.openTimer = setTimeout(function () { failed(false); }, CONNECT_TIMEOUT_MS);
+
     socket.onopen = function () {
+      if (settled) return;
+      clearTimeout(Ais.openTimer);
       Ais.attempt = 0;
       Ais.everOpened = true;
       // The subscription must be the first thing sent, within a second or so,
@@ -85,17 +128,17 @@
       handle(payload);
     };
 
+    // An error before the socket ever opened, with no close behind it, is the
+    // refusal case. Treat it as terminal for this attempt either way; `settled`
+    // makes a close arriving afterwards a no-op.
     socket.onerror = function () {
-      // onclose always follows, which is where the retry is scheduled.
+      failed(!Ais.everOpened && socket.readyState === 3);
     };
 
-    socket.onclose = function () {
-      Ais.socket = null;
-      if (!Ais.stopped) scheduleReconnect();
-    };
+    socket.onclose = function () { failed(false); };
   }
 
-  function scheduleReconnect() {
+  function scheduleReconnect(refused) {
     var cfg = window.CONFIG.ais;
     var delay = Math.min(cfg.reconnectMaxMs, cfg.reconnectBaseMs * Math.pow(2, Ais.attempt));
     // Jitter, so a network blip doesn't produce a synchronised reconnect storm
@@ -110,8 +153,9 @@
      * the board could say about either, so after a few tries it says the true
      * thing instead.
      */
+    var neverWorked = !Ais.everOpened;
     window.Store.setConnection(
-      !Ais.everOpened && Ais.attempt >= BLOCKED_AFTER ? 'blocked' : 'retrying');
+      neverWorked && (refused || Ais.attempt >= BLOCKED_AFTER) ? 'blocked' : 'retrying');
     clearTimeout(Ais.timer);
     Ais.timer = setTimeout(connect, delay);
   }
