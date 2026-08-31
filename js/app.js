@@ -75,6 +75,7 @@
     el('brand-sub').textContent = window.CONFIG.subtitle || '';
     el('strapline').textContent = window.CONFIG.strapline || '';
 
+    renderDiscreetFlag();
     buildScenes();
     window.FleetMap.fit(fleetPoints(), 90, null, chartInset());
     window.FleetMap.snap();
@@ -96,6 +97,10 @@
     document.addEventListener('mousemove', onPointer);
     document.addEventListener('keydown', noteActivity);
     document.addEventListener('mousemove', noteActivity);
+    if (window.CONFIG.discreetLocked) {
+      var key = document.getElementById('hint-discreet');
+      if (key) key.remove();
+    }
     el('chart-canvas').addEventListener('click', onCanvasClick);
     el('rail-list').addEventListener('click', onRailClick);
     el('hint-close').addEventListener('click', function () {
@@ -376,6 +381,22 @@
 
   /* --- Chrome ------------------------------------------------------------- */
 
+  /**
+   * Say on the board that positions are approximate.
+   *
+   * This used to be set only by the D key, so the locked reception build — the
+   * one screen where it matters most — showed a 60 nm circle with nothing to
+   * say it was one. A visitor reading the centre of that circle as a position
+   * would be wrong by up to sixty miles and have no way of knowing.
+   *
+   * Locked and unlocked read differently on purpose: the toggle is a state
+   * someone chose and can undo, the lock is how this screen is built.
+   */
+  function renderDiscreetFlag() {
+    el('discreet-flag').textContent = !window.CONFIG.discreetMode ? ''
+      : window.CONFIG.discreetLocked ? 'Approximate positions' : 'Discreet mode';
+  }
+
   function tickClock() {
     var now = new Date();
     el('clock').textContent = window.Fmt.clock(now, window.CONFIG.office.timeZone);
@@ -523,7 +544,7 @@
         // Locked installs cannot be talked out of discretion from the keyboard.
         if (window.CONFIG.discreetLocked) break;
         window.CONFIG.discreetMode = !window.CONFIG.discreetMode;
-        el('discreet-flag').textContent = window.CONFIG.discreetMode ? 'Discreet mode' : '';
+        renderDiscreetFlag();
         window.Store.recompute();
         enterScene(App.scene);
         break;

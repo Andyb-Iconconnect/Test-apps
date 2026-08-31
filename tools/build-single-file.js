@@ -1,11 +1,13 @@
 /* -----------------------------------------------------------------------------
  * Bundles the whole board into one self-contained .html file.
  *
- *   node tools/build-single-file.js [out.html] [--offline] [--fragment]
+ *   node tools/build-single-file.js [out.html] [--display] [--offline] [--fragment]
  *
  * Useful when the board has to travel: one file to email, drop on a USB stick,
  * or open straight off disk with no server at all.
  *
+ *   --display       the reception copy: discretion locked on, so nobody
+ *                   passing the screen can reveal an exact position
  *   --offline       force demo mode and switch the weather lookup off, for
  *                   sandboxes that block outbound requests
  *   --fragment      emit body content only (no doctype/html/head/body), for
@@ -28,6 +30,7 @@ const entryFlag = args.find((a) => a.startsWith('--entry='));
 const entry = entryFlag ? entryFlag.split('=')[1] : 'index.html';
 
 const offline = flags.has('--offline');
+const display = flags.has('--display');
 const fragment = flags.has('--fragment');
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -60,6 +63,25 @@ if (hadKey) {
 if (offline) {
   config = config.replace(/(weather: \{\s*\n\s*)enabled: true/, '$1enabled: false');
   if (!/enabled: false/.test(config)) throw new Error('--offline could not disable the weather block');
+}
+
+/**
+ * The reception copy.
+ *
+ * Discretion on a public screen cannot be something a person remembers to
+ * switch on when guests arrive — by then the guests have seen it. Locked, it is
+ * on from start-up and the D key stops working, so the board cannot be talked
+ * out of it by anyone walking past.
+ *
+ * Done here rather than by editing config.js so that the desk console, built
+ * from the same repository a minute earlier, keeps its working toggle.
+ */
+if (display) {
+  const before = config;
+  config = config.replace(/discreetLocked: false/, 'discreetLocked: true');
+  if (config === before) {
+    throw new Error('--display could not find discreetLocked in config.js');
+  }
 }
 
 // Fonts are referenced from the stylesheet by relative path, which means
@@ -153,6 +175,7 @@ fs.writeFileSync(outPath, out);
 console.log(`${entry}: ${scripts.length} scripts + ${styles.length} stylesheets inlined -> ` +
             `${path.relative(process.cwd(), outPath)} (${Math.round(out.length / 1024)} KB)` +
             (photoBytes ? ` [${Math.round(photoBytes / 1024)} KB of photos]` : '') +
+            (display ? ' [display: discretion locked]' : '') +
             (offline ? ' [offline]' : '') + (fragment ? ' [fragment]' : ''));
 
 // The artifact host refuses anything over 16 MB, and photographs are the only

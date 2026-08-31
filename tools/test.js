@@ -1806,4 +1806,32 @@ test('a socket that opened and then dropped is reconnecting, not blocked', () =>
   });
 });
 
+/* --- The reception build -------------------------------------------------- */
+
+test('the display build locks discretion, and only the display build', () => {
+  const build = readRepo('tools/build-single-file.js');
+  assert.ok(/flags\.has\('--display'\)/.test(build), 'there is a --display mode');
+  assert.ok(/discreetLocked: false/.test(build) && /discreetLocked: true/.test(build),
+    'which rewrites the setting rather than asking someone to remember it');
+  assert.ok(/--display could not find discreetLocked/.test(build),
+    'and fails loudly if config.js is renamed under it, rather than shipping unlocked');
+
+  // The repository default stays unlocked: the console has somebody present to
+  // work the toggle, and a locked console cannot do its job.
+  assert.strictEqual(CONFIG.discreetLocked, false, 'config.js itself is unlocked');
+});
+
+test('a board showing approximate positions says so', () => {
+  // A 60 nm circle with no label is worse than no circle: read as a fix, it is
+  // wrong by up to sixty miles and gives the reader no way to know.
+  const app = readRepo('js/app.js');
+  assert.ok(/function renderDiscreetFlag/.test(app), 'one place renders the flag');
+  assert.ok(/renderDiscreetFlag\(\);[\s\S]{0,80}buildScenes\(\)/.test(app),
+    'and it runs at boot, not only when someone presses D');
+  assert.ok(/discreetLocked \? 'Approximate positions'/.test(app),
+    'the locked build names what the reader is looking at');
+  assert.ok(!/discreet-flag'\)\.textContent = window\.CONFIG\.discreetMode \?/.test(app),
+    'the D key goes through the same function, so the two cannot disagree');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
