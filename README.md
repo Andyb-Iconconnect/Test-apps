@@ -13,10 +13,14 @@ one is allowed to show.
 
 ## Which one shows what
 
-The reception screen and the desk tool have opposite defaults, and that is the
-point.
+Fleet Watch and the desk console have opposite defaults, and that is the point.
 
-Build the office display with **`--display`**, which locks the `D` key. The
+Fleet Watch is the board itself, and it is not tied to one room: reception, an
+ops desk, a boardroom, a client's own office, a laptop on a stand at a show. The
+build flags below are about who can walk past a given screen, not about where it
+is.
+
+Build any unattended screen with **`--display`**, which locks the `D` key. The
 screen then shows what the build decided and nobody passing it can change that
 in either direction.
 
@@ -81,7 +85,7 @@ inlined — one file to email, drop on a USB stick, or open straight off disk.
 
 | flag | what it does |
 | --- | --- |
-| `--display` | the reception copy: locks the `D` key |
+| `--display` | for a screen nobody is sitting at: locks the `D` key |
 | `--blur-all` | every position approximate, permanently |
 | `--offline` | demo data, weather off, for sandboxes that block outbound requests |
 | `--fragment` | body content only, for a host that supplies its own document |
@@ -89,8 +93,8 @@ inlined — one file to email, drop on a USB stick, or open straight off disk.
 So the pair for a live install is:
 
 ```
-node tools/build-single-file.js dist/reception.html --display
-node tools/build-single-file.js dist/console.html --entry=console.html
+node tools/build-single-file.js dist/fleet-watch.html --display
+node tools/build-single-file.js dist/fleet-console.html --entry=console.html
 ```
 
 The AIS key is never in either file — enter it at the screen, once per machine.
@@ -191,7 +195,7 @@ position, port and status you gave her.
 "Same browser" is the whole of it, and it is worth being precise about, because
 it is the thing that catches people out. The board and the console published as
 two separate pages are two separate origins and share no storage at all; so are
-a laptop and the reception PC. A yacht added on one is invisible on the other
+a laptop and the display PC. A yacht added on one is invisible on the other
 until `fleet.js` itself carries her.
 
 To make her permanent and shared, then, the form hands you the finished

@@ -383,9 +383,9 @@
   /**
    * Say on the board that positions are approximate.
    *
-   * This used to be set only by the D key, so the locked reception build — the
-   * one screen where it matters most — showed a 60 nm circle with nothing to
-   * say it was one. A visitor reading the centre of that circle as a position
+   * This used to be set only by the D key, so a locked build — the case where
+   * it matters most, since nobody is sitting there to explain it — showed a
+   * 60 nm circle with nothing to say it was one. A visitor reading the centre of that circle as a position
    * would be wrong by up to sixty miles and have no way of knowing.
    *
    * Locked and unlocked read differently on purpose: the toggle is a state

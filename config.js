@@ -118,7 +118,7 @@ window.CONFIG = {
   discreetMode: false,
   discreetRoundingNm: 60,
 
-  // For the machine in reception. When locked, the D key stops working, so
+  // For any screen nobody is sitting at. When locked, the D key stops working, so
   // whatever this build decided is what the screen shows — nobody passing it
   // can change the setting in either direction.
   //

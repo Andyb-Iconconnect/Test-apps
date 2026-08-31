@@ -6,9 +6,9 @@
  * Useful when the board has to travel: one file to email, drop on a USB stick,
  * or open straight off disk with no server at all.
  *
- *   --display       the reception copy: the D key is locked out, so the
- *                   screen shows what this build decided and nobody passing
- *                   it can change that. Yachts marked `discreet` in fleet.js
+ *   --display       for a screen nobody is sitting at: the D key is locked
+ *                   out, so it shows what this build decided and nobody
+ *                   passing it can change that. Yachts marked `discreet` in fleet.js
  *                   are withheld regardless. Add --blur-all for a board where
  *                   every position is approximate.
  *   --offline       force demo mode and switch the weather lookup off, for
@@ -70,7 +70,8 @@ if (offline) {
 }
 
 /**
- * The reception copy.
+ * The build for a screen nobody is sitting at — reception, an ops wall, a
+ * boardroom, a stand at a show.
  *
  * The lock takes the D key away, so the screen shows what this build decided
  * and a visitor cannot change it in either direction. It does not itself
@@ -93,8 +94,8 @@ if (blurAll) {
                          '--blur-all', 'discreetMode');
 }
 
-// A silent no-op here ships an unlocked board to reception, which is the one
-// outcome worth crashing the build over.
+// A silent no-op here ships an unlocked board to a public screen, which is the
+// one outcome worth crashing the build over.
 function rewriteConfig(text, pattern, replacement, flag, setting) {
   const out = text.replace(pattern, replacement);
   if (out === text) {

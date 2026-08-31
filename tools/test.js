@@ -1806,7 +1806,7 @@ test('a socket that opened and then dropped is reconnecting, not blocked', () =>
   });
 });
 
-/* --- The reception build -------------------------------------------------- */
+/* --- The unattended-screen build ------------------------------------------- */
 
 test('the display build locks the key, and only the display build', () => {
   const build = readRepo('tools/build-single-file.js');
@@ -1816,7 +1816,7 @@ test('the display build locks the key, and only the display build', () => {
   assert.ok(/flags\.has\('--blur-all'\)/.test(build),
     'and a separate, heavier flag for a wholly approximate board');
   assert.ok(/could not find/.test(build),
-    'a rewrite that silently matched nothing would ship an unlocked board to reception');
+    'a rewrite that silently matched nothing would ship an unlocked public board');
 
   // The repository default stays unlocked: the console has somebody present to
   // work the toggle, and a locked console cannot do its job.
@@ -1826,8 +1826,8 @@ test('the display build locks the key, and only the display build', () => {
 
 test('locking the key does not itself withhold anything', () => {
   // The lock used to force blanket discretion on at start-up, which made a
-  // reception board a set of sixty-mile circles — most of what makes it worth
-  // watching, gone. Locking now fixes whatever the build chose; what is
+  // board a set of sixty-mile circles wherever it stood — most of what makes it
+  // worth watching, gone. Locking now fixes whatever the build chose; what is
   // withheld is decided per yacht.
   const app = readRepo('js/app.js');
   assert.ok(!/discreetLocked\)\s*window\.CONFIG\.discreetMode = true/.test(app),
@@ -1848,7 +1848,7 @@ test('a yacht marked discreet is withheld on every screen, however it is configu
     Store.applyFix(319000101, { lon: 7.42, lat: 43.73, at: new Date() });
     Store.applyFix(319000102, { lon: 7.12, lat: 43.58, at: new Date() });
 
-    // The configuration a reception screen actually runs: key locked, blanket
+    // The configuration an unattended screen actually runs: key locked, blanket
     // discretion off.
     CONFIG.discreetLocked = true;
     CONFIG.discreetMode = false;
