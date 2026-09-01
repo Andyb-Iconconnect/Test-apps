@@ -371,6 +371,15 @@
     tiles.appendChild(tile('Reporting', summary.tracked + ' of ' + summary.total,
       summary.tracked === summary.total ? 'all of them' : 'the rest are dark',
       summary.tracked < summary.total ? 'warn' : ''));
+
+    // How the FEED is doing, which is a different question from where the fleet
+    // is: "5 of 61" means one thing four minutes in and another after an hour.
+    var r = window.Store.reception();
+    if (window.Store.mode === 'live' && r.since) {
+      tiles.appendChild(tile('Heard since', r.heard + ' of ' + r.total,
+        'listening ' + window.Fmt.duration(r.since) +
+        (r.settling ? ' · still assembling' : ''), ''));
+    }
     host.appendChild(tiles);
 
     // The whole fleet in one table: where each one is, and how far off she is.

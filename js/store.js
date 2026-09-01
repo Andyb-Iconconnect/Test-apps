@@ -15,6 +15,7 @@
 
   var Store = {
     mode: 'demo',              // 'demo' | 'live'
+    feedStartedAt: null,       // when the live feed last began listening
     connection: 'starting',    // starting | connecting | open | retrying | closed | demo
     vessels: [],               // in fleet.js order
     byMmsi: {},
@@ -57,6 +58,7 @@
     // message can't drag a yacht backwards.
     if (v.fix && v.fix.at && at < v.fix.at) return false;
 
+    if (!v.firstHeardAt) v.firstHeardAt = at;
     v.fix = {
       lon: fix.lon, lat: fix.lat,
       cog: fix.cog != null ? fix.cog : (v.fix ? v.fix.cog : null),
@@ -92,6 +94,8 @@
   Store.applyIdentity = function (mmsi, data) {
     var v = Store.byMmsi[String(mmsi)];
     if (!v) return false;
+    // A static message is being heard from even when it carries no position.
+    if (!v.firstHeardAt) v.firstHeardAt = new Date();
     v.ais = v.ais || {};
     Object.keys(data).forEach(function (k) {
       if (data[k] != null) v.ais[k] = data[k];
@@ -252,6 +256,36 @@
 
   /* --- Fleet-level rollups ----------------------------------------------- */
 
+  /**
+   * How the feed is doing, as opposed to where the fleet is.
+   *
+   * "Five of sixty-one" means one thing four minutes in and quite another after
+   * an hour, and nothing on the board distinguished them. A yacht alongside
+   * broadcasts her position every three minutes, so a fleet takes minutes to
+   * assemble rather than seconds — and what has not arrived after ten is not
+   * late, it is out of range or switched off.
+   */
+  Store.reception = function () {
+    var heard = 0, waiting = 0;
+    Store.vessels.forEach(function (v) {
+      if (v.firstHeardAt) heard++; else waiting++;
+    });
+    return {
+      heard: heard,
+      waiting: waiting,
+      total: Store.vessels.length,
+      since: Store.feedStartedAt,
+      // Whether the fleet is still assembling, in the sense that a vessel
+      // alongside has not yet had time to say anything.
+      settling: Store.feedStartedAt
+        ? (new Date() - Store.feedStartedAt) < SETTLE_MS : false
+    };
+  };
+
+  // Three position reports at the slowest ordinary interval. After this, silence
+  // is a fact about the vessel rather than about how long you have waited.
+  var SETTLE_MS = 10 * 60 * 1000;
+
   Store.summary = function () {
     var counts = { underway: 0, anchored: 0, moored: 0, dark: 0, unknown: 0 };
     var tracked = 0, distance7d = 0;
@@ -290,6 +324,7 @@
     } catch (e) { /* no cache available; the board still works */ }
   };
 
+  // A cached fix is a vessel we have heard from, even if it was yesterday.
   function restore() {
     var raw;
     try { raw = localStorage.getItem(CACHE_KEY); } catch (e) { return; }
@@ -310,6 +345,9 @@
           raim: saved.fix.raim, turning: saved.fix.turning,
           at: new Date(saved.fix.at)
         };
+        // Heard before, even if it was yesterday. Without this a reload reads as
+        // a fleet that has gone quiet rather than one already found.
+        v.firstHeardAt = new Date(saved.fix.at);
       }
       v.voyage = saved.voyage || {};
       if (saved.ais) {
@@ -337,6 +375,10 @@
   }
 
   Store.setConnection = function (state) {
+    // The clock a fleet assembles against starts when we begin listening, not
+    // when the page loaded — a reconnection does not reset what we already know,
+    // but a first connection is where "how long has it had" begins.
+    if (state === 'listening' && !Store.feedStartedAt) Store.feedStartedAt = new Date();
     if (Store.connection === state) return;
     Store.connection = state;
     notify();

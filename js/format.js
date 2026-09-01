@@ -144,6 +144,25 @@
 
   // "4 min ago", "3 h ago", "2 days ago" — the age of a fix is as important as
   // the fix, so this is used everywhere a position is shown.
+  /**
+   * A span of time, said forwards.
+   *
+   * `age` says how long ago something was and reads "just now" for anything
+   * under a minute — which is right for a fix and wrong for a duration, where
+   * it produced "heard from in just now". This says how long something has been
+   * going on.
+   */
+  Fmt.duration = function (fromDate, now) {
+    if (!fromDate) return 'no time at all';
+    var mins = ((now || new Date()) - fromDate) / 60000;
+    if (mins < 1) return 'under a minute';
+    if (mins < 60) return Math.round(mins) + ' minute' + (Math.round(mins) === 1 ? '' : 's');
+    var hours = mins / 60;
+    if (hours < 24) return Math.round(hours) + ' hour' + (Math.round(hours) === 1 ? '' : 's');
+    var days = hours / 24;
+    return Math.round(days) + ' day' + (Math.round(days) === 1 ? '' : 's');
+  };
+
   Fmt.age = function (fromDate, now) {
     if (!fromDate) return 'no fix';
     var ms = (now || new Date()) - fromDate;

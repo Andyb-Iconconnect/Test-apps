@@ -237,7 +237,17 @@
       node.textContent = heard + ' message' + (heard === 1 ? '' : 's') +
         ' received, none of them for a vessel in this fleet.';
     } else {
-      node.textContent = heard + ' messages received, ' + matched + ' for this fleet.';
+      var r = window.Store.reception();
+      node.textContent = heard + ' messages received, ' + matched + ' for this fleet. ' +
+        r.heard + ' of ' + r.total + ' vessels heard from' +
+        (r.since ? ' in ' + window.Fmt.duration(r.since) : '') + '.' +
+        (r.settling
+          ? '\nStill assembling — a yacht alongside broadcasts every three ' +
+            'minutes, so give it ten before reading anything into a gap.'
+          : r.waiting
+            ? '\nThe other ' + r.waiting + ' have said nothing. Beyond ten minutes ' +
+              'that is out of range or transponder off, not late.'
+            : '');
     }
   }
 

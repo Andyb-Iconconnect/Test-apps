@@ -2342,4 +2342,50 @@ test('a feed of frames none of which can be read is named as such', () => {
     'and the standalone page decodes them too, rather than printing [object Blob]');
 });
 
+/* --- How the feed is doing, as against where the fleet is ----------------- */
+
+test('a duration is said forwards, an age backwards', () => {
+  const now = new Date('2026-09-01T12:00:00Z');
+  const ago = (mins) => new Date(now - mins * 60000);
+  assert.strictEqual(Fmt.duration(ago(0.5), now), 'under a minute',
+    '"just now" is right for a fix and wrong for a span — it read "in just now"');
+  assert.strictEqual(Fmt.duration(ago(1), now), '1 minute');
+  assert.strictEqual(Fmt.duration(ago(40), now), '40 minutes');
+  assert.strictEqual(Fmt.duration(ago(90), now), '2 hours');
+  assert.strictEqual(Fmt.age(ago(0.5), now), 'just now', 'age is unchanged');
+});
+
+test('reception counts vessels heard from, not vessels placed', () => {
+  /**
+   * "5 of 61" means one thing four minutes in and another after an hour, and
+   * nothing distinguished them. A yacht alongside broadcasts every three
+   * minutes, so a fleet assembles over minutes; what is missing after ten is
+   * out of range or switched off, not late.
+   */
+  Store.init([
+    { id: 'a', name: 'A', mmsi: 319000101, demo: { position: [7, 43] } },
+    { id: 'b', name: 'B', mmsi: 319000102, demo: { position: [7, 43] } },
+    { id: 'c', name: 'C', mmsi: 319000103, demo: { position: [7, 43] } }
+  ]);
+  Store.feedStartedAt = new Date();
+
+  let r = Store.reception();
+  assert.deepStrictEqual([r.heard, r.waiting, r.total], [0, 3, 3], 'nothing heard yet');
+  assert.strictEqual(r.settling, true, 'and it has had no time');
+
+  Store.applyFix(319000101, { lon: 7, lat: 43, at: new Date() });
+  r = Store.reception();
+  assert.deepStrictEqual([r.heard, r.waiting], [1, 2], 'one heard');
+
+  // A static message with no position is still being heard from.
+  Store.applyIdentity(319000102, { name: 'B' });
+  r = Store.reception();
+  assert.deepStrictEqual([r.heard, r.waiting], [2, 1],
+    'a name arriving counts, even with no fix behind it');
+
+  // Long enough that silence is a fact about the vessel, not about waiting.
+  Store.feedStartedAt = new Date(Date.now() - 20 * 60000);
+  assert.strictEqual(Store.reception().settling, false);
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
