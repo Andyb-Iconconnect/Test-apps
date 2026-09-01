@@ -1,0 +1,191 @@
+<title>AIS key check</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 2rem 1.5rem;
+    background: #070E16; color: #EAF2F8;
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.3rem; font-weight: 600; margin: 0 0 0.4rem; }
+  p { color: #9DB4C6; margin: 0 0 1rem; }
+  .row { display: flex; gap: 0.6rem; margin: 1.2rem 0; flex-wrap: wrap; }
+  input {
+    flex: 1 1 22rem; min-width: 0; box-sizing: border-box;
+    padding: 0.6rem 0.75rem; border: 1px solid rgba(120,180,220,0.26);
+    border-radius: 8px; background: #16283A; color: #EAF2F8;
+    font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  input:focus { outline: none; border-color: #3CB4E4; }
+  button {
+    padding: 0.6rem 1.1rem; border: none; border-radius: 8px;
+    background: #3CB4E4; color: #04202C; font: inherit; font-weight: 600;
+    cursor: pointer;
+  }
+  button.quiet { background: none; color: #67819A; border: 1px solid rgba(120,180,220,0.26); }
+  pre {
+    margin: 0; padding: 1rem; border-radius: 10px;
+    background: #0C1723; border: 1px solid rgba(120,180,220,0.13);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12.5px; line-height: 1.55;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 60vh; overflow-y: auto;
+  }
+  .note { font-size: 0.85rem; color: #67819A; }
+  b { color: #EAF2F8; font-weight: 600; }
+</style>
+
+<main>
+  <h1>AIS key check</h1>
+  <p>
+    Nothing from Fleet Watch is in this page. It opens a socket to aisstream.io,
+    sends the subscription exactly as their own published example does, and
+    prints every frame that comes back, raw. If this page is silent too, the
+    fault is not in the board.
+  </p>
+
+  <div class="row">
+    <input id="key" type="password" autocomplete="off" spellcheck="false"
+           placeholder="Paste your aisstream.io API key">
+    <button id="go" type="button">Connect</button>
+    <button id="clear" class="quiet" type="button">Clear</button>
+  </div>
+
+  <p class="note">
+    The key is not stored, not sent anywhere but aisstream.io, and disappears
+    when you close the tab. Nothing is subscribed by MMSI — this asks for every
+    vessel on earth, so a working key should produce a wall of text within a
+    second or two.
+  </p>
+
+  <pre id="log">Paste a key and press Connect.</pre>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var ENDPOINT = 'wss://stream.aisstream.io/v0/stream';
+  var log = document.getElementById('log');
+  var socket = null;
+  var frames = 0;
+  var openedAt = 0;
+
+  function say(text) {
+    log.textContent += '\n' + text;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function stamp() {
+    return new Date().toISOString().slice(11, 23);
+  }
+
+  function stop() {
+    if (!socket) return;
+    socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+    try { socket.close(); } catch (e) {}
+    socket = null;
+  }
+
+  document.getElementById('clear').addEventListener('click', function () {
+    log.textContent = 'Cleared.';
+  });
+
+  document.getElementById('go').addEventListener('click', function () {
+    var button = this;
+    if (socket) {
+      stop();
+      button.textContent = 'Connect';
+      say(stamp() + '  stopped by you');
+      return;
+    }
+
+    var key = document.getElementById('key').value.trim();
+    if (!key) { log.textContent = 'Paste a key first.'; return; }
+
+    frames = 0;
+    // Reset, or a second run after a successful first reports the first one's
+    // timings and calls a never-opened socket "closed after 4.2s".
+    openedAt = 0;
+    log.textContent = stamp() + '  opening ' + ENDPOINT;
+    button.textContent = 'Stop';
+
+    try {
+      socket = new WebSocket(ENDPOINT);
+    } catch (e) {
+      say(stamp() + '  the constructor threw: ' + e.name + ' — ' + e.message);
+      say('\nThat is this browser refusing to open the socket at all, before ' +
+          'aisstream.io was ever contacted.');
+      button.textContent = 'Connect';
+      socket = null;
+      return;
+    }
+
+    // Already closed before a single event: refused by policy, not attempted.
+    if (socket.readyState === 3) {
+      say(stamp() + '  refused before it was attempted (readyState 3)');
+      say('\nSomething in this page\'s environment forbids outbound sockets. ' +
+          'Open this file from your own machine rather than through a viewer.');
+      button.textContent = 'Connect';
+      socket = null;
+      return;
+    }
+
+    socket.onopen = function () {
+      openedAt = Date.now();
+      say(stamp() + '  open');
+      // Exactly the shape in aisstream's own example, and in their published
+      // SubscriptionMessage model: APIKey, and a whole-world BoundingBoxes.
+      var sub = { APIKey: key, BoundingBoxes: [[[-90, -180], [90, 180]]] };
+      socket.send(JSON.stringify(sub));
+      say(stamp() + '  sent  ' + JSON.stringify(
+        { APIKey: key.slice(0, 4) + '…' + key.slice(-4), BoundingBoxes: sub.BoundingBoxes }));
+      say('');
+      say('Waiting. A working key normally answers within a second or two.');
+    };
+
+    socket.onmessage = function (event) {
+      frames++;
+      if (frames <= 8) {
+        say(stamp() + '  ' + String(event.data).slice(0, 400));
+      } else if (frames === 9) {
+        say('…  (still arriving; counting rather than printing from here)');
+      } else if (frames % 100 === 0) {
+        say(stamp() + '  ' + frames + ' frames');
+      }
+    };
+
+    socket.onerror = function () {
+      say(stamp() + '  socket error');
+    };
+
+    socket.onclose = function (event) {
+      say('');
+      say(stamp() + '  ' + (openedAt
+        ? 'closed after ' + ((Date.now() - openedAt) / 1000).toFixed(1) + 's'
+        : 'ended without ever opening') +
+        '  code ' + event.code + (event.reason ? '  reason "' + event.reason + '"' : ''));
+      say('total frames received: ' + frames);
+      say('');
+      if (frames > 0) {
+        say('The key works. Whatever is wrong is not the key or the network.');
+      } else if (!openedAt) {
+        say('The socket never opened, so aisstream.io was never asked anything. ' +
+            'That is the network in front of you.');
+      } else if (event.code === 1006 || event.code === 1005) {
+        say('Opened, then ended with no close frame — nobody said goodbye. ' +
+            'That is what a firewall or inspecting proxy does to a stream it cuts. ' +
+            'Try again on a phone hotspot: if it works there, the network is the ' +
+            'problem, not the key.');
+      } else {
+        say('Opened, accepted the subscription, and closed with code ' + event.code +
+            ' having sent nothing. That is aisstream.io declining to serve this key.');
+      }
+      socket = null;
+      button.textContent = 'Connect';
+    };
+  });
+})();
+</script>

@@ -66,6 +66,29 @@
     return String(cfg).trim() ? 'config' : 'none';
   };
 
+  /**
+   * The stored key, masked, for display.
+   *
+   * Shown at all times rather than only inside a diagnostic, because a key that
+   * is not a key is invisible behind a password field. One was: the text of an
+   * earlier report, pasted from the clipboard and forced past the shape check,
+   * while the sheet went on cheerfully saying a key was stored and the board was
+   * tracking live. Four characters at each end is enough to recognise your own
+   * key and not enough to be worth stealing.
+   */
+  Settings.maskedKey = function () {
+    var key = Settings.aisKey();
+    if (!key) return '';
+    if (key.length <= 12) return key.replace(/./g, '\u2022');
+    return key.slice(0, 4) + '\u2026' + key.slice(-4) + '  (' + key.length + ' characters)';
+  };
+
+  // Whether what is stored even looks like an AISstream key: 40 hexadecimal
+  // characters. Forcing a save past the warning stays possible, but not silent.
+  Settings.aisKeyLooksRight = function () {
+    return /^[0-9a-f]{40}$/i.test(Settings.aisKey());
+  };
+
   Settings.setAisKey = function (value) {
     var obj = read();
     var trimmed = String(value == null ? '' : value).trim();
@@ -129,6 +152,7 @@
               'also means it has to be entered separately on each screen that ' +
               'shows the fleet.' +
             '</p>' +
+            '<p class="stored-key" id="ais-stored"></p>' +
             '<p class="field-error" id="ais-key-error" hidden></p>' +
           '</div>' +
           '<p class="sheet-note">' +
@@ -316,6 +340,10 @@
 
   function refreshDialog() {
     dialog.querySelector('#ais-build').textContent = buildLabel();
+    var stored = dialog.querySelector('#ais-stored');
+    var masked = Settings.maskedKey();
+    stored.textContent = masked ? 'Stored: ' + masked : '';
+    stored.classList.toggle('wrong', !!masked && !Settings.aisKeyLooksRight());
     var state = dialog.querySelector('#ais-state');
     var forget = dialog.querySelector('#ais-forget');
     var source = Settings.aisKeySource();
@@ -329,8 +357,10 @@
         'and the same key will connect.';
       forget.hidden = false;
     } else if (source === 'browser') {
-      state.textContent = 'A key is stored in this browser and the board is ' +
-        'tracking live. Paste a different one to replace it.';
+      state.textContent = Settings.aisKeyLooksRight()
+        ? 'A key is stored in this browser. Paste a different one to replace it.'
+        : 'What is stored does not look like an AISstream key \u2014 those are 40 ' +
+          'hexadecimal characters. Nothing will arrive until it is replaced.';
       forget.hidden = false;
     } else if (source === 'config') {
       state.textContent = 'A key is baked into config.js. Anything pasted here ' +

@@ -135,3 +135,14 @@
   letter-spacing: 0.02em;
   color: var(--text-muted);
 }
+
+/* What is actually stored. A key that is not a key is invisible behind a
+   password field, and one got in. */
+#ais-dialog .stored-key {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+#ais-dialog .stored-key.wrong { color: var(--critical); }
+#ais-dialog .stored-key:empty { display: none; }

@@ -2202,4 +2202,60 @@ test('every build says which build it is', () => {
     'an unstamped run is named as such rather than left blank');
 });
 
+test('what is stored is shown, so a key that is not a key cannot hide', () => {
+  /**
+   * A diagnostic report got pasted into the key box, forced past the shape
+   * warning, and stored. The sheet then said "a key is stored and the board is
+   * tracking live" — behind a password field, where nothing could be seen — and
+   * the resulting 1006 was read as a firewall for two rounds. The masked echo in
+   * the probe output is what finally caught it.
+   */
+  const store = {};
+  window.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; }
+  };
+  const { Settings } = window;
+  const configured = CONFIG.aisStreamApiKey;
+  try {
+    CONFIG.aisStreamApiKey = '';
+
+    Settings.setAisKey('');
+    assert.strictEqual(Settings.maskedKey(), '', 'nothing stored shows nothing');
+
+    const real = 'b2326793e280437b5c3987d84554e7dac1c896e2';
+    Settings.setAisKey(real);
+    assert.strictEqual(Settings.aisKeyLooksRight(), true, '40 hex characters is the shape');
+    const masked = Settings.maskedKey();
+    assert.ok(masked.indexOf('b232') === 0, 'enough to recognise your own key');
+    assert.ok(masked.indexOf('96e2') !== -1, 'from both ends');
+    assert.ok(masked.indexOf(real) === -1, 'and never the whole thing');
+    assert.ok(/40 characters/.test(masked), 'with the length, which is what gives a paste away');
+
+    // The actual mishap.
+    Settings.setAisKey('1/3  your fleet, as the board subscribes — on your account.');
+    assert.strictEqual(Settings.aisKeyLooksRight(), false,
+      'a pasted report is not mistaken for a key');
+    assert.ok(/characters/.test(Settings.maskedKey()),
+      'and its length is on show, which is how you notice');
+  } finally {
+    CONFIG.aisStreamApiKey = configured;
+    Settings.setAisKey('');
+  }
+});
+
+test('a standalone key check exists that shares no code with the board', () => {
+  // When the board and the diagnostic are both suspects, a page with none of
+  // either in it is the only thing that settles the question.
+  const page = readRepo('tools/ais-check.html');
+  assert.ok(/wss:\/\/stream\.aisstream\.io\/v0\/stream/.test(page), 'it talks to the real endpoint');
+  assert.ok(/APIKey: key, BoundingBoxes: \[\[\[-90, -180\], \[90, 180\]\]\]/.test(page),
+    "and sends the subscription in aisstream's own published shape");
+  ['FleetMap', 'Store.', 'window.Ais', 'Settings.'].forEach((symbol) => {
+    assert.ok(page.indexOf(symbol) === -1, 'no ' + symbol + ' — it shares nothing with the app');
+  });
+  assert.ok(/event\.code/.test(page), 'and reports the close code, which is the finding');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
