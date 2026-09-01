@@ -245,8 +245,13 @@
     cancelDiagnosis = window.Ais.diagnose(key, fleet, function (step) {
       if (step.running) {
         var current = step.results[step.results.length - 1];
+        var state = !current.opened ? 'never opened'
+          : current.closed ? 'closed after ' + current.seconds + 's' +
+              (current.closed.reason ? ' — "' + current.closed.reason + '"'
+               : current.closed.code ? ' (code ' + current.closed.code + ')' : '')
+          : current.heard + ' heard, ' + current.matched + ' ours';
         lines[step.index] = '  ' + (step.index + 1) + '/' + step.total + '  ' +
-          step.running + ' — ' + current.heard + ' heard, ' + current.matched + ' ours';
+          step.running + ' — ' + state;
         log.textContent = 'Each test listens for ' + window.Ais.SECONDS_PER_PROBE +
           ' seconds.\n\n' + lines.join('\n');
       }

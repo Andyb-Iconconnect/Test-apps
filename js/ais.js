@@ -237,13 +237,39 @@
       var verdict;
       var first = results.filter(function (r) { return r.heard > 0; })[0];
       var rejected = results.filter(function (r) { return r.error; })[0];
-      if (rejected) {
+      var never = results.filter(function (r) { return !r.opened; })[0];
+      // `never` is checked before anything the server might have said, because
+      // a socket that never opened cannot have been answered by a server.
+      // A socket the server hung up on well before the probe was due to end.
+      var hungUp = results.filter(function (r) {
+        return r.opened && r.closed && r.seconds < Ais.SECONDS_PER_PROBE - 1;
+      })[0];
+
+      if (never) {
+        verdict = 'The socket never opened, so nothing was ever asked for. That is ' +
+          'the network in front of you, not aisstream.io: a published page blocks ' +
+          'outbound sockets outright, and so do some office firewalls. Try the ' +
+          'downloaded file on a machine that can reach the internet directly.';
+      } else if (rejected) {
         verdict = 'The server rejected the subscription: "' + rejected.error +
           '". Nothing will arrive until that is resolved — most often it is the key.';
+      } else if (hungUp) {
+        verdict = 'The server accepted the connection and then hung up after ' +
+          hungUp.seconds + ' seconds' +
+          (hungUp.closed.reason ? ', saying: "' + hungUp.closed.reason + '"' :
+           hungUp.closed.code ? ' with close code ' + hungUp.closed.code : '') +
+          '. It closed us rather than answering, which is what a rejected key ' +
+          'usually looks like — aisstream.io does not always send an error first. ' +
+          'Check the key is active on your account.';
       } else if (!first) {
-        verdict = 'Nothing arrived on any probe, including one asking for every ' +
-          'vessel in the world. That is not your fleet being quiet — the ' +
-          'subscription is not being served at all. Check the key at aisstream.io.';
+        verdict = 'The connection stayed open for the full ' + Ais.SECONDS_PER_PROBE +
+          ' seconds each time and the server sent nothing at all, not even for a ' +
+          'request covering every vessel on earth. It is not your fleet being quiet ' +
+          'and it is not the bounding box. Two things do this: a key that is not ' +
+          'active yet, and a second copy of the board already connected on the same ' +
+          'key — aisstream.io serves one connection per key, so close every other ' +
+          'window and tab showing the fleet and run this again. If it is still ' +
+          'silent, the key needs looking at on your account.';
       } else if (results[0] && results[0].matched > 0) {
         verdict = 'Your fleet is reporting — ' + results[0].matched + ' message' +
           (results[0].matched === 1 ? '' : 's') + ' in ' + Ais.SECONDS_PER_PROBE +
@@ -290,7 +316,25 @@
       if (cancelled) return;
       if (i >= PROBES.length) { finish(); return; }
       var probe = PROBES[i];
-      var result = { name: probe.name, heard: 0, matched: 0, error: null };
+      /**
+       * The lifecycle, not just the count.
+       *
+       * The first version of this recorded only `heard` and `error`, which
+       * collapsed three quite different answers into one: a socket that never
+       * opened, one the server accepted and then closed on the spot, and one
+       * that stayed open and said nothing for twelve seconds. All three came
+       * back "0 heard, no error", and the verdict blamed the key — which is
+       * right for at most one of them.
+       */
+      var result = {
+        name: probe.name, heard: 0, matched: 0,
+        // `error` is what the SERVER said, in its own words. A transport failure
+        // is not the server saying anything, and keeping the two in one field
+        // made a socket that never opened report as a rejected key.
+        error: null, failed: false,
+        opened: false, closed: null, seconds: 0
+      };
+      var began = Date.now();
       results.push(result);
       onStep({ running: probe.name, index: i, total: PROBES.length, results: results });
 
@@ -303,6 +347,7 @@
       }
 
       var moveOn = function () {
+        result.seconds = Math.round((Date.now() - began) / 100) / 10;
         clearTimeout(timer);
         if (socket) {
           socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
@@ -312,10 +357,13 @@
         // A probe that heard something has answered the question; the rest
         // would only confirm it.
         if (result.heard > 0 || result.error) { finish(); return; }
+        // A socket that never opened will not open on the next probe either.
+        if (!result.opened) { finish(); return; }
         step(i + 1);
       };
 
       socket.onopen = function () {
+        result.opened = true;
         var sub = { APIKey: apiKey, BoundingBoxes: probe.box };
         if (probe.filtered) sub.FiltersShipMMSI = list;
         socket.send(JSON.stringify(sub));
@@ -330,8 +378,17 @@
         if (meta.MMSI != null && list.indexOf(String(meta.MMSI)) !== -1) result.matched++;
         onStep({ running: probe.name, index: i, total: PROBES.length, results: results });
       };
-      socket.onerror = function () { result.error = result.error || 'the connection failed'; };
-      socket.onclose = function () { moveOn(); };
+      socket.onerror = function () { result.failed = true; };
+      socket.onclose = function (event) {
+        // 1006 means the connection died without a close frame; anything else is
+        // the server deliberately hanging up, and the code and reason are its
+        // explanation for doing so.
+        result.closed = {
+          code: event && event.code != null ? event.code : null,
+          reason: event && event.reason ? String(event.reason) : ''
+        };
+        moveOn();
+      };
 
       timer = setTimeout(moveOn, Ais.SECONDS_PER_PROBE * 1000);
     }

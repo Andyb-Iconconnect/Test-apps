@@ -2123,6 +2123,29 @@ test('the subscription matches the published schema', () => {
   });
 });
 
+test('the probe records the socket lifecycle, not only the message count', () => {
+  /**
+   * The first version recorded `heard` and `error` alone, which collapsed three
+   * different answers into one — a socket that never opened, one the server
+   * accepted and closed on the spot, and one that stayed open and silent — and
+   * then blamed the key, which is right for at most one of them. Your own fleet
+   * hit exactly that case.
+   */
+  const source = readRepo('js/ais.js');
+  assert.ok(/result\.opened = true;/.test(source), 'it records whether the socket opened');
+  assert.ok(/code: event && event\.code/.test(source),
+    'and the close code, which is the server explaining why it hung up');
+  assert.ok(/result\.seconds = /.test(source),
+    'and how long it lasted, which separates a hang-up from a silence');
+
+  // Order matters: a socket that never opened cannot have been answered.
+  const verdicts = source.slice(source.indexOf('function finish()'));
+  assert.ok(verdicts.indexOf('if (never)') < verdicts.indexOf('rejected.error'),
+    'an unreachable server is not reported as a rejected key');
+  assert.ok(/result\.failed = true;/.test(source),
+    'a transport failure is kept apart from anything the server actually said');
+});
+
 test('the probe covers each cause a green pill cannot tell apart', () => {
   // Exercised end to end against a stand-in server in each mode; this holds the
   // shape of the thing so a future edit cannot quietly drop a case.
