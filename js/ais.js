@@ -233,6 +233,46 @@
     var timer = null;
     var cancelled = false;
 
+    /**
+     * A connection that opened and then ended early, read by its close code.
+     *
+     * 1006 is not a rejection. It means the connection ended with no close
+     * frame at all — nobody said goodbye — and that is what a middlebox does
+     * when it cuts a stream it has decided it does not like. A server turning
+     * down a key normally closes properly, with 1008 and often a reason. Calling
+     * 1006 "a rejected key" is a guess dressed as a finding, which is what the
+     * first version of this did.
+     */
+    function describeHangUp(r) {
+      var code = r.closed.code;
+      var when = 'The connection opened and then ended after ' + r.seconds + ' seconds';
+
+      if (r.closed.reason) {
+        return when + ', and the server said why: "' + r.closed.reason + '". ' +
+          'That is its own explanation — take it at face value.';
+      }
+      if (code === 1006 || code === 1005) {
+        return when + ' with no close frame at all (code ' + code + '). Nobody ' +
+          'said goodbye, which is characteristic of something between this ' +
+          'browser and aisstream.io cutting the connection — a corporate ' +
+          'firewall, a TLS-inspecting proxy, or antivirus that allows the ' +
+          'handshake and then kills the stream. A server refusing a key usually ' +
+          'closes properly and says so.\n\n' +
+          'The way to tell: run this again on a different network — a phone ' +
+          'hotspot is ideal. If it works there, the key is fine and the office ' +
+          'network is the problem. If it fails the same way, it is the key or ' +
+          'the account, and aisstream.io can say which.';
+      }
+      if (code === 1013 || code === 1008) {
+        return when + ' and the server closed it deliberately (code ' + code + '). ' +
+          (code === 1008
+            ? 'That code means policy — a key it will not serve, most likely.'
+            : 'That code means "try again later" — capacity or a rate limit, not ' +
+              'anything wrong at this end.');
+      }
+      return when + ' with close code ' + code + ', and no reason given.';
+    }
+
     function finish() {
       var verdict;
       var first = results.filter(function (r) { return r.heard > 0; })[0];
@@ -254,22 +294,23 @@
         verdict = 'The server rejected the subscription: "' + rejected.error +
           '". Nothing will arrive until that is resolved — most often it is the key.';
       } else if (hungUp) {
-        verdict = 'The server accepted the connection and then hung up after ' +
-          hungUp.seconds + ' seconds' +
-          (hungUp.closed.reason ? ', saying: "' + hungUp.closed.reason + '"' :
-           hungUp.closed.code ? ' with close code ' + hungUp.closed.code : '') +
-          '. It closed us rather than answering, which is what a rejected key ' +
-          'usually looks like — aisstream.io does not always send an error first. ' +
-          'Check the key is active on your account.';
+        verdict = describeHangUp(hungUp);
       } else if (!first) {
         verdict = 'The connection stayed open for the full ' + Ais.SECONDS_PER_PROBE +
-          ' seconds each time and the server sent nothing at all, not even for a ' +
-          'request covering every vessel on earth. It is not your fleet being quiet ' +
-          'and it is not the bounding box. Two things do this: a key that is not ' +
-          'active yet, and a second copy of the board already connected on the same ' +
-          'key — aisstream.io serves one connection per key, so close every other ' +
-          'window and tab showing the fleet and run this again. If it is still ' +
-          'silent, the key needs looking at on your account.';
+          ' seconds on every probe and the server sent nothing at all — not even ' +
+          'for a request covering every vessel on earth, which in ' +
+          Ais.SECONDS_PER_PROBE + ' seconds should be thousands of messages.\n\n' +
+          'That rules out most of the obvious things. It is not your fleet being ' +
+          'quiet, it is not the bounding box, and it is not the network: a ' +
+          'connection that survives the full run is one nothing is cutting. The ' +
+          'subscription was accepted — a malformed one gets closed — and then no ' +
+          'data was served against it.\n\n' +
+          'What is left is at their end, not this one: a key that is not yet ' +
+          'active on the account, or a second connection already holding the slot ' +
+          '(aisstream.io serves one per key, so close every other window showing ' +
+          'the fleet and run this again). If neither, the subscription below is ' +
+          'exactly what was sent — worth putting to aisstream.io support with the ' +
+          'account, since nothing here can make them serve it.';
       } else if (results[0] && results[0].matched > 0) {
         verdict = 'Your fleet is reporting — ' + results[0].matched + ' message' +
           (results[0].matched === 1 ? '' : 's') + ' in ' + Ais.SECONDS_PER_PROBE +
@@ -332,7 +373,7 @@
         // is not the server saying anything, and keeping the two in one field
         // made a socket that never opened report as a rejected key.
         error: null, failed: false,
-        opened: false, closed: null, seconds: 0
+        opened: false, closed: null, seconds: 0, sent: null
       };
       var began = Date.now();
       results.push(result);
@@ -367,6 +408,16 @@
         var sub = { APIKey: apiKey, BoundingBoxes: probe.box };
         if (probe.filtered) sub.FiltersShipMMSI = list;
         socket.send(JSON.stringify(sub));
+        // Exactly what went up, with the key masked. When the server accepts a
+        // subscription and then serves nothing, the next question is always
+        // "what did you actually send?" — and this answers it without anyone
+        // having to open developer tools, or paste a live credential to support.
+        result.sent = JSON.stringify(Object.assign({}, sub, {
+          APIKey: apiKey.slice(0, 4) + '…' + apiKey.slice(-4),
+          FiltersShipMMSI: sub.FiltersShipMMSI
+            ? [sub.FiltersShipMMSI.length + ' MMSIs, e.g. ' + sub.FiltersShipMMSI[0]]
+            : undefined
+        }));
       };
       socket.onmessage = function (event) {
         var payload;

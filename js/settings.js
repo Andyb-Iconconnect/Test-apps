@@ -241,24 +241,46 @@
     var wasLive = window.Store && window.Store.mode === 'live';
     if (wasLive) window.Ais.stop();
 
-    var lines = [];
-    cancelDiagnosis = window.Ais.diagnose(key, fleet, function (step) {
-      if (step.running) {
-        var current = step.results[step.results.length - 1];
-        var state = !current.opened ? 'never opened'
-          : current.closed ? 'closed after ' + current.seconds + 's' +
-              (current.closed.reason ? ' — "' + current.closed.reason + '"'
-               : current.closed.code ? ' (code ' + current.closed.code + ')' : '')
-          : current.heard + ' heard, ' + current.matched + ' ours';
-        lines[step.index] = '  ' + (step.index + 1) + '/' + step.total + '  ' +
-          step.running + ' — ' + state;
-        log.textContent = 'Each test listens for ' + window.Ais.SECONDS_PER_PROBE +
-          ' seconds.\n\n' + lines.join('\n');
+    /**
+     * Drawn from the results array every time, never accumulated.
+     *
+     * The first version wrote one line per probe into a list at the moment that
+     * probe STARTED — before its socket had opened — and only refreshed it when
+     * a message arrived. With no messages, nothing ever refreshed it, so every
+     * line read "never opened" while the verdict, computed from the real final
+     * state, said the server had connected and hung up. The report contradicted
+     * itself, and the half that was stale was the half that looked like evidence.
+     */
+    function describe(r) {
+      if (!r.opened) return r.closed || r.failed ? 'never opened' : 'opening…';
+      if (r.closed) {
+        return 'opened, then closed after ' + r.seconds + 's' +
+          (r.closed.reason ? ' — "' + r.closed.reason + '"'
+           : r.closed.code ? ' (code ' + r.closed.code + ')' : '');
       }
+      return r.heard + ' heard, ' + r.matched + ' ours' +
+        (r.seconds ? ' in ' + r.seconds + 's' : '');
+    }
+
+    function render(step) {
+      var lines = step.results.map(function (r, i) {
+        return '  ' + (i + 1) + '/' + PROBE_COUNT + '  ' + r.name + ' — ' + describe(r);
+      });
+      var sent = step.results.filter(function (r) { return r.sent; })[0];
+      log.textContent = (step.done ? '' :
+        'Each test listens for ' + window.Ais.SECONDS_PER_PROBE + ' seconds.\n\n') +
+        lines.join('\n') +
+        (step.done ? '\n\n' + step.verdict : '') +
+        (step.done && sent ? '\n\nSubscription sent (key masked):\n  ' + sent.sent : '');
+    }
+
+    var PROBE_COUNT = 3;
+    cancelDiagnosis = window.Ais.diagnose(key, fleet, function (step) {
+      if (step.total) PROBE_COUNT = step.total;
+      render(step);
       if (step.done) {
         cancelDiagnosis = null;
         button.textContent = 'Run it again';
-        log.textContent = lines.join('\n') + '\n\n' + step.verdict;
         if (wasLive) notify();      // whoever owns the feed restarts it
       }
     });

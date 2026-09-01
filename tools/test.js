@@ -2123,6 +2123,28 @@ test('the subscription matches the published schema', () => {
   });
 });
 
+test('the probe log is drawn from live state, never accumulated', () => {
+  /**
+   * The log wrote one line per probe at the moment that probe STARTED — before
+   * its socket had opened — and only refreshed it when a message arrived. With
+   * no messages nothing ever refreshed it, so every line read "never opened"
+   * while the verdict, computed from the real final state, said the connection
+   * had opened and been cut. The report contradicted itself and the half that
+   * looked most like evidence was the stale half.
+   */
+  const source = readRepo('js/settings.js');
+  assert.ok(/step\.results\.map\(/.test(source),
+    'every line is redrawn from the results array on each callback');
+  assert.ok(!/lines\[step\.index\] =/.test(source),
+    'no line is written once and left to go stale');
+  assert.ok(/Subscription sent \(key masked\)/.test(source),
+    'and the report shows what was actually sent, with the credential masked');
+
+  const ais = readRepo('js/ais.js');
+  assert.ok(/apiKey\.slice\(0, 4\)/.test(ais),
+    'the key is masked where it is echoed — a diagnostic gets pasted to support');
+});
+
 test('the probe records the socket lifecycle, not only the message count', () => {
   /**
    * The first version recorded `heard` and `error` alone, which collapsed three
