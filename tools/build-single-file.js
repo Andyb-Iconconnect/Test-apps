@@ -53,6 +53,27 @@ const guard = (js) => js.replace(/<\/script/gi, '<\\/script');
 
 let config = read('config.js');
 
+/**
+ * Stamp the build with its date and commit.
+ *
+ * Iterating over files somebody downloads means the question "which build is
+ * that?" comes up constantly, and a diagnostic report pasted back is worthless
+ * without the answer — a stale report reads exactly like a current one and
+ * sends everybody after a cause that was fixed two commits ago.
+ */
+const stamp = (() => {
+  const when = new Date().toISOString().slice(0, 16).replace('T', ' ') + 'Z';
+  let commit = '';
+  try {
+    commit = require('child_process')
+      .execSync('git -C ' + JSON.stringify(ROOT) + ' rev-parse --short HEAD',
+                { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString().trim();
+  } catch (e) { /* built outside a checkout; the date alone still helps */ }
+  return when + (commit ? ' · ' + commit : '');
+})();
+config = config.replace(/buildStamp: ''/, "buildStamp: '" + stamp + "'");
+
 // The key never travels with the bundle, offline or not. A single file gets
 // emailed, dropped on a USB stick and published as a page, and a credential
 // baked into it goes wherever the file goes. The board asks for a key at the

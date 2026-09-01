@@ -2182,4 +2182,24 @@ test('the probe covers each cause a green pill cannot tell apart', () => {
     'otherwise a quiet fleet gets blamed on the filter');
 });
 
+test('every build says which build it is', () => {
+  /**
+   * A diagnostic report pasted back is worth nothing if nobody can tell which
+   * build produced it: a stale report reads exactly like a current one and sends
+   * everybody after a cause that was fixed two commits ago. That happened.
+   */
+  const build = readRepo('tools/build-single-file.js');
+  assert.ok(/buildStamp: ''/.test(build) && /rev-parse --short HEAD/.test(build),
+    'the bundler stamps the date and the commit it built from');
+  assert.strictEqual(CONFIG.buildStamp, '',
+    'and config.js itself carries no stamp, so a folder run says so honestly');
+
+  const settings = readRepo('js/settings.js');
+  assert.ok(/function buildLabel/.test(settings), 'the app can name its own build');
+  assert.ok(/log\.textContent = buildLabel\(\)/.test(settings),
+    'and every diagnostic report opens with it');
+  assert.ok(/Running from a folder, not a build/.test(settings),
+    'an unstamped run is named as such rather than left blank');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

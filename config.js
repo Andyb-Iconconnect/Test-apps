@@ -19,6 +19,12 @@ window.CONFIG = {
   brandLogo: null,              // e.g. 'assets/logo-iconconnect.png'
   // Set beneath the wordmark, as the lockup does. Left as board ink rather than
   // the artwork's black, which would disappear against a dark ground.
+  // Stamped by tools/build-single-file.js with the date and commit it was built
+  // from, and left empty when running from a folder. It exists because a
+  // diagnostic report is worth nothing if nobody can tell which build produced
+  // it — three similarly named files in a downloads folder is all it takes.
+  buildStamp: '',
+
   brandLocations: 'London  -  Monaco',
   subtitle: 'Fleet Watch',
   strapline: 'Technologies to enhance your life',

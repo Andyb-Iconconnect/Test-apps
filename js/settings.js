@@ -138,6 +138,7 @@
             'key goes in.' +
           '</p>' +
           '<div class="ais-check">' +
+            '<p class="build-stamp" id="ais-build"></p>' +
             '<p class="sheet-note" id="ais-counts"></p>' +
             '<button class="button-quiet ais-test" id="ais-test" type="button">' +
               'Nothing arriving? Ask the server why' +
@@ -267,7 +268,7 @@
         return '  ' + (i + 1) + '/' + PROBE_COUNT + '  ' + r.name + ' — ' + describe(r);
       });
       var sent = step.results.filter(function (r) { return r.sent; })[0];
-      log.textContent = (step.done ? '' :
+      log.textContent = buildLabel() + '\n\n' + (step.done ? '' :
         'Each test listens for ' + window.Ais.SECONDS_PER_PROBE + ' seconds.\n\n') +
         lines.join('\n') +
         (step.done ? '\n\n' + step.verdict : '') +
@@ -306,7 +307,15 @@
     else d.removeAttribute('open');
   }
 
+  // The date and commit this file was built from, or a note that it is being
+  // served from a folder and is therefore whatever is on disk.
+  function buildLabel() {
+    var stamp = (window.CONFIG && window.CONFIG.buildStamp) || '';
+    return stamp ? 'Build ' + stamp : 'Running from a folder, not a build';
+  }
+
   function refreshDialog() {
+    dialog.querySelector('#ais-build').textContent = buildLabel();
     var state = dialog.querySelector('#ais-state');
     var forget = dialog.querySelector('#ais-forget');
     var source = Settings.aisKeySource();

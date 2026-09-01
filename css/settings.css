@@ -125,3 +125,13 @@
   max-height: 14rem; overflow-y: auto;
 }
 #ais-dialog .ais-log[hidden] { display: none; }
+
+/* Which build this is. Quiet, but always there: a diagnostic report that cannot
+   identify itself is worse than none. */
+#ais-dialog .build-stamp {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
