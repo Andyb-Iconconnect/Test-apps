@@ -1776,6 +1776,7 @@ function withFakeSocket(run) {
   const sockets = [];
   global.WebSocket = function () {
     this.readyState = 0;                 // CONNECTING
+    this.binaryType = 'blob';            // the browser default, which is the trap
     this.sent = [];
     this.send = (m) => this.sent.push(m);
     this.close = () => { this.readyState = 3; };
@@ -2256,6 +2257,89 @@ test('a standalone key check exists that shares no code with the board', () => {
     assert.ok(page.indexOf(symbol) === -1, 'no ' + symbol + ' — it shares nothing with the app');
   });
   assert.ok(/event\.code/.test(page), 'and reports the close code, which is the finding');
+});
+
+/* --- Binary frames -------------------------------------------------------- */
+
+test('a binary frame is decoded, not dropped', () => {
+  /**
+   * AISstream sends BINARY frames. A browser hands those to onmessage as a
+   * Blob, `JSON.parse(aBlob)` stringifies it to "[object Blob]" and throws, and
+   * the handler caught that and returned. So every message the server sent was
+   * dropped, silently, for the whole life of the feed: socket open, subscription
+   * accepted, thousands of frames arriving, board empty, and a diagnostic that
+   * reported "0 heard" because it counted only the frames that parsed.
+   */
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    assert.strictEqual(socket.binaryType, 'arraybuffer',
+      'the socket asks for something it can decode synchronously');
+
+    socket.readyState = 1;
+    socket.onopen();
+
+    const frame = (obj) => {
+      const text = JSON.stringify(obj);
+      const bytes = new Uint8Array(text.length);
+      for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+      return bytes.buffer;
+    };
+
+    socket.onmessage({ data: frame({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 319000001 },
+      Message: { PositionReport: { Latitude: 43.7, Longitude: 7.4, Cog: 90, Sog: 8 } }
+    }) });
+
+    const v = Store.byMmsi['319000001'];
+    assert.ok(v && v.fix, 'the fix landed');
+    assert.ok(Math.abs(v.fix.lat - 43.7) < 0.001, 'at the position in the frame');
+    assert.strictEqual(Store.connection, 'open', 'and the feed counts as live');
+    assert.strictEqual(Ais.unreadable, 0, 'nothing was undecodable');
+  });
+});
+
+test('a frame that cannot be read still counts as a frame that arrived', () => {
+  // The difference between "nothing is coming" and "plenty is coming and we
+  // cannot read it" is the whole diagnosis, and the first version of this
+  // counted only what it understood.
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    socket.onmessage({ data: 'not json at all' });
+    socket.onmessage({ data: '{"also":"not an ais message"}' });
+    assert.strictEqual(Ais.heard, 2, 'both frames counted as heard');
+    assert.strictEqual(Ais.unreadable, 1, 'the unparseable one counted as unreadable');
+  });
+});
+
+test('a text frame still works, because nothing promises binary forever', () => {
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    socket.onmessage({ data: JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 319000001 },
+      Message: { PositionReport: { Latitude: 40.1, Longitude: 3.2 } }
+    }) });
+    assert.ok(Math.abs(Store.byMmsi['319000001'].fix.lat - 40.1) < 0.001);
+  });
+});
+
+test('a feed of frames none of which can be read is named as such', () => {
+  const source = readRepo('js/ais.js');
+  assert.ok(/r\.unreadable === r\.heard/.test(source),
+    'the probe recognises "plenty arriving, none readable"');
+  assert.ok(/decoding fault at this end/.test(source),
+    'and says whose fault that is, rather than sending anyone back to the key');
+  assert.ok(/binaryType = 'arraybuffer'/.test(source), 'both sockets ask for bytes');
+  assert.ok(readRepo('tools/ais-check.html').indexOf('TextDecoder') !== -1,
+    'and the standalone page decodes them too, rather than printing [object Blob]');
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

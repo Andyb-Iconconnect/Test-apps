@@ -149,7 +149,11 @@
     socket.onmessage = function (event) {
       frames++;
       if (frames <= 8) {
-        say(stamp() + '  ' + String(event.data).slice(0, 400));
+        // AISstream sends BINARY frames. Printed with String() a binary payload
+        // reads "[object Blob]", which is how a working feed can look broken —
+        // and, in the board itself, how JSON.parse came to throw on every
+        // message and drop the lot.
+        show(event.data);
       } else if (frames === 9) {
         say('…  (still arriving; counting rather than printing from here)');
       } else if (frames % 100 === 0) {
@@ -161,6 +165,19 @@
       say(stamp() + '  socket error');
     };
 
+    function show(data) {
+      if (typeof data === 'string') { say(stamp() + '  ' + data.slice(0, 400)); return; }
+      if (data instanceof ArrayBuffer) {
+        say(stamp() + '  ' + new TextDecoder().decode(new Uint8Array(data)).slice(0, 400));
+        return;
+      }
+      if (data && typeof data.text === 'function') {
+        data.text().then(function (t) { say(stamp() + '  [binary] ' + t.slice(0, 400)); });
+        return;
+      }
+      say(stamp() + '  ' + String(data));
+    }
+
     socket.onclose = function (event) {
       say('');
       say(stamp() + '  ' + (openedAt
@@ -170,7 +187,8 @@
       say('total frames received: ' + frames);
       say('');
       if (frames > 0) {
-        say('The key works. Whatever is wrong is not the key or the network.');
+        say('The key works, and so does the network. ' + frames + ' frames arrived. ' +
+            'If the board is still empty, the fault is in the board.');
       } else if (!openedAt) {
         say('The socket never opened, so aisstream.io was never asked anything. ' +
             'That is the network in front of you.');

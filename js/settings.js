@@ -230,6 +230,9 @@
     var matched = ais.matched || 0;
     if (!heard) {
       node.textContent = 'Connected, and nothing has arrived yet.';
+    } else if (ais.unreadable === heard) {
+      node.textContent = heard + ' messages received and none of them readable — ' +
+        'a fault at this end, not at theirs.';
     } else if (!matched) {
       node.textContent = heard + ' message' + (heard === 1 ? '' : 's') +
         ' received, none of them for a vessel in this fleet.';
@@ -283,7 +286,9 @@
           (r.closed.reason ? ' — "' + r.closed.reason + '"'
            : r.closed.code ? ' (code ' + r.closed.code + ')' : '');
       }
-      return r.heard + ' heard, ' + r.matched + ' ours' +
+      return r.heard + ' heard' +
+        (r.unreadable ? ', ' + r.unreadable + ' unreadable' : '') +
+        ', ' + r.matched + ' ours' +
         (r.seconds ? ' in ' + r.seconds + 's' : '');
     }
 

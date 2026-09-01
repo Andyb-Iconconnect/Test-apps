@@ -25,7 +25,7 @@
     // matched: those for an MMSI in our fleet. The two apart tell you whether
     // the feed is working and our boats are quiet, or nothing is arriving at
     // all — which look identical from a green pill.
-    heard: 0, matched: 0, lastError: null
+    heard: 0, matched: 0, unreadable: 0, lastError: null
   };
 
   // Sentinel values the AIS standard uses for "not available".
@@ -47,6 +47,7 @@
     Ais.attempt = 0;
     Ais.heard = 0;
     Ais.matched = 0;
+    Ais.unreadable = 0;
     Ais.lastError = null;
     connect();
   };
@@ -135,11 +136,17 @@
       window.Store.setConnection('listening');
     };
 
-    socket.onmessage = function (event) {
-      var payload;
-      try { payload = JSON.parse(event.data); } catch (e) { return; }
+    receive(socket, function (payload, problem) {
+      if (problem) {
+        // Counted, never silent. A frame we cannot read is still a frame that
+        // arrived, and the difference between "nothing is coming" and "plenty is
+        // coming and we cannot read it" is the whole diagnosis.
+        Ais.heard++;
+        Ais.unreadable++;
+        return;
+      }
       handle(payload);
-    };
+    });
 
     // An error before the socket ever opened, with no close behind it, is the
     // refusal case. Treat it as terminal for this attempt either way; `settled`
@@ -188,6 +195,58 @@
     // A "Message" that is an AIS body is an object, not a string, so a string
     // here really is prose meant for a human.
     return text;
+  }
+
+  /* --- Frames ---------------------------------------------------------------- */
+
+  /**
+   * AISstream sends BINARY frames, not text ones.
+   *
+   * A browser hands a binary frame to onmessage as a Blob by default, and
+   * `JSON.parse(aBlob)` stringifies it to "[object Blob]" and throws. This code
+   * caught that and returned — so every message the server sent was silently
+   * dropped, for as long as the feed has existed. The socket was open, the
+   * subscription accepted, thousands of frames arriving, and the board showed an
+   * empty chart and said "nothing has arrived yet".
+   *
+   * Setting binaryType to 'arraybuffer' makes the payload synchronously
+   * decodable. The string branch stays because nothing guarantees a server keeps
+   * using binary frames, and a feed that breaks on that is not worth having.
+   */
+  var decoder = typeof TextDecoder === 'function' ? new TextDecoder('utf-8') : null;
+
+  function frameText(data) {
+    if (typeof data === 'string') return data;
+    if (data instanceof ArrayBuffer) {
+      return decoder ? decoder.decode(new Uint8Array(data))
+                     : String.fromCharCode.apply(null, new Uint8Array(data));
+    }
+    if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(data)) {
+      return decoder ? decoder.decode(data) : String.fromCharCode.apply(null, data);
+    }
+    return null;              // a Blob, if binaryType was never set — read async
+  }
+
+  // Everything a socket needs to receive our frames, in one place, so the feed
+  // and the probe cannot disagree about it again.
+  function receive(socket, onPayload) {
+    try { socket.binaryType = 'arraybuffer'; } catch (e) {}
+    socket.onmessage = function (event) {
+      var text = frameText(event.data);
+      if (text === null && event.data && typeof event.data.text === 'function') {
+        // Last resort: a Blob arrived anyway. Asynchronous, but never dropped.
+        event.data.text().then(function (t) { parseInto(t, onPayload); });
+        return;
+      }
+      parseInto(text, onPayload);
+    };
+  }
+
+  function parseInto(text, onPayload) {
+    if (text === null) { onPayload(null, 'undecodable'); return; }
+    var payload;
+    try { payload = JSON.parse(text); } catch (e) { onPayload(null, 'unparseable'); return; }
+    onPayload(payload, null);
   }
 
   /* --- Finding out why nothing is arriving --------------------------------- */
@@ -285,7 +344,17 @@
         return r.opened && r.closed && r.seconds < Ais.SECONDS_PER_PROBE - 1;
       })[0];
 
-      if (never) {
+      var unreadable = results.filter(function (r) {
+        return r.heard > 0 && r.unreadable === r.heard;
+      })[0];
+
+      if (unreadable) {
+        verdict = 'The server is sending plenty — ' + unreadable.heard + ' frames in ' +
+          unreadable.seconds + ' seconds — and not one of them could be read. ' +
+          'The key is fine, the network is fine and the subscription is fine. ' +
+          'This is a decoding fault at this end, and the board will stay empty ' +
+          'until it is fixed.';
+      } else if (never) {
         verdict = 'The socket never opened, so nothing was ever asked for. That is ' +
           'the network in front of you, not aisstream.io: a published page blocks ' +
           'outbound sockets outright, and so do some office firewalls. Try the ' +
@@ -372,7 +441,7 @@
         // `error` is what the SERVER said, in its own words. A transport failure
         // is not the server saying anything, and keeping the two in one field
         // made a socket that never opened report as a rejected key.
-        error: null, failed: false,
+        error: null, failed: false, unreadable: 0,
         opened: false, closed: null, seconds: 0, sent: null
       };
       var began = Date.now();
@@ -419,16 +488,19 @@
             : undefined
         }));
       };
-      socket.onmessage = function (event) {
-        var payload;
-        try { payload = JSON.parse(event.data); } catch (e) { return; }
+      receive(socket, function (payload, problem) {
+        // `heard` counts frames off the wire, before anything is understood
+        // about them. It used to count only frames that parsed, which meant a
+        // probe watching five thousand undecodable frames go past reported
+        // "0 heard" — and sent everybody looking at the key and the network.
+        result.heard++;
+        if (problem) { result.unreadable++; return; }
         var complaint = serverComplaint(payload);
         if (complaint) { result.error = complaint; moveOn(); return; }
-        result.heard++;
         var meta = payload.MetaData || {};
         if (meta.MMSI != null && list.indexOf(String(meta.MMSI)) !== -1) result.matched++;
         onStep({ running: probe.name, index: i, total: PROBES.length, results: results });
-      };
+      });
       socket.onerror = function () { result.failed = true; };
       socket.onclose = function (event) {
         // 1006 means the connection died without a close frame; anything else is
