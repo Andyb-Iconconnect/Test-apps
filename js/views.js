@@ -454,11 +454,21 @@
 
   /* --- View 3: fleet statistics ------------------------------------------- */
 
+  /**
+   * The four tiles have to account for every vessel, or the board is quietly
+   * losing boats in front of people who can count.
+   *
+   * `unknown` — never heard from at all — used to belong to no tile, so a fleet
+   * waiting on its first AIS fix showed "1 of 61" across four tiles and 60
+   * vessels nowhere. It is folded in with `dark` here: the two differ in how
+   * they came about, which matters at a desk and not at all on a wall, where
+   * both mean the same thing. The console still tells them apart per vessel.
+   */
   var STAT_STATES = [
-    ['underway', 'Underway'],
-    ['anchored', 'At anchor'],
-    ['moored', 'Alongside'],
-    ['dark', 'No signal']
+    ['underway', 'Underway', ['underway']],
+    ['anchored', 'At anchor', ['anchored']],
+    ['moored', 'Alongside', ['moored']],
+    ['dark', 'No signal', ['dark', 'unknown']]
   ];
 
   Views.renderStats = function () {
@@ -475,7 +485,10 @@
       label.appendChild(document.createTextNode(pair[1]));
       tile.appendChild(label);
 
-      var figure = h('div', 'figure', String(summary.counts[pair[0]] || 0));
+      var count = pair[2].reduce(function (sum, state) {
+        return sum + (summary.counts[state] || 0);
+      }, 0);
+      var figure = h('div', 'figure', String(count));
       var of = h('small', null, 'of ' + summary.total);
       figure.appendChild(of);
       tile.appendChild(figure);
@@ -520,11 +533,35 @@
     var host = el('glance-list');
     host.textContent = '';
 
-    var totalLoa = vessels.reduce(function (sum, v) { return sum + (v.yacht.loa || 0); }, 0);
+    /**
+     * Only over the vessels that actually carry the field.
+     *
+     * These used to run over the whole fleet with a missing value counted as
+     * zero, which for a real fleet is a confidently wrong number rather than a
+     * missing one: a fleet where one yacht in sixty-one has a length on file
+     * read "Fleet length 72 m, 61 vessels", and a fleet missing half its build
+     * years read younger than it is. Nobody looking at a wall has any way to
+     * tell that from a true figure, so the count it was drawn from is now part
+     * of the answer.
+     */
+    var over = function (get) {
+      var values = vessels.map(get).filter(function (n) {
+        return typeof n === 'number' && isFinite(n);
+      });
+      var sum = values.reduce(function (a, b) { return a + b; }, 0);
+      return { sum: sum, count: values.length, mean: values.length ? sum / values.length : null };
+    };
+    var basis = function (stat) {
+      return stat.count === vessels.length
+        ? vessels.length + ' vessels'
+        : 'from ' + stat.count + ' of ' + vessels.length + ' on file';
+    };
+
     var thisYear = new Date().getFullYear();
-    var avgAge = vessels.reduce(function (sum, v) {
-      return sum + (thisYear - (v.yacht.yearBuilt || thisYear));
-    }, 0) / Math.max(1, vessels.length);
+    var loa = over(function (v) { return v.yacht.loa; });
+    var age = over(function (v) {
+      return v.yacht.yearBuilt ? thisYear - v.yacht.yearBuilt : null;
+    });
 
     var withFix = vessels.filter(function (v) { return v.derived.fromOffice != null; });
     var furthest = withFix.slice().sort(function (a, b) {
@@ -540,8 +577,10 @@
     })[0];
 
     [
-      ['Fleet length', totalLoa.toFixed(0) + ' m', vessels.length + ' vessels'],
-      ['Average age', avgAge.toFixed(0) + ' yrs', 'since build'],
+      ['Fleet length', loa.count ? loa.sum.toFixed(0) + ' m' : '—',
+        loa.count ? basis(loa) : 'no lengths on file yet'],
+      ['Average age', age.mean != null ? age.mean.toFixed(0) + ' yrs' : '—',
+        age.mean != null ? basis(age) : 'no build years on file'],
       ['Furthest away', furthest ? furthest.yacht.name : '—',
         furthest ? window.Fmt.distance(furthest.derived.fromOffice) + ' from ' + window.CONFIG.office.label : null],
       ['Fastest now', moving ? moving.yacht.name : 'None underway',

@@ -19,7 +19,10 @@ global.localStorage = {
   removeItem() {}
 };
 
+const fs = require('fs');
 const load = (f) => require(path.join(__dirname, '..', f));
+// Some checks are about the source of a file rather than its behaviour.
+const readRepo = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 ['config.js', 'fleet.js', 'data/mid.js', 'data/ports.js', 'data/world-land.js',
  'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js',
  'js/demo.js', 'js/csv.js', 'js/map.js'].forEach(load);
@@ -875,14 +878,38 @@ test('every port named in a demo block exists in data/ports.js', () => {
   });
 });
 
-test('a vessel that demo mode cannot place is a fault worth naming', () => {
-  // Every record needs a route, a position or a port, or it never reaches the
-  // chart while looking for all the world like a record that simply is not there.
-  REAL_FLEET.forEach((y) => {
-    assert.ok(y.demo, `${y.name}: no demo block, so demo mode gives her no position`);
+test('a demo block that cannot place a vessel is a fault worth naming', () => {
+  /**
+   * A demo block that exists but says nothing usable is the bad case: the yacht
+   * never reaches the chart while looking for all the world like a record that
+   * simply is not there. That is a typo, and this catches it.
+   *
+   * No demo block at all is a different thing entirely, and fine. It is the
+   * honest state for a real fleet whose positions nobody has told us — she
+   * reads "Position unknown" and stays off the chart, which is true, and live
+   * AIS places her the first time she is heard. This used to insist every
+   * record had one, which was right while the fleet was invented placeholders
+   * and became wrong the moment real boats arrived.
+   */
+  REAL_FLEET.concat(FLEET).forEach((y) => {
+    if (!y.demo) return;
     assert.ok(y.demo.route || y.demo.position || y.demo.port,
       `${y.name}: demo block has no route, position or port`);
   });
+});
+
+test('the whole fleet is not left unplaceable without saying so', () => {
+  // Opening the board with no AIS key and no demo positions gives an empty
+  // chart, which reads as broken. It is a legitimate state — but only for a
+  // fleet that is genuinely going to be tracked live, so the file should say
+  // as much where somebody will find it.
+  const placeable = REAL_FLEET.filter((y) => y.demo &&
+    (y.demo.route || y.demo.position || y.demo.port));
+  if (placeable.length < REAL_FLEET.length) {
+    const source = readRepo('fleet.js');
+    assert.ok(/Position unknown/.test(source),
+      'fleet.js explains what an unplaced vessel looks like before AIS is live');
+  }
 });
 
 test('the fleet file is internally consistent', () => {
@@ -894,12 +921,37 @@ test('the fleet file is internally consistent', () => {
     assert.ok(/^\d{9}$/.test(String(y.mmsi)), 'MMSI is nine digits: ' + y.mmsi);
     assert.ok(!mmsis.has(y.mmsi), 'unique MMSI: ' + y.mmsi);
     mmsis.add(y.mmsi);
-    assert.ok(/^\d{7}$/.test(String(y.imo)), 'IMO is seven digits: ' + y.imo);
-    assert.strictEqual(Vessel.validateImo(String(y.imo)).ok, true,
-      y.name + "'s IMO " + y.imo + ' must pass the same check the add form applies');
+    // IMO and LOA are optional, and null is the honest value for a fleet whose
+    // sheet did not carry them: both ride in the AIS static message and the
+    // console fills them in the first time she is heard. What is not optional is
+    // that a value, once present, is a real one.
+    if (y.imo != null) {
+      assert.ok(/^\d{7}$/.test(String(y.imo)), 'IMO is seven digits: ' + y.imo);
+      assert.strictEqual(Vessel.validateImo(String(y.imo)).ok, true,
+        y.name + "'s IMO " + y.imo + ' must pass the same check the add form applies');
+    }
     assert.strictEqual(Vessel.validateMmsi(String(y.mmsi)).ok, true,
       y.name + "'s MMSI " + y.mmsi + ' must be a ship-station MMSI');
-    assert.ok(y.loa > 0 && y.loa < 200, 'plausible LOA: ' + y.loa);
+    if (y.loa != null) assert.ok(y.loa > 0 && y.loa < 200, 'plausible LOA: ' + y.loa);
+    if (y.grossTonnage != null) {
+      assert.ok(y.grossTonnage > 0 && y.grossTonnage < 50000,
+        'plausible gross tonnage: ' + y.name + ' ' + y.grossTonnage);
+    }
+    if (y.yearBuilt != null) {
+      assert.ok(y.yearBuilt > 1900 && y.yearBuilt < 2100, 'plausible year: ' + y.yearBuilt);
+      if (y.lastRefit != null) {
+        assert.ok(y.lastRefit >= y.yearBuilt,
+          y.name + ' cannot have been refitted before she was built');
+      }
+    }
+    // A flag that disagrees with the MMSI is worse than no flag: it is a
+    // confident wrong answer on a board people read at a glance.
+    if (y.flag) {
+      const fromMmsi = Vessel.flagFromMmsi(y.mmsi);
+      assert.ok(fromMmsi, y.name + ': MMSI ' + y.mmsi + ' has no known flag administration');
+      assert.strictEqual(y.flag, fromMmsi.flag,
+        y.name + ": flag says " + y.flag + ' but MMSI ' + y.mmsi + ' says ' + fromMmsi.flag);
+    }
     if (y.demo && y.demo.position) {
       assert.ok(Math.abs(y.demo.position[0]) <= 180 && Math.abs(y.demo.position[1]) <= 90);
     }
@@ -1595,8 +1647,6 @@ test('a great circle bends the right way and lands where it is aimed', () => {
  * These are source checks rather than behavioural ones because the wiring is
  * the thing that was wrong: both booted correctly in isolation.
  */
-const fs = require('fs');
-const readRepo = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 
 test('both the board and the console merge locally added vessels', () => {
   ['js/app.js', 'js/console.js'].forEach((f) => {
@@ -1919,6 +1969,44 @@ test('an unlocked board still withholds the yachts that are marked', () => {
     CONFIG.discreetLocked = locked;
     CONFIG.discreetMode = mode;
   }
+});
+
+/* --- The summary view tells the truth about a sparse fleet ---------------- */
+
+test('the four tiles account for every vessel', () => {
+  // A fleet waiting on its first AIS fix showed "1 of 61" across four tiles,
+  // with sixty vessels in none of them, in front of people who can count.
+  Store.init(REAL_FLEET);
+  const counts = Store.summary().counts;
+
+  const source = readRepo('js/views.js');
+  const block = source.slice(source.indexOf('var STAT_STATES'),
+                             source.indexOf(']', source.indexOf('[\'dark\'')) + 3);
+  const named = new Set([...block.matchAll(/'([a-z]+)'/g)].map((m) => m[1]));
+
+  Object.keys(counts).forEach((state) => {
+    assert.ok(named.has(state),
+      'status "' + state + '" is counted by the store but shown by no tile');
+  });
+
+  const shown = Object.keys(counts).reduce((sum, k) => sum + counts[k], 0);
+  assert.strictEqual(shown, Store.vessels.length,
+    'every vessel lands in exactly one of the states the tiles cover');
+});
+
+test('an aggregate says how many vessels it was drawn from', () => {
+  // "Fleet length 72 m, 61 vessels" was a confidently wrong number rather than
+  // a missing one, and nobody looking at a wall could tell it from a true one.
+  const source = readRepo('js/views.js');
+  assert.ok(!/sum \+ \(v\.yacht\.loa \|\| 0\)/.test(source),
+    'a missing length is not counted as a length of zero');
+  assert.ok(/from ' \+ stat\.count \+ ' of ' \+ vessels\.length/.test(source),
+    'and the figure carries the count it was drawn from');
+
+  // The fleet this was found on: one length on file out of sixty-one.
+  const withLoa = REAL_FLEET.filter((y) => typeof y.loa === 'number');
+  assert.ok(withLoa.length < REAL_FLEET.length,
+    'the real fleet is still sparse here, so the check is still live');
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
