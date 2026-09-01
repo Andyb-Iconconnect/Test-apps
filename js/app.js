@@ -410,6 +410,8 @@
       open: 'Live AIS',
       connecting: 'Connecting',
       retrying: 'Reconnecting',
+      listening: 'Listening',
+      rejected: 'AIS refused',
       blocked: 'AIS unreachable',
       closed: 'Offline',
       starting: 'Starting'

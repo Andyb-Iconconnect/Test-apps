@@ -163,7 +163,10 @@ html, body {
 .status-pill[data-state="connecting"] .dot,
 .status-pill[data-state="retrying"] .dot { background: var(--warning); }
 .status-pill[data-state="closed"] .dot,
-.status-pill[data-state="blocked"] .dot { background: var(--critical); }
+.status-pill[data-state="blocked"] .dot,
+.status-pill[data-state="rejected"] .dot { background: var(--critical); }
+/* Connected, but nothing has arrived yet — not an error, not yet a feed. */
+.status-pill[data-state="listening"] .dot { background: var(--warning); }
 
 .clock {
   font-family: var(--font-display);

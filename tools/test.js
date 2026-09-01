@@ -1842,13 +1842,22 @@ test('a socket that opened and then dropped is reconnecting, not blocked', () =>
     const socket = sockets[0];
     socket.readyState = 1;
     socket.onopen();
-    assert.strictEqual(Store.connection, 'open');
+    assert.strictEqual(Store.connection, 'listening',
+      'the socket is up, but a rejected subscription leaves it up and silent, ' +
+      'so "live" is not claimed until something actually arrives');
 
     const sub = JSON.parse(socket.sent[0]);
     assert.strictEqual(sub.APIKey, 'k'.repeat(40), 'the key goes up first');
     assert.deepStrictEqual(sub.FiltersShipMMSI, ['319000001'], 'ours only, as strings');
     assert.ok(sub.FilterMessageTypes.indexOf('ShipStaticData') !== -1,
       'including the slow message that carries name and IMO');
+
+    socket.onmessage({ data: JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 319000001, latitude: 43.7, longitude: 7.4 },
+      Message: { PositionReport: { Latitude: 43.7, Longitude: 7.4, Cog: 90, Sog: 8 } }
+    }) });
+    assert.strictEqual(Store.connection, 'open', 'the first message is what makes it live');
 
     socket.onclose({ code: 1006 });
     assert.strictEqual(Store.connection, 'retrying',
@@ -1973,6 +1982,20 @@ test('an unlocked board still withholds the yachts that are marked', () => {
 
 /* --- The summary view tells the truth about a sparse fleet ---------------- */
 
+test('the console counts every vessel too, not just the board', () => {
+  // The same fault lived in three more places on the desk tool: the rail
+  // filter chips, the overview tiles, and the count beside each chip.
+  const source = readRepo('js/console.js');
+  assert.ok(/var STATE_BUCKETS = \{/.test(source),
+    'one place decides which statuses a label covers');
+  assert.ok(/dark: \['dark', 'unknown'\]/.test(source),
+    'and a vessel never heard from is counted somewhere');
+  assert.ok(!/return v\.derived\.status === filter;/.test(source),
+    'the filter goes through the buckets rather than matching a status by name');
+  assert.ok(!/'fix ' \+ window\.Fmt\.age\(v\.fix && v\.fix\.at\)/.test(source),
+    'and a vessel with no fix does not read "fix no fix"');
+});
+
 test('the four tiles account for every vessel', () => {
   // A fleet waiting on its first AIS fix showed "1 of 61" across four tiles,
   // with sixty vessels in none of them, in front of people who can count.
@@ -2007,6 +2030,111 @@ test('an aggregate says how many vessels it was drawn from', () => {
   const withLoa = REAL_FLEET.filter((y) => typeof y.loa === 'number');
   assert.ok(withLoa.length < REAL_FLEET.length,
     'the real fleet is still sparse here, so the check is still live');
+});
+
+/* --- Saying why nothing is arriving --------------------------------------- */
+
+test('a server complaint is surfaced, not swallowed', () => {
+  // The handler switched on MessageType and dropped everything it did not
+  // recognise, which included the server's own error replies. A rejected
+  // subscription then looked exactly like a working one nobody had sailed past:
+  // socket open, pill green, silence.
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    socket.onmessage({ data: JSON.stringify({ error: 'Invalid API key' }) });
+    assert.strictEqual(Store.connection, 'rejected', 'the state says it was refused');
+    assert.strictEqual(Ais.lastError, 'Invalid API key', 'and keeps what was said');
+  });
+});
+
+test('an AIS body called Message is not mistaken for a complaint', () => {
+  // Every AIS payload has a `Message` key. Only a string one is prose.
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    socket.onmessage({ data: JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 319000001 },
+      Message: { PositionReport: { Latitude: 43.7, Longitude: 7.4 } }
+    }) });
+    assert.strictEqual(Store.connection, 'open', 'a real message makes it live');
+    assert.strictEqual(Ais.lastError, null, 'and is not read as an error');
+  });
+});
+
+test('heard and matched are counted apart', () => {
+  // A green pill cannot distinguish "the feed is dead" from "the feed works and
+  // our boats are quiet". These two numbers can.
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    const message = (mmsi) => socket.onmessage({ data: JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: mmsi },
+      Message: { PositionReport: { Latitude: 43.7, Longitude: 7.4 } }
+    }) });
+    message(319000001);
+    message(244123456);
+    message(244123457);
+    assert.strictEqual(Ais.heard, 3, 'every message counts as heard');
+    assert.strictEqual(Ais.matched, 1, 'only ours count as matched');
+  });
+});
+
+test('the subscription asks for Class B static data too', () => {
+  // Message 24 is how a yacht under 300 GT sends her name and dimensions. Plenty
+  // of this fleet will never send a type 5 at all.
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    const sub = JSON.parse(socket.sent[0]);
+    ['PositionReport', 'StandardClassBPositionReport', 'ExtendedClassBPositionReport',
+     'ShipStaticData', 'StaticDataReport'].forEach((type) => {
+      assert.ok(sub.FilterMessageTypes.indexOf(type) !== -1, 'subscribes to ' + type);
+    });
+  });
+});
+
+test('the subscription matches the published schema', () => {
+  // Field names checked against aisstream/ais-message-models, not recalled:
+  // APIKey, BoundingBoxes, FiltersShipMMSI (strings, 9 characters),
+  // FilterMessageTypes.
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001, 232012345]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    const sub = JSON.parse(socket.sent[0]);
+    assert.deepStrictEqual(Object.keys(sub).sort(),
+      ['APIKey', 'BoundingBoxes', 'FilterMessageTypes', 'FiltersShipMMSI']);
+    sub.FiltersShipMMSI.forEach((m) => {
+      assert.strictEqual(typeof m, 'string', 'MMSIs go up as strings');
+      assert.strictEqual(m.length, 9, 'nine characters, as the schema requires');
+    });
+  });
+});
+
+test('the probe covers each cause a green pill cannot tell apart', () => {
+  // Exercised end to end against a stand-in server in each mode; this holds the
+  // shape of the thing so a future edit cannot quietly drop a case.
+  const source = readRepo('js/ais.js');
+  assert.ok(/FiltersShipMMSI = list/.test(source), 'one probe filters to our fleet');
+  assert.ok(/\[\[\[-90, -180\], \[90, 180\]\]\]/.test(source) &&
+            /\[\[\[-180, -90\], \[180, 90\]\]\]/.test(source),
+    'and one tries each reading of the bounding box, because the published ' +
+    'examples disagree about the axis order');
+  assert.ok(/results\[1\]\.matched > 0/.test(source),
+    'a broken filter is only claimed when an unfiltered probe heard one of ours — ' +
+    'otherwise a quiet fleet gets blamed on the filter');
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

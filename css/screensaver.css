@@ -172,7 +172,10 @@ body.interactive { cursor: default; }
 .status-pill[data-state="retrying"] .dot,
 .status-pill[data-state="connecting"] .dot { background: var(--warning); }
 .status-pill[data-state="closed"] .dot,
-.status-pill[data-state="blocked"] .dot { background: var(--critical); }
+.status-pill[data-state="blocked"] .dot,
+.status-pill[data-state="rejected"] .dot { background: var(--critical); }
+/* Connected, but nothing has arrived yet — not an error, not yet a feed. */
+.status-pill[data-state="listening"] .dot { background: var(--warning); }
 
 .status-pill[data-state="open"] .dot,
 .status-pill[data-state="demo"] .dot { animation: breathe 3.2s ease-in-out infinite; }

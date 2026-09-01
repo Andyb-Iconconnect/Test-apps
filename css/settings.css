@@ -98,3 +98,30 @@
 .status-pill-action:focus-visible {
   outline: 2px solid var(--brand-cyan); outline-offset: 2px;
 }
+
+/* The two numbers that separate the cases a green pill cannot, and the probe
+   that settles them. */
+#ais-dialog .ais-check {
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+#ais-dialog .ais-test {
+  align-self: flex-start;
+  margin-right: 0;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  color: var(--text-secondary);
+}
+#ais-dialog .ais-log {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 14rem; overflow-y: auto;
+}
+#ais-dialog .ais-log[hidden] { display: none; }

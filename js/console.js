@@ -175,6 +175,21 @@
 
   /* --- Rail ---------------------------------------------------------------- */
 
+  /**
+   * Which derived statuses each label covers.
+   *
+   * `unknown` — never heard from — belonged to no label, so a fleet waiting on
+   * its first fix showed 61 vessels and four chips adding up to one. It sits
+   * with `dark`: the two differ in how they came about, which the vessel's own
+   * record still says, and not at all in what the reader needs from a count.
+   */
+  var STATE_BUCKETS = {
+    underway: ['underway'],
+    anchored: ['anchored'],
+    moored: ['moored'],
+    dark: ['dark', 'unknown']
+  };
+
   var FILTERS = [
     ['all', 'All'],
     ['underway', 'Underway'],
@@ -202,13 +217,21 @@
     });
   }
 
+  // "fix " + Fmt.age reads "fix no fix" for a vessel never heard from, which is
+  // most of a fleet on its first day.
+  function fixAge(v) {
+    if (!v.fix || !v.fix.at) return 'no fix yet';
+    return 'fix ' + window.Fmt.age(v.fix.at);
+  }
+
   function countFor(filter) {
     return window.Store.vessels.filter(function (v) { return matchesFilter(v, filter); }).length;
   }
 
   function matchesFilter(v, filter) {
     if (filter === 'all') return true;
-    return v.derived.status === filter;
+    var states = STATE_BUCKETS[filter] || [filter];
+    return states.indexOf(v.derived.status) !== -1;
   }
 
   function matchesQuery(v) {
@@ -330,13 +353,20 @@
     ['dark', 'No signal']
   ];
 
+  function countState(summary, key) {
+    return (STATE_BUCKETS[key] || [key]).reduce(function (sum, state) {
+      return sum + (summary.counts[state] || 0);
+    }, 0);
+  }
+
   function renderOverview(host) {
     var summary = window.Store.summary();
 
     var tiles = h('div', 'tile-row');
     OVERVIEW_STATES.forEach(function (pair) {
-      tiles.appendChild(tile(pair[1], summary.counts[pair[0]] || 0,
-        'of ' + summary.total, pair[0] === 'dark' && summary.counts.dark ? 'warn' : ''));
+      var count = countState(summary, pair[0]);
+      tiles.appendChild(tile(pair[1], count,
+        'of ' + summary.total, pair[0] === 'dark' && count ? 'warn' : ''));
     });
     tiles.appendChild(tile('Reporting', summary.tracked + ' of ' + summary.total,
       summary.tracked === summary.total ? 'all of them' : 'the rest are dark',
@@ -380,7 +410,7 @@
       if (d.fromOffice != null) {
         sub += '  ·  ' + window.Fmt.distance(d.fromOffice) + ' from ' + window.CONFIG.office.label;
       }
-      sub += '  ·  fix ' + window.Fmt.age(v.fix && v.fix.at);
+      sub += '  ·  ' + fixAge(v);
       row.appendChild(h('div', 'r-sub', sub));
       rows.appendChild(row);
     });
@@ -477,7 +507,7 @@
     if (d.status === 'underway' && v.fix && !d.discreet) {
       bits.push(window.Fmt.speed(v.fix.sog) + ' · ' + window.Fmt.bearing(v.fix.cog));
     }
-    bits.push('fix ' + window.Fmt.age(v.fix && v.fix.at));
+    bits.push(fixAge(v));
     whereAge.textContent = bits.join('  ·  ');
     whereLine.appendChild(whereAge);
     host.appendChild(whereLine);
@@ -720,7 +750,7 @@
     if (d.status === 'underway' && v.fix && !d.discreet) {
       parts.push(window.Fmt.speed(v.fix.sog) + ' · ' + window.Fmt.bearing(v.fix.cog));
     }
-    parts.push('fix ' + window.Fmt.age(v.fix && v.fix.at));
+    parts.push(fixAge(v));
     age.textContent = parts.join('  ·  ');
     host.appendChild(age);
 
@@ -2129,7 +2159,8 @@
     pill.dataset.state = store.connection;
     el('connection-label').textContent = {
       demo: 'Demo data', open: 'Live AIS', connecting: 'Connecting',
-      retrying: 'Reconnecting', blocked: 'AIS unreachable',
+      retrying: 'Reconnecting', listening: 'Listening',
+      rejected: 'AIS refused', blocked: 'AIS unreachable',
       closed: 'Offline', starting: 'Starting'
     }[store.connection] || store.connection;
 

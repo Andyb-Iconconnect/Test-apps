@@ -92,9 +92,14 @@
    */
   var dialog = null;
 
+  var countsTimer = null;
+
   Settings.openAisDialog = function () {
     if (!dialog) dialog = buildDialog();
     refreshDialog();
+    renderCounts();
+    clearInterval(countsTimer);
+    countsTimer = setInterval(renderCounts, 1000);
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
     var input = dialog.querySelector('#ais-key-input');
@@ -132,6 +137,13 @@
             'history in the feed either: tracks start building from the moment the ' +
             'key goes in.' +
           '</p>' +
+          '<div class="ais-check">' +
+            '<p class="sheet-note" id="ais-counts"></p>' +
+            '<button class="button-quiet ais-test" id="ais-test" type="button">' +
+              'Nothing arriving? Ask the server why' +
+            '</button>' +
+            '<pre class="ais-log" id="ais-log" hidden></pre>' +
+          '</div>' +
         '</div>' +
         '<footer class="sheet-foot">' +
           '<button class="button-quiet" id="ais-forget" type="button">Remove key</button>' +
@@ -141,6 +153,7 @@
     document.body.appendChild(d);
 
     d.querySelector('#ais-close').addEventListener('click', function () { close(d); });
+    d.querySelector('#ais-test').addEventListener('click', function () { runDiagnosis(d); });
     d.querySelector('#ais-forget').addEventListener('click', function () {
       Settings.setAisKey('');
       close(d);
@@ -168,12 +181,95 @@
     return d;
   }
 
+  /* --- Asking the server why nothing is arriving --------------------------- */
+
+  var cancelDiagnosis = null;
+
+  /**
+   * What the board currently knows about its own feed, in the two numbers that
+   * separate the cases a green pill cannot: messages of any kind, and messages
+   * for one of ours.
+   */
+  function renderCounts() {
+    if (!dialog) return;
+    var node = dialog.querySelector('#ais-counts');
+    var ais = window.Ais;
+    var store = window.Store;
+    if (!ais || !store || store.mode !== 'live') { node.textContent = ''; return; }
+
+    if (ais.lastError) {
+      node.textContent = 'The server refused the subscription: "' + ais.lastError + '"';
+      return;
+    }
+    var heard = ais.heard || 0;
+    var matched = ais.matched || 0;
+    if (!heard) {
+      node.textContent = 'Connected, and nothing has arrived yet.';
+    } else if (!matched) {
+      node.textContent = heard + ' message' + (heard === 1 ? '' : 's') +
+        ' received, none of them for a vessel in this fleet.';
+    } else {
+      node.textContent = heard + ' messages received, ' + matched + ' for this fleet.';
+    }
+  }
+
+  function runDiagnosis(d) {
+    var button = d.querySelector('#ais-test');
+    var log = d.querySelector('#ais-log');
+
+    if (cancelDiagnosis) {
+      cancelDiagnosis();
+      cancelDiagnosis = null;
+      button.textContent = 'Nothing arriving? Ask the server why';
+      return;
+    }
+
+    var key = Settings.aisKey();
+    if (!key) {
+      log.hidden = false;
+      log.textContent = 'No key stored, so there is nothing to test.';
+      return;
+    }
+    var fleet = (window.FLEET || []).map(function (y) { return y.mmsi; });
+
+    log.hidden = false;
+    log.textContent = 'Starting…';
+    button.textContent = 'Stop';
+
+    // The board's own feed and a probe would be two subscriptions on one key,
+    // which some servers refuse. Stand the feed down for the duration.
+    var wasLive = window.Store && window.Store.mode === 'live';
+    if (wasLive) window.Ais.stop();
+
+    var lines = [];
+    cancelDiagnosis = window.Ais.diagnose(key, fleet, function (step) {
+      if (step.running) {
+        var current = step.results[step.results.length - 1];
+        lines[step.index] = '  ' + (step.index + 1) + '/' + step.total + '  ' +
+          step.running + ' — ' + current.heard + ' heard, ' + current.matched + ' ours';
+        log.textContent = 'Each test listens for ' + window.Ais.SECONDS_PER_PROBE +
+          ' seconds.\n\n' + lines.join('\n');
+      }
+      if (step.done) {
+        cancelDiagnosis = null;
+        button.textContent = 'Run it again';
+        log.textContent = lines.join('\n') + '\n\n' + step.verdict;
+        if (wasLive) notify();      // whoever owns the feed restarts it
+      }
+    });
+  }
+
   function show(node, text) {
     node.textContent = text;
     node.hidden = false;
   }
 
   function close(d) {
+    clearInterval(countsTimer);
+    if (cancelDiagnosis) { cancelDiagnosis(); cancelDiagnosis = null; }
+    var log = d.querySelector('#ais-log');
+    if (log) { log.hidden = true; log.textContent = ''; }
+    d.querySelector('#ais-test').textContent = 'Nothing arriving? Ask the server why';
     var error = d.querySelector('#ais-key-error');
     error.hidden = true;
     var input = d.querySelector('#ais-key-input');

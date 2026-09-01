@@ -19,7 +19,14 @@
 (function () {
   'use strict';
 
-  var Ais = { socket: null, attempt: 0, stopped: false, timer: null };
+  var Ais = {
+    socket: null, attempt: 0, stopped: false, timer: null,
+    // heard: every message the server sent us, of any kind, for any vessel.
+    // matched: those for an MMSI in our fleet. The two apart tell you whether
+    // the feed is working and our boats are quiet, or nothing is arriving at
+    // all — which look identical from a green pill.
+    heard: 0, matched: 0, lastError: null
+  };
 
   // Sentinel values the AIS standard uses for "not available".
   var COG_UNAVAILABLE = 360;
@@ -38,6 +45,9 @@
     Ais.stopped = false;
     Ais.everOpened = false;
     Ais.attempt = 0;
+    Ais.heard = 0;
+    Ais.matched = 0;
+    Ais.lastError = null;
     connect();
   };
 
@@ -117,9 +127,12 @@
         BoundingBoxes: [[[-90, -180], [90, 180]]],   // note: [lat, lon] pairs
         FiltersShipMMSI: Ais.mmsiList,
         FilterMessageTypes: ['PositionReport', 'StandardClassBPositionReport',
-                             'ExtendedClassBPositionReport', 'ShipStaticData']
+                             'ExtendedClassBPositionReport', 'ShipStaticData',
+                             'StaticDataReport']
       }));
-      window.Store.setConnection('open');
+      // Not 'open' yet: the socket is up, but a subscription the server rejects
+      // leaves it up and silent. 'open' is claimed on the first message.
+      window.Store.setConnection('listening');
     };
 
     socket.onmessage = function (event) {
@@ -160,10 +173,201 @@
     Ais.timer = setTimeout(connect, delay);
   }
 
+  /**
+   * Anything the server says that is not an AIS message.
+   *
+   * The handler used to switch on MessageType and drop everything it did not
+   * recognise, which included the server's own error replies. A rejected
+   * subscription therefore looked exactly like a working one that nobody had
+   * sailed past yet: socket open, pill green, silence. Whatever the server is
+   * complaining about, the person watching should be told.
+   */
+  function serverComplaint(payload) {
+    var text = payload.error || payload.Error || payload.message || payload.Message;
+    if (typeof text !== 'string' || !text) return null;
+    // A "Message" that is an AIS body is an object, not a string, so a string
+    // here really is prose meant for a human.
+    return text;
+  }
+
+  /* --- Finding out why nothing is arriving --------------------------------- */
+
+  /**
+   * A green pill and no vessels has several possible causes that look identical
+   * from outside: a rejected key, a subscription the server did not like, a
+   * fleet that is genuinely all out of range, or a bounding box the server reads
+   * differently from the way we wrote it.
+   *
+   * That last one is not paranoia. AISstream's own examples disagree with each
+   * other about the axis order — the Go, Java and Dart ones send
+   * [[-90,-180],[90,180]] and call it "the entire world", while the JavaScript,
+   * TypeScript and Rust ones send [[-180,-90],[180,90]] — and the published
+   * schema says only "an array of two numbers". One of those is our whole-world
+   * box and the other has a latitude of -180 in it.
+   *
+   * So rather than argue, ask the server. Each probe subscribes for a few
+   * seconds and counts what comes back; the first that hears anything at all
+   * tells you which layer the problem is in. Nothing here is applied to the
+   * board — it is a question, not a feed.
+   */
+  var PROBES = [
+    { name: 'your fleet, as the board subscribes',
+      box: [[[-90, -180], [90, 180]]], filtered: true },
+    { name: 'every vessel, same bounding box',
+      box: [[[-90, -180], [90, 180]]], filtered: false },
+    { name: 'every vessel, bounding box the other way round',
+      box: [[[-180, -90], [180, 90]]], filtered: false }
+  ];
+
+  Ais.SECONDS_PER_PROBE = 12;
+
+  /**
+   * Runs the probes in order and reports as it goes. Returns a cancel function.
+   * `onStep(result)` gets { name, heard, matched, error, done } per probe, and
+   * one final call with `verdict` set.
+   */
+  Ais.diagnose = function (apiKey, mmsiList, onStep) {
+    var list = mmsiList.map(String);
+    var results = [];
+    var socket = null;
+    var timer = null;
+    var cancelled = false;
+
+    function finish() {
+      var verdict;
+      var first = results.filter(function (r) { return r.heard > 0; })[0];
+      var rejected = results.filter(function (r) { return r.error; })[0];
+      if (rejected) {
+        verdict = 'The server rejected the subscription: "' + rejected.error +
+          '". Nothing will arrive until that is resolved — most often it is the key.';
+      } else if (!first) {
+        verdict = 'Nothing arrived on any probe, including one asking for every ' +
+          'vessel in the world. That is not your fleet being quiet — the ' +
+          'subscription is not being served at all. Check the key at aisstream.io.';
+      } else if (results[0] && results[0].matched > 0) {
+        verdict = 'Your fleet is reporting — ' + results[0].matched + ' message' +
+          (results[0].matched === 1 ? '' : 's') + ' in ' + Ais.SECONDS_PER_PROBE +
+          ' seconds. If the board still looks empty the fault is after the feed, ' +
+          'not in it.';
+      } else if (first === results[0]) {
+        verdict = 'The feed is working and the filter is right, but none of your ' +
+          '61 came past in ' + Ais.SECONDS_PER_PROBE + ' seconds. AIS is received ' +
+          'from shore, so a yacht offshore or with her transponder off simply is ' +
+          'not there. Leave it running: they arrive as they arrive.';
+      } else if (first === results[1]) {
+        /**
+         * Traffic without the filter, none with it. Two quite different causes
+         * look identical here: the filter is not matching, or your yachts
+         * simply did not transmit in those few seconds. Saying "the filter is
+         * broken" would be a confident answer to a question this probe has not
+         * asked.
+         *
+         * The one thing that does separate them: whether an unfiltered probe
+         * heard one of ours. If it did, the filter is at fault beyond doubt. If
+         * it did not, that is weak evidence either way — sixty-one particular
+         * yachts in a few seconds of world traffic is a thin sample — so say so.
+         */
+        if (results[1].matched > 0) {
+          verdict = 'One of your vessels came through on the unfiltered probe but ' +
+            'not on the filtered one, so the MMSI filter is at fault — not the key ' +
+            'and not the bounding box.';
+        } else {
+          verdict = 'The feed is delivering, but nothing for your fleet either way. ' +
+            'Most likely they are simply not transmitting in range right now, which ' +
+            'is ordinary. It could also be the MMSI filter, and these few seconds ' +
+            'cannot tell the two apart. Leave the board running for an hour: if ' +
+            'nothing has arrived by then, the filter is the place to look.';
+        }
+      } else {
+        verdict = 'Traffic arrives only with the bounding box written the other ' +
+          'way round. The server reads it [longitude, latitude]; the board sends ' +
+          '[latitude, longitude]. That is the bug, and it is a one-line fix.';
+      }
+      onStep({ verdict: verdict, results: results, done: true });
+    }
+
+    function step(i) {
+      if (cancelled) return;
+      if (i >= PROBES.length) { finish(); return; }
+      var probe = PROBES[i];
+      var result = { name: probe.name, heard: 0, matched: 0, error: null };
+      results.push(result);
+      onStep({ running: probe.name, index: i, total: PROBES.length, results: results });
+
+      try {
+        socket = new WebSocket(window.CONFIG.ais.endpoint);
+      } catch (e) {
+        result.error = 'could not open a socket';
+        step(i + 1);
+        return;
+      }
+
+      var moveOn = function () {
+        clearTimeout(timer);
+        if (socket) {
+          socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+          try { socket.close(); } catch (e) {}
+          socket = null;
+        }
+        // A probe that heard something has answered the question; the rest
+        // would only confirm it.
+        if (result.heard > 0 || result.error) { finish(); return; }
+        step(i + 1);
+      };
+
+      socket.onopen = function () {
+        var sub = { APIKey: apiKey, BoundingBoxes: probe.box };
+        if (probe.filtered) sub.FiltersShipMMSI = list;
+        socket.send(JSON.stringify(sub));
+      };
+      socket.onmessage = function (event) {
+        var payload;
+        try { payload = JSON.parse(event.data); } catch (e) { return; }
+        var complaint = serverComplaint(payload);
+        if (complaint) { result.error = complaint; moveOn(); return; }
+        result.heard++;
+        var meta = payload.MetaData || {};
+        if (meta.MMSI != null && list.indexOf(String(meta.MMSI)) !== -1) result.matched++;
+        onStep({ running: probe.name, index: i, total: PROBES.length, results: results });
+      };
+      socket.onerror = function () { result.error = result.error || 'the connection failed'; };
+      socket.onclose = function () { moveOn(); };
+
+      timer = setTimeout(moveOn, Ais.SECONDS_PER_PROBE * 1000);
+    }
+
+    step(0);
+
+    return function cancel() {
+      cancelled = true;
+      clearTimeout(timer);
+      if (socket) {
+        socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+        try { socket.close(); } catch (e) {}
+        socket = null;
+      }
+    };
+  };
+
   function handle(payload) {
+    Ais.heard++;
+
+    var complaint = serverComplaint(payload);
+    if (complaint) {
+      Ais.lastError = complaint;
+      window.Store.setConnection('rejected');
+      return;
+    }
+
     var meta = payload.MetaData || {};
     var mmsi = meta.MMSI != null ? String(meta.MMSI) : null;
     if (!mmsi) return;
+
+    if (Ais.mmsiList && Ais.mmsiList.indexOf(mmsi) !== -1) Ais.matched++;
+    // The first message of any kind means the subscription was accepted and the
+    // feed is delivering. That is a different thing from having heard one of
+    // ours, and the board should not claim the second when it only has the first.
+    if (window.Store.connection === 'listening') window.Store.setConnection('open');
 
     var at = parseTime(meta.time_utc);
     var body = payload.Message || {};
@@ -184,6 +388,12 @@
       case 'ShipStaticData':
         applyStatic(mmsi, body.ShipStaticData);
         applyIdentity(mmsi, body.ShipStaticData);
+        break;
+      case 'StaticDataReport':
+        // Message 24 — how a Class B transponder sends her name and dimensions.
+        // Plenty of yachts under 300 GT carry Class B and never send a type 5,
+        // so without this their names never arrive at all.
+        applyIdentity(mmsi, body.StaticDataReport);
         break;
     }
   }
