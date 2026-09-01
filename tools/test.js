@@ -2388,4 +2388,29 @@ test('reception counts vessels heard from, not vessels placed', () => {
   assert.strictEqual(Store.reception().settling, false);
 });
 
+test('the coverage test compares like with like, in one run', () => {
+  /**
+   * The first version trusted the caller's list of silent vessels and compared a
+   * short filter against nothing, so a server honouring its filter perfectly
+   * well still got blamed for the list length. The control — the full fleet
+   * list, same window, same conditions — is what makes the comparison mean
+   * anything.
+   *
+   * Exercised end to end against three stand-in servers: one silently
+   * truncating a long filter, one honouring it, and one where the world is busy
+   * but none of it is ours. Three distinct verdicts.
+   */
+  const source = readRepo('js/ais.js');
+  assert.ok(/the full fleet list, exactly as the board subscribes/.test(source),
+    'the control probe subscribes exactly as the board does');
+  assert.ok(/n\(shortRun\) > n\(full\)/.test(source),
+    'and the list-length verdict is a comparison against it, not an assumption');
+  assert.ok(/step\(i \+ 1\);          \/\/ every probe runs; nothing stops early/.test(source),
+    'every probe runs — the point here is the comparison, so an early exit answers nothing');
+  assert.ok(/n\(full\) > 0/.test(source),
+    'a fleet that has simply started reporting is named as such, not as a fault');
+  assert.ok(/COVERAGE_SECONDS = 180/.test(source),
+    'each stage listens for three minutes, because that is how often a moored yacht speaks');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

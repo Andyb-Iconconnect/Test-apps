@@ -167,6 +167,9 @@
             '<button class="button-quiet ais-test" id="ais-test" type="button">' +
               'Nothing arriving? Ask the server why' +
             '</button>' +
+            '<button class="button-quiet ais-test" id="ais-coverage" type="button">' +
+              'Only some of the fleet? Find out why (about 12 minutes)' +
+            '</button>' +
             '<pre class="ais-log" id="ais-log" hidden></pre>' +
           '</div>' +
         '</div>' +
@@ -179,6 +182,7 @@
 
     d.querySelector('#ais-close').addEventListener('click', function () { close(d); });
     d.querySelector('#ais-test').addEventListener('click', function () { runDiagnosis(d); });
+    d.querySelector('#ais-coverage').addEventListener('click', function () { runCoverage(d); });
     d.querySelector('#ais-forget').addEventListener('click', function () {
       Settings.setAisKey('');
       close(d);
@@ -302,7 +306,10 @@
         (r.seconds ? ' in ' + r.seconds + 's' : '');
     }
 
+    var PROBES_IN_COVERAGE = 4;
+
     function render(step) {
+      if (step.total) PROBES_IN_COVERAGE = step.total;
       var lines = step.results.map(function (r, i) {
         return '  ' + (i + 1) + '/' + PROBE_COUNT + '  ' + r.name + ' — ' + describe(r);
       });
@@ -326,6 +333,69 @@
     });
   }
 
+  /**
+   * The longer test, for when part of the fleet reports and the rest does not.
+   * Every probe runs to completion — the point is the comparison between them,
+   * so stopping at the first that hears something would answer nothing.
+   */
+  function runCoverage(d) {
+    var button = d.querySelector('#ais-coverage');
+    var log = d.querySelector('#ais-log');
+
+    if (cancelDiagnosis) {
+      cancelDiagnosis();
+      cancelDiagnosis = null;
+      button.textContent = 'Only some of the fleet? Find out why (about 12 minutes)';
+      return;
+    }
+
+    var key = Settings.aisKey();
+    if (!key) { log.hidden = false; log.textContent = 'No key stored.'; return; }
+
+    var fleet = (window.FLEET || []).map(function (y) { return y.mmsi; });
+    var missing = (window.Store.vessels || [])
+      .filter(function (v) { return !v.firstHeardAt; })
+      .map(function (v) { return v.yacht.mmsi; });
+
+    if (!missing.length) {
+      log.hidden = false;
+      log.textContent = buildLabel() + '\n\nEvery vessel has been heard from. ' +
+        'Nothing to investigate.';
+      return;
+    }
+
+    log.hidden = false;
+    button.textContent = 'Stop';
+    var wasLive = window.Store && window.Store.mode === 'live';
+    if (wasLive) window.Ais.stop();
+
+    function render(step) {
+      var lines = step.results.map(function (r, i) {
+        var found = Object.keys(r.missingFound).length;
+        var ours = Object.keys(r.ours).length;
+        return '  ' + (i + 1) + '/' + PROBES_IN_COVERAGE + '  ' + r.name + '\n' +
+          '        ' + r.frames + ' frames, ' + ours + ' of the fleet, ' +
+          found + ' of the silent ones' +
+          (r.error ? '  — ' + r.error : '') +
+          (r.seconds ? '  (' + r.seconds + 's)' : '  — listening…');
+      });
+      log.textContent = buildLabel() + '\n\n' +
+        (step.done ? '' : 'Each stage listens for ' +
+          Math.round(window.Ais.COVERAGE_SECONDS / 60) + ' minutes — a yacht ' +
+          'alongside only speaks every three.\n\n') +
+        lines.join('\n') + (step.done ? '\n\n' + step.verdict : '');
+    }
+
+    cancelDiagnosis = window.Ais.diagnoseCoverage(key, fleet, missing, function (step) {
+      render(step);
+      if (step.done) {
+        cancelDiagnosis = null;
+        button.textContent = 'Run it again';
+        if (wasLive) notify();
+      }
+    });
+  }
+
   function show(node, text) {
     node.textContent = text;
     node.hidden = false;
@@ -337,6 +407,8 @@
     var log = d.querySelector('#ais-log');
     if (log) { log.hidden = true; log.textContent = ''; }
     d.querySelector('#ais-test').textContent = 'Nothing arriving? Ask the server why';
+    d.querySelector('#ais-coverage').textContent =
+      'Only some of the fleet? Find out why (about 12 minutes)';
     var error = d.querySelector('#ais-key-error');
     error.hidden = true;
     var input = d.querySelector('#ais-key-input');

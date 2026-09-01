@@ -249,6 +249,164 @@
     onPayload(payload, null);
   }
 
+  /* --- Why is only part of the fleet reporting? ----------------------------- */
+
+  /**
+   * A different question from "why is nothing arriving", and it needs a
+   * different test.
+   *
+   * When some of the fleet reports and most does not, the first probe hears
+   * something and stops — by design, because for the original question one
+   * answer settles it. So the comparisons that matter here never run at all.
+   *
+   * These run to completion and compare. Each listens long enough to mean
+   * something: a yacht alongside broadcasts every three minutes, so a
+   * twelve-second window proves nothing about her, and the whole run takes about
+   * ten minutes. There is no shortcut — that is how often the vessels speak.
+   */
+  Ais.COVERAGE_SECONDS = 180;
+
+  Ais.diagnoseCoverage = function (apiKey, fleetMmsis, missingMmsis, onStep) {
+    var fleet = fleetMmsis.map(String);
+    var missing = missingMmsis.map(String);
+    // A deliberately short list. If a long one is the problem, a short one is
+    // the control that shows it.
+    var shortList = missing.slice(0, 20);
+
+    /**
+     * The first probe is the control, and it matters more than it looks.
+     *
+     * Without it this trusted the caller's list of silent vessels and compared a
+     * short list against nothing — so a server honouring its filter perfectly
+     * well still got blamed for the list length. The comparison has to be made
+     * inside one run, in the same conditions: the full fleet list against a
+     * short one, over the same window.
+     */
+    var probes = [
+      { name: 'the full fleet list, exactly as the board subscribes',
+        filter: fleet, box: [[[-90, -180], [90, 180]]] },
+      { name: shortList.length + ' of the silent vessels, on a short list',
+        filter: shortList, box: [[[-90, -180], [90, 180]]] },
+      { name: 'everything, no MMSI filter at all',
+        filter: null, box: [[[-90, -180], [90, 180]]] },
+      { name: 'everything, bounding box the other way round',
+        filter: null, box: [[[-180, -90], [180, 90]]] }
+    ];
+
+    var results = [];
+    var socket = null, timer = null, cancelled = false;
+
+    function step(i) {
+      if (cancelled) return;
+      if (i >= probes.length) { finish(); return; }
+      var probe = probes[i];
+      var result = {
+        name: probe.name, frames: 0, ours: {}, missingFound: {},
+        opened: false, error: null, seconds: 0
+      };
+      var began = Date.now();
+      results.push(result);
+      onStep({ running: probe.name, index: i, total: probes.length, results: results });
+
+      try { socket = new WebSocket(window.CONFIG.ais.endpoint); }
+      catch (e) { result.error = 'could not open a socket'; step(i + 1); return; }
+
+      var done = false;
+      function moveOn() {
+        if (done) return;
+        done = true;
+        result.seconds = Math.round((Date.now() - began) / 1000);
+        clearTimeout(timer);
+        if (socket) {
+          socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+          try { socket.close(); } catch (e) {}
+          socket = null;
+        }
+        step(i + 1);          // every probe runs; nothing stops early
+      }
+
+      socket.onopen = function () {
+        result.opened = true;
+        var sub = { APIKey: apiKey, BoundingBoxes: probe.box };
+        if (probe.filter) sub.FiltersShipMMSI = probe.filter;
+        socket.send(JSON.stringify(sub));
+      };
+      receive(socket, function (payload, problem) {
+        result.frames++;
+        if (problem) return;
+        var complaint = serverComplaint(payload);
+        if (complaint) { result.error = complaint; moveOn(); return; }
+        var meta = payload.MetaData || {};
+        var mmsi = meta.MMSI != null ? String(meta.MMSI) : null;
+        if (!mmsi) return;
+        if (fleet.indexOf(mmsi) !== -1) result.ours[mmsi] = true;
+        if (missing.indexOf(mmsi) !== -1) result.missingFound[mmsi] = true;
+        onStep({ running: probe.name, index: i, total: probes.length, results: results });
+      });
+      socket.onerror = function () { result.error = result.error || 'the connection failed'; };
+      socket.onclose = function () { moveOn(); };
+
+      timer = setTimeout(moveOn, Ais.COVERAGE_SECONDS * 1000);
+    }
+
+    function finish() {
+      var n = function (r) { return r ? Object.keys(r.missingFound).length : 0; };
+      var full = results[0], shortRun = results[1];
+      var unfiltered = results[2], reversed = results[3];
+      var verdict;
+
+      if (shortRun && n(shortRun) > n(full)) {
+        verdict = 'A short list of ' + shortList.length + ' found ' + n(shortRun) +
+          ' of the silent vessels in ' + shortRun.seconds + ' seconds. The full list ' +
+          'of ' + fleet.length + ', over the same window and in the same conditions, ' +
+          'found ' + n(full) + '.\n\nThey are transmitting, and the only difference ' +
+          'between the two requests was the length of the MMSI list. A subscription ' +
+          'filtering ' + fleet.length + ' vessels is not being honoured in full.';
+      } else if (unfiltered && n(unfiltered) > n(full)) {
+        verdict = 'With no MMSI filter at all, ' + n(unfiltered) + ' of the silent ' +
+          'vessels came through; with the full list, ' + n(full) + '. They are ' +
+          'transmitting and the filter is dropping them — not the key, not the box.';
+      } else if (reversed && n(reversed) > n(unfiltered)) {
+        verdict = 'The reversed bounding box heard ' + n(reversed) + ' of the silent ' +
+          'vessels where ours heard ' + n(unfiltered) + '. The server reads the box ' +
+          '[longitude, latitude] and the board sends [latitude, longitude], so ' +
+          'anything outside the overlap has been invisible.';
+      } else if (n(full) > 0) {
+        // Every probe found them, the board's own subscription included. They
+        // are not missing at all — the board's record of them was stale, or they
+        // have started reporting since. Saying "not one appeared" here, as this
+        // once did, would be flatly untrue.
+        verdict = n(full) + ' of the vessels the board had not heard from reported ' +
+          'during this test, on the board\'s own subscription. Nothing is being ' +
+          'filtered out and nothing needs fixing: they were simply not transmitting ' +
+          'earlier, and are now. The board will have them.';
+      } else {
+        var minutes = Math.max(1, Math.round(probes.length * Ais.COVERAGE_SECONDS / 60));
+        var seen = unfiltered ? Object.keys(unfiltered.ours).length : 0;
+        verdict = 'Across about ' + minutes + ' minute' + (minutes === 1 ? '' : 's') +
+          ', including ' + (unfiltered ? unfiltered.frames : 0) +
+          ' frames of unfiltered world traffic, not one of the silent vessels ' +
+          'appeared' + (seen ? ' (' + seen + ' of the fleet did)' : '') + '.\n\n' +
+          'They are not being filtered out — they are not being received. AIS is ' +
+          'heard from shore, so a yacht beyond about 40 nautical miles, alongside ' +
+          'in a shed, or with her transponder off is simply not in this feed. ' +
+          'That is worth checking against where you know they actually are.';
+      }
+      onStep({ done: true, verdict: verdict, results: results });
+    }
+
+    step(0);
+    return function cancel() {
+      cancelled = true;
+      clearTimeout(timer);
+      if (socket) {
+        socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+        try { socket.close(); } catch (e) {}
+        socket = null;
+      }
+    };
+  };
+
   /* --- Finding out why nothing is arriving --------------------------------- */
 
   /**
