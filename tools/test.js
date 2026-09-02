@@ -2425,7 +2425,7 @@ test('the coverage test compares like with like, in one run', () => {
   const source = readRepo('js/ais.js');
   assert.ok(/the full fleet list, exactly as the board subscribes/.test(source),
     'the control probe subscribes exactly as the board does');
-  assert.ok(/n\(shortRun\) > n\(full\)/.test(source),
+  assert.ok(/materiallyMore\(n\(shortRun\), n\(full\)\)/.test(source),
     'and the list-length verdict is a comparison against it, not an assumption');
   assert.ok(/step\(i \+ 1\);          \/\/ every probe runs; nothing stops early/.test(source),
     'every probe runs — the point here is the comparison, so an early exit answers nothing');
@@ -2730,6 +2730,37 @@ test('a Class B static report is read from its two halves', () => {
     assert.strictEqual(ais.shipType, 37, 'and the ship type, which fills in M/Y');
     assert.strictEqual(ais.loa, 60, 'dimensions add up to a length');
   });
+});
+
+test('the coverage test refuses to pick a winner out of noise', () => {
+  /**
+   * Two consecutive real runs disagreed by a factor of nine on the same stage —
+   * 9 of the silent vessels found, then 1. The stages run one after another, so
+   * each samples a DIFFERENT three minutes, and a yacht at rest transmits once
+   * every three. Which vessels appear is close to a coin toss.
+   *
+   * On the strength of that, this named the bounding box once (9 against 7) and
+   * the MMSI filter once (2 against 1). Both were confident readings of a
+   * difference the instrument cannot resolve. An instrument that reports noise
+   * as a cause is worse than no instrument: it sends people to work on the
+   * wrong thing, with evidence in hand.
+   */
+  const source = readRepo('js/ais.js');
+  const finish = source.slice(source.indexOf('function finish()'),
+                              source.indexOf('function finish()') + 4000);
+
+  // No bare comparison of two sampled counts survives.
+  assert.ok(!/n\(shortRun\) > n\(full\)/.test(finish), 'the list-length branch has a margin');
+  assert.ok(!/n\(unfiltered\) > n\(full\)/.test(finish), 'the filter branch has a margin');
+  assert.ok(!/n\(reversed\) > n\(unfiltered\)/.test(finish), 'the bounding-box branch has one');
+  assert.strictEqual((finish.match(/materiallyMore\(/g) || []).length, 3,
+    'all three comparisons go through it');
+
+  assert.ok(/biggest > 0 && biggest < 5/.test(finish),
+    'and a run too thin to distinguish anything says so');
+  assert.ok(/Too few to tell/.test(finish), 'in those words, rather than naming a cause');
+  assert.ok(/heard since/.test(finish),
+    'pointing at the measurement that does work — hours of live running');
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

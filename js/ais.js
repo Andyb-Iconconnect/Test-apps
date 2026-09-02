@@ -375,18 +375,47 @@
 
     function finish() {
       var n = function (r) { return r ? Object.keys(r.missingFound).length : 0; };
+
+      /**
+       * Whether this run can distinguish anything at all.
+       *
+       * The stages run one after another, not together, so each samples a
+       * DIFFERENT three minutes — and a yacht at rest speaks once every three.
+       * Which vessels turn up in a given window is close to a coin toss, and two
+       * consecutive runs of this test disagreed by a factor of nine on the same
+       * stage. Comparing counts across separately sampled windows is not a
+       * controlled experiment, and small differences between them mean nothing
+       * whatsoever.
+       *
+       * So when the numbers are this thin, the honest answer is that the test
+       * cannot tell — not a winner picked from noise.
+       */
+      var biggest = Math.max(n(full), n(shortRun), n(unfiltered), n(reversed));
+      if (biggest > 0 && biggest < 5) {
+        onStep({ done: true, results: results, verdict:
+          'Too few to tell. The most any stage found was ' + biggest +
+          ' of the silent vessels, and the stages run one after another rather ' +
+          'than together — each samples a different three minutes, and a yacht ' +
+          'at rest speaks once every three. Differences this small are the ' +
+          'sampling, not a cause.\n\n' +
+          'This test cannot answer the question at these numbers. What can: leave ' +
+          'the board running and watch "heard since" over a few hours. That ' +
+          'measures the thing you actually care about, over a window long enough ' +
+          'for the vessels\' own timing to average out.' });
+        return;
+      }
       var full = results[0], shortRun = results[1];
       var unfiltered = results[2], reversed = results[3];
       var verdict;
 
-      if (shortRun && n(shortRun) > n(full)) {
+      if (shortRun && materiallyMore(n(shortRun), n(full))) {
         verdict = 'A short list of ' + shortList.length + ' found ' + n(shortRun) +
           ' of the silent vessels in ' + shortRun.seconds + ' seconds. The full list ' +
           'of ' + fleet.length + ', over the same window and in the same conditions, ' +
           'found ' + n(full) + '.\n\nThey are transmitting, and the only difference ' +
           'between the two requests was the length of the MMSI list. A subscription ' +
           'filtering ' + fleet.length + ' vessels is not being honoured in full.';
-      } else if (unfiltered && n(unfiltered) > n(full)) {
+      } else if (unfiltered && materiallyMore(n(unfiltered), n(full))) {
         verdict = 'With no MMSI filter at all, ' + n(unfiltered) + ' of the silent ' +
           'vessels came through; with the full list, ' + n(full) + '. They are ' +
           'transmitting and the filter is dropping them — not the key, not the box.';
