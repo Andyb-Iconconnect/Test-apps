@@ -226,6 +226,16 @@
     var store = window.Store;
     if (!ais || !store || store.mode !== 'live') { node.textContent = ''; return; }
 
+    // A test stops the feed for the duration. Its counters then describe a
+    // socket that is not running, and reading them as the state of the feed —
+    // "1 message received, none for this fleet" — points at a fault that is not
+    // there. The result is in the log below, not here.
+    if (cancelDiagnosis) {
+      node.textContent = 'The feed is stopped while the test runs. ' +
+        'Its progress is below; these counts resume when it finishes.';
+      return;
+    }
+
     if (ais.lastError) {
       node.textContent = 'The server refused the subscription: "' + ais.lastError + '"';
       return;
@@ -405,7 +415,14 @@
 
   function close(d) {
     clearInterval(countsTimer);
-    if (cancelDiagnosis) { cancelDiagnosis(); cancelDiagnosis = null; }
+    if (cancelDiagnosis) {
+      cancelDiagnosis();
+      cancelDiagnosis = null;
+      // A test takes the feed down while it runs. Closing the sheet used to
+      // cancel the test and leave it down, so the board sat dead until somebody
+      // reloaded it — and the sheet had just told them everything was fine.
+      notify();
+    }
     var log = d.querySelector('#ais-log');
     if (log) { log.hidden = true; log.textContent = ''; }
     d.querySelector('#ais-test').textContent = 'Nothing arriving? Ask the server why';

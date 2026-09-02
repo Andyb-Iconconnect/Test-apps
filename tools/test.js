@@ -2582,4 +2582,27 @@ test('the feed mode is settled before the cache is read', () => {
   });
 });
 
+test('a running test does not leave the feed reporting on itself', () => {
+  /**
+   * A diagnostic stops the live feed for its duration. Two things went wrong
+   * with that, both of them making the sheet lie about the feed's health:
+   *
+   * The counts panel went on showing the stopped socket's numbers, so mid-test
+   * it read "1 message received, none for this fleet" — a fault report about a
+   * socket that was not running.
+   *
+   * And closing the sheet cancelled the test without restarting the feed, so
+   * the board sat dead until somebody reloaded it, having just been told
+   * everything was fine.
+   */
+  const source = readRepo('js/settings.js');
+  assert.ok(/if \(cancelDiagnosis\) \{\s*\n\s*node\.textContent = 'The feed is stopped/.test(source),
+    'the panel says the feed is stopped rather than reporting its dead counters');
+
+  const closeFn = source.slice(source.indexOf('function close(d)'),
+                               source.indexOf('function close(d)') + 700);
+  assert.ok(/cancelDiagnosis\(\);[\s\S]{0,400}notify\(\);/.test(closeFn),
+    'closing mid-test brings the feed back up');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
