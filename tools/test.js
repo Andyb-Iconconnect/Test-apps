@@ -2605,4 +2605,34 @@ test('a running test does not leave the feed reporting on itself', () => {
     'closing mid-test brings the feed back up');
 });
 
+/* --- Identifiers that do not exist ---------------------------------------- */
+
+test('no file refers to something that was never declared', () => {
+  /**
+   * The bug this exists for: a variable declared in the wrong function. The file
+   * parsed, node --check was happy, and every check in this suite passed —
+   * because they all read the source rather than running it. The branch using it
+   * was a diagnostic nobody had opened in a browser, so it threw a ReferenceError
+   * the first time somebody pressed the button, and the feature had never once
+   * worked while I was interpreting its silence as evidence about a data feed.
+   *
+   * `no-undef` finds that in every branch without running anything. Skipped
+   * where eslint is not installed rather than failing: it is not a dependency of
+   * the board, which has none.
+   */
+  const { execFileSync } = require('child_process');
+  const root = path.join(__dirname, '..');
+  let output;
+  try {
+    execFileSync('npx', ['--no-install', 'eslint', 'js', 'tools', 'config.js', 'fleet.js'],
+      { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    return;                                   // clean
+  } catch (e) {
+    output = String((e.stdout || '') + (e.stderr || ''));
+    // No eslint here: not a failure of the code under test.
+    if (/could not determine executable|not found|Cannot find module/i.test(output)) return;
+    assert.fail('undefined identifiers:\n' + output.trim());
+  }
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

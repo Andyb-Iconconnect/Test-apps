@@ -318,10 +318,7 @@
         (r.seconds ? ' in ' + r.seconds + 's' : '');
     }
 
-    var PROBES_IN_COVERAGE = 4;
-
     function render(step) {
-      if (step.total) PROBES_IN_COVERAGE = step.total;
       var lines = step.results.map(function (r, i) {
         return '  ' + (i + 1) + '/' + PROBE_COUNT + '  ' + r.name + ' — ' + describe(r);
       });
@@ -381,7 +378,10 @@
     var wasLive = window.Store && window.Store.mode === 'live';
     if (wasLive) window.Ais.stop();
 
+    var PROBES_IN_COVERAGE = 4;
+
     function render(step) {
+      if (step.total) PROBES_IN_COVERAGE = step.total;
       var lines = step.results.map(function (r, i) {
         var found = Object.keys(r.missingFound).length;
         var ours = Object.keys(r.ours).length;
