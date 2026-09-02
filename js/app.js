@@ -66,6 +66,10 @@
     window.FLEET = window.Vessel.mergedFleet(window.FLEET);
     if (!window.FLEET.length) { everyVesselHidden(); return; }
 
+    // Decided before init, because restoring the cache depends on it: a cache of
+    // real fixes must not be loaded into a simulation, nor a simulation's into a
+    // live board, and init is where the restore happens.
+    window.Store.mode = window.Settings.aisKey() ? 'live' : 'demo';
     window.Store.init(window.FLEET);
     window.FleetMap.init(el('chart-canvas'));
 
@@ -183,11 +187,10 @@
 
   function startFeed() {
     var key = window.Settings.aisKey();
+    window.Store.mode = key ? 'live' : 'demo';
     if (key) {
-      window.Store.mode = 'live';
       window.Ais.start(key, window.FLEET.map(function (y) { return y.mmsi; }));
     } else {
-      window.Store.mode = 'demo';
       window.Demo.start(window.Store.vessels);
     }
     window.Store.recompute();

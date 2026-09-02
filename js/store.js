@@ -315,9 +315,26 @@
 
   // Wrapped because storage throws outright in some privacy configurations,
   // and a wall display must never die over a cache write.
+  /**
+   * Cache the last known positions, so a reload or a power cut brings the board
+   * back with content rather than sixty-one empty cards.
+   *
+   * DEMO POSITIONS ARE NEVER CACHED. They used to be: this ran every thirty
+   * seconds whatever the mode, wrote invented positions into the same store as
+   * real ones, and recorded nothing about which was which. So a board that had
+   * run in demo mode before the key went in restored those invented positions on
+   * its next load and drew them exactly like fixes — and for a vessel the live
+   * feed never delivers, an invented position would sit on the chart
+   * indefinitely, indistinguishable from a real one and wrong by hundreds of
+   * miles.
+   *
+   * A missing yacht is a fact. A yacht in the wrong place is a lie, and this
+   * board is read by people who act on it.
+   */
   Store.persist = function () {
+    if (Store.mode !== 'live') return;
     try {
-      var payload = { savedAt: Date.now(), vessels: {} };
+      var payload = { savedAt: Date.now(), mode: 'live', vessels: {} };
       Store.vessels.forEach(function (v) {
         if (!v.fix) return;
         payload.vessels[v.yacht.mmsi] = {
@@ -341,6 +358,18 @@
     var payload;
     try { payload = JSON.parse(raw); } catch (e) { return; }
     if (!payload || !payload.vessels) return;
+
+    // Only a cache that says plainly it holds real fixes. One written before
+    // this distinction existed cannot say, so it is discarded: losing a real
+    // position costs a reload, and keeping an invented one puts a yacht on the
+    // wall in a place she has never been.
+    if (payload.mode !== 'live') {
+      Store.clearCache();
+      return;
+    }
+    // And never into a demo session, where it would sit under simulated vessels
+    // as though the simulation had produced it.
+    if (Store.mode !== 'live') return;
 
     Object.keys(payload.vessels).forEach(function (mmsi) {
       var v = Store.byMmsi[mmsi];

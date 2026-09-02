@@ -2502,4 +2502,84 @@ test('the message count and the feed duration share a clock', () => {
   assert.ok(/Ais\.heard\+\+/.test(ais), 'the socket keeps its own, for a single run');
 });
 
+/* --- An invented position must never outlive the simulation ---------------- */
+
+test('a demo position is never cached, and never restored into a live board', () => {
+  /**
+   * persist() ran every thirty seconds whatever the mode, wrote invented
+   * positions into the same cache as real ones, and recorded nothing about which
+   * was which. A board that had run in demo mode before the key went in restored
+   * those on its next load and drew them exactly like fixes. For a vessel the
+   * live feed never delivers, an invented position would sit on the chart
+   * indefinitely — wrong by hundreds of miles, and indistinguishable from truth.
+   *
+   * A missing yacht is a fact. A yacht in the wrong place is a lie.
+   */
+  const store = {};
+  // store.js reaches for the bare global, not window's copy.
+  const realStorage = global.localStorage;
+  global.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; }
+  };
+  const realMode = Store.mode;
+  const fleet = [{ id: 'a', name: 'A', mmsi: 319000101, demo: { position: [7, 43] } }];
+  const KEY = 'fleetwatch.positions.v1';
+  try {
+
+  // Demo mode: a fix exists, and nothing is written.
+  Store.mode = 'demo';
+  Store.init(fleet);
+  Store.applyFix(319000101, { lon: 2.1, lat: 41.4, at: new Date() });
+  Store.persist();
+  assert.strictEqual(store[KEY], undefined, 'a simulation leaves no cache behind');
+
+  // Live mode: written, and marked as real.
+  Store.mode = 'live';
+  Store.init(fleet);
+  Store.applyFix(319000101, { lon: 7.42, lat: 43.73, at: new Date() });
+  Store.persist();
+  assert.ok(store[KEY], 'a live board does cache');
+  assert.strictEqual(JSON.parse(store[KEY]).mode, 'live', 'and says what it holds');
+
+  // That cache restores into a live board.
+  Store.init(fleet);
+  assert.ok(Math.abs(Store.vessels[0].fix.lat - 43.73) < 0.001, 'a real fix comes back');
+
+  // But not into a simulation.
+  Store.mode = 'demo';
+  Store.init(fleet);
+  assert.strictEqual(Store.vessels[0].fix, null,
+    'a real position does not appear under a simulated vessel');
+
+  // A cache from before this distinction existed cannot say which it holds, so
+  // it is discarded rather than trusted.
+  Store.mode = 'live';
+  store[KEY] = JSON.stringify({
+    savedAt: Date.now(),
+    vessels: { 319000101: { fix: { lon: 2.1, lat: 41.4, at: Date.now() }, track: [] } }
+  });
+  Store.init(fleet);
+  assert.strictEqual(Store.vessels[0].fix, null, 'an unlabelled cache is not trusted');
+  assert.strictEqual(store[KEY], undefined, 'and is cleared rather than left to be re-read');
+  } finally {
+    global.localStorage = realStorage;
+    Store.mode = realMode;
+  }
+});
+
+test('the feed mode is settled before the cache is read', () => {
+  // init() restores the cache, and the restore depends on the mode. Setting the
+  // mode afterwards, as startFeed used to, would have made the guard above
+  // discard every real cache on every load.
+  ['js/app.js', 'js/console.js'].forEach((f) => {
+    const source = readRepo(f);
+    const setMode = source.indexOf("Store.mode = window.Settings.aisKey() ? 'live' : 'demo'");
+    const init = source.indexOf('Store.init(window.FLEET)');
+    assert.ok(setMode !== -1, f + ' decides the mode explicitly');
+    assert.ok(setMode < init, f + ': and does it before init reads the cache');
+  });
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

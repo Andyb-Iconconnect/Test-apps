@@ -69,6 +69,8 @@
     if (!fleetLoaded('the console')) return;
     BASE_FLEET = window.FLEET.slice();
     window.FLEET = window.Vessel.mergedFleet(BASE_FLEET);
+    // Before init: the cache restore inside it depends on which mode we are in.
+    window.Store.mode = window.Settings.aisKey() ? 'live' : 'demo';
     window.Store.init(window.FLEET);
     window.FleetMap.init(el('chart-canvas'));
     renderBrand();
@@ -120,11 +122,10 @@
 
   function startFeed() {
     var key = window.Settings.aisKey();
+    window.Store.mode = key ? 'live' : 'demo';
     if (key) {
-      window.Store.mode = 'live';
       window.Ais.start(key, window.FLEET.map(function (y) { return y.mmsi; }));
     } else {
-      window.Store.mode = 'demo';
       window.Demo.start(window.Store.vessels);
     }
   }
