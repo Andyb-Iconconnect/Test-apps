@@ -141,8 +141,8 @@
         // Counted, never silent. A frame we cannot read is still a frame that
         // arrived, and the difference between "nothing is coming" and "plenty is
         // coming and we cannot read it" is the whole diagnosis.
-        Ais.heard++;
-        Ais.unreadable++;
+        Ais.heard++; window.Store.heard++;
+        Ais.unreadable++; window.Store.unreadable++;
         return;
       }
       handle(payload);
@@ -691,6 +691,7 @@
 
   function handle(payload) {
     Ais.heard++;
+    window.Store.heard++;
 
     var complaint = serverComplaint(payload);
     if (complaint) {
@@ -703,7 +704,10 @@
     var mmsi = meta.MMSI != null ? String(meta.MMSI) : null;
     if (!mmsi) return;
 
-    if (Ais.mmsiList && Ais.mmsiList.indexOf(mmsi) !== -1) Ais.matched++;
+    if (Ais.mmsiList && Ais.mmsiList.indexOf(mmsi) !== -1) {
+      Ais.matched++;
+      window.Store.matched++;
+    }
     // The first message of any kind means the subscription was accepted and the
     // feed is delivering. That is a different thing from having heard one of
     // ours, and the board should not claim the second when it only has the first.

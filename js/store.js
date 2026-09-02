@@ -15,7 +15,12 @@
 
   var Store = {
     mode: 'demo',              // 'demo' | 'live'
-    feedStartedAt: null,       // when the live feed last began listening
+    feedStartedAt: null,       // when the live feed FIRST began listening
+    // Counted against feedStartedAt, so the two belong to the same stretch of
+    // time. The socket's own counters reset on every reconnect, which put "4
+    // messages received" in the same sentence as "21 hours" and read as a feed
+    // that had almost stopped. It had reconnected a minute earlier.
+    heard: 0, matched: 0, unreadable: 0,
     connection: 'starting',    // starting | connecting | open | retrying | closed | demo
     vessels: [],               // in fleet.js order
     byMmsi: {},

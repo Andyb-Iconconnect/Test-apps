@@ -230,11 +230,13 @@
       node.textContent = 'The server refused the subscription: "' + ais.lastError + '"';
       return;
     }
-    var heard = ais.heard || 0;
-    var matched = ais.matched || 0;
+    // Store's counters, not the socket's: these run against feedStartedAt, so
+    // the count and the duration describe the same stretch of time.
+    var heard = store.heard || 0;
+    var matched = store.matched || 0;
     if (!heard) {
       node.textContent = 'Connected, and nothing has arrived yet.';
-    } else if (ais.unreadable === heard) {
+    } else if (heard && store.unreadable === heard) {
       node.textContent = heard + ' messages received and none of them readable — ' +
         'a fault at this end, not at theirs.';
     } else if (!matched) {

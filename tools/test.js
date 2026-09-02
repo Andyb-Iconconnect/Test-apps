@@ -2482,4 +2482,24 @@ test('the anonymous build locks the key as well as setting the mode', () => {
     'a locked screen is not argued out of it at the keyboard, mid-conversation');
 });
 
+test('the message count and the feed duration share a clock', () => {
+  /**
+   * The socket's counters reset on every reconnect. The duration does not. So
+   * the panel put "4 messages received" in the same sentence as "21 hours" and
+   * read as a feed that had all but stopped — when it had simply reconnected a
+   * minute earlier.
+   */
+  const settings = readRepo('js/settings.js');
+  assert.ok(/var heard = store\.heard/.test(settings),
+    'the panel counts from the store, which starts when the feed does');
+  assert.ok(!/var heard = ais\.heard/.test(settings), 'not from the socket, which restarts');
+
+  const ais = readRepo('js/ais.js');
+  assert.ok(/window\.Store\.heard\+\+/.test(ais), 'the store is fed every frame');
+  assert.ok(/window\.Store\.matched\+\+/.test(ais), 'and every frame of ours');
+
+  // Both still exist: per-connection counts are what the probe needs.
+  assert.ok(/Ais\.heard\+\+/.test(ais), 'the socket keeps its own, for a single run');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
