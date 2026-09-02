@@ -123,13 +123,25 @@
       Ais.everOpened = true;
       // The subscription must be the first thing sent, within a second or so,
       // or the server drops the connection.
+      /**
+       * No FilterMessageTypes.
+       *
+       * It used to name the five types this code understands, which looked
+       * tidy and cost most of the fleet. A probe sending this exact MMSI list
+       * WITHOUT that field heard nine vessels the board had never once heard in
+       * a day of running — same key, same box, same sixty-one MMSIs, three
+       * minutes. The message-type filter was the only difference.
+       *
+       * There is nothing to gain from it anyway. The subscription is already
+       * narrowed to our own vessels, so the traffic is tiny either way, and
+       * handle() ignores a type it does not know. Filtering here rather than
+       * there costs nothing and cannot silently drop a vessel whose transponder
+       * happens to speak in a way we did not list.
+       */
       socket.send(JSON.stringify({
         APIKey: Ais.apiKey,
         BoundingBoxes: [[[-90, -180], [90, 180]]],   // note: [lat, lon] pairs
-        FiltersShipMMSI: Ais.mmsiList,
-        FilterMessageTypes: ['PositionReport', 'StandardClassBPositionReport',
-                             'ExtendedClassBPositionReport', 'ShipStaticData',
-                             'StaticDataReport']
+        FiltersShipMMSI: Ais.mmsiList
       }));
       // Not 'open' yet: the socket is up, but a subscription the server rejects
       // leaves it up and silent. 'open' is claimed on the first message.
@@ -349,6 +361,18 @@
       timer = setTimeout(moveOn, Ais.COVERAGE_SECONDS * 1000);
     }
 
+    /**
+     * Enough of a difference to mean something.
+     *
+     * Nine against seven, out of sixty-one, in one three-minute sample of world
+     * traffic, is noise — and a plain `>` read it as a finding and named the
+     * bounding box. A cause that only shows up as a couple of vessels either way
+     * has not been demonstrated; a real one shows up as a gulf.
+     */
+    function materiallyMore(a, b) {
+      return a >= b + 5 && a >= b * 1.5;
+    }
+
     function finish() {
       var n = function (r) { return r ? Object.keys(r.missingFound).length : 0; };
       var full = results[0], shortRun = results[1];
@@ -366,20 +390,26 @@
         verdict = 'With no MMSI filter at all, ' + n(unfiltered) + ' of the silent ' +
           'vessels came through; with the full list, ' + n(full) + '. They are ' +
           'transmitting and the filter is dropping them — not the key, not the box.';
-      } else if (reversed && n(reversed) > n(unfiltered)) {
+      } else if (reversed && materiallyMore(n(reversed), n(unfiltered))) {
         verdict = 'The reversed bounding box heard ' + n(reversed) + ' of the silent ' +
           'vessels where ours heard ' + n(unfiltered) + '. The server reads the box ' +
           '[longitude, latitude] and the board sends [latitude, longitude], so ' +
           'anything outside the overlap has been invisible.';
       } else if (n(full) > 0) {
-        // Every probe found them, the board's own subscription included. They
-        // are not missing at all — the board's record of them was stale, or they
-        // have started reporting since. Saying "not one appeared" here, as this
-        // once did, would be flatly untrue.
-        verdict = n(full) + ' of the vessels the board had not heard from reported ' +
-          'during this test, on the board\'s own subscription. Nothing is being ' +
-          'filtered out and nothing needs fixing: they were simply not transmitting ' +
-          'earlier, and are now. The board will have them.';
+        /**
+         * The board's own MMSI list found them, and quickly. The one thing this
+         * stage does NOT send that the live feed does is FilterMessageTypes — so
+         * that is the only difference left between a subscription that delivers
+         * these vessels and one that has not delivered them all day.
+         */
+        verdict = n(full) + ' vessels the board has never heard from reported within ' +
+          full.seconds + ' seconds, on the board\'s own MMSI list.\n\n' +
+          'That list is not the problem, and neither is the key, the box or the ' +
+          'network. The one thing this test does not send that the live feed does ' +
+          'is FilterMessageTypes — the board asks for five message types, this ' +
+          'asked for all of them. That is the only difference left between a ' +
+          'subscription that delivers these vessels in three minutes and one that ' +
+          'has not delivered them in a day.';
       } else {
         var minutes = Math.max(1, Math.round(probes.length * Ais.COVERAGE_SECONDS / 60));
         var seen = unfiltered ? Object.keys(unfiltered.ours).length : 0;
@@ -735,9 +765,15 @@
         break;
       case 'StaticDataReport':
         // Message 24 — how a Class B transponder sends her name and dimensions.
-        // Plenty of yachts under 300 GT carry Class B and never send a type 5,
-        // so without this their names never arrive at all.
-        applyIdentity(mmsi, body.StaticDataReport);
+        // Plenty of yachts under 300 GT carry Class B and never send a type 5.
+        applyIdentity(mmsi, flattenStaticDataReport(body.StaticDataReport));
+        break;
+      case 'LongRangeAisBroadcastMessage':
+        // Message 27: the low-rate position a Class A sends for long-range and
+        // satellite reception. It was not in the old subscription's list of
+        // types, and is not in the same shape as the others — its own "not
+        // available" codes, and no heading at all.
+        applyLongRange(mmsi, body.LongRangeAisBroadcastMessage, at);
         break;
     }
   }
@@ -788,6 +824,55 @@
   // Who the transponder says she is, and how she measures herself. Worth having
   // for its own sake, and worth checking against the record: a mistyped MMSI
   // subscribes the board to somebody else's yacht, and this is what catches it.
+  /**
+   * Message 24 arrives in two halves and nests them.
+   *
+   * ReportA carries the name; ReportB the call sign, dimensions and ship type.
+   * Nothing useful sits at the top level — so handing the message straight to
+   * applyIdentity, as this did, read every field as undefined and quietly
+   * learned nothing. A transponder sends the halves in separate messages, which
+   * is why each is merged rather than replacing what came before.
+   */
+  function flattenStaticDataReport(report) {
+    if (!report) return null;
+    var a = report.ReportA || {};
+    var b = report.ReportB || {};
+    return {
+      Valid: report.Valid,
+      Name: a.Name,
+      CallSign: b.CallSign,
+      Dimension: b.Dimension,
+      Type: b.ShipType,
+      FixType: b.FixType
+    };
+  }
+
+  // Message 27's sentinels are its own: ITU M.1371 codes speed-not-available as
+  // 63 and course-not-available as 511 here, where the ordinary position report
+  // uses 102.3 and 360. Reusing the usual constants would have plotted a vessel
+  // as doing 63 knots.
+  var LR_SOG_UNAVAILABLE = 63;
+  var LR_COG_UNAVAILABLE = 511;
+
+  function applyLongRange(mmsi, report, at) {
+    if (!report || report.Valid === false) return;
+    var lat = report.Latitude, lon = report.Longitude;
+    if (lat == null || lon == null) return;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+    window.Store.applyFix(mmsi, {
+      lat: lat,
+      lon: lon,
+      cog: report.Cog != null && report.Cog !== LR_COG_UNAVAILABLE ? report.Cog : null,
+      sog: report.Sog != null && report.Sog !== LR_SOG_UNAVAILABLE ? report.Sog : null,
+      heading: null,                       // message 27 carries none
+      navStatus: report.NavigationalStatus != null ? report.NavigationalStatus : null,
+      accurate: typeof report.PositionAccuracy === 'boolean' ? report.PositionAccuracy : null,
+      raim: typeof report.Raim === 'boolean' ? report.Raim : null,
+      turning: null,
+      at: at
+    });
+  }
+
   function applyIdentity(mmsi, data) {
     if (!data || data.Valid === false) return;
     var dim = data.Dimension || {};

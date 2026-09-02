@@ -1850,8 +1850,8 @@ test('a socket that opened and then dropped is reconnecting, not blocked', () =>
     const sub = JSON.parse(socket.sent[0]);
     assert.strictEqual(sub.APIKey, 'k'.repeat(40), 'the key goes up first');
     assert.deepStrictEqual(sub.FiltersShipMMSI, ['319000001'], 'ours only, as strings');
-    assert.ok(sub.FilterMessageTypes.indexOf('ShipStaticData') !== -1,
-      'including the slow message that carries name and IMO');
+    assert.strictEqual(sub.FilterMessageTypes, undefined,
+      'and no message-type filter — every type this fleet sends, sorted here');
 
     socket.onmessage({ data: JSON.stringify({
       MessageType: 'PositionReport',
@@ -2089,26 +2089,48 @@ test('heard and matched are counted apart', () => {
   });
 });
 
-test('the subscription asks for Class B static data too', () => {
-  // Message 24 is how a yacht under 300 GT sends her name and dimensions. Plenty
-  // of this fleet will never send a type 5 at all.
+test('the subscription does not restrict message types', () => {
+  /**
+   * Naming the five types this code understands looked tidy and cost most of
+   * the fleet. A probe sending the same sixty-one MMSIs WITHOUT that field heard
+   * nine vessels the board had never heard in a day — same key, same box, three
+   * minutes. Filtering by type is done here instead, where it cannot silently
+   * drop a vessel whose transponder speaks in a way nobody listed.
+   */
   withFakeSocket((sockets) => {
     Ais.start('k'.repeat(40), [319000001]);
     const socket = sockets[0];
     socket.readyState = 1;
     socket.onopen();
     const sub = JSON.parse(socket.sent[0]);
-    ['PositionReport', 'StandardClassBPositionReport', 'ExtendedClassBPositionReport',
-     'ShipStaticData', 'StaticDataReport'].forEach((type) => {
-      assert.ok(sub.FilterMessageTypes.indexOf(type) !== -1, 'subscribes to ' + type);
-    });
+    assert.strictEqual(sub.FilterMessageTypes, undefined,
+      'the server sends every type it has for our vessels');
+    assert.deepStrictEqual(sub.FiltersShipMMSI, ['319000001'],
+      'and the narrowing that matters — ours only — is still there');
+  });
+});
+
+test('a message type we do not handle is ignored, not fatal', () => {
+  // Which is what makes dropping the server-side type filter safe.
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    assert.doesNotThrow(() => socket.onmessage({ data: JSON.stringify({
+      MessageType: 'AidsToNavigationReport',
+      MetaData: { MMSI: 319000001 },
+      Message: { AidsToNavigationReport: { Name: 'BUOY' } }
+    }) }));
+    assert.strictEqual(Ais.heard, 1, 'it still counts as heard');
+    assert.strictEqual(Store.byMmsi['319000001'].fix, null, 'and moves nothing');
   });
 });
 
 test('the subscription matches the published schema', () => {
   // Field names checked against aisstream/ais-message-models, not recalled:
-  // APIKey, BoundingBoxes, FiltersShipMMSI (strings, 9 characters),
-  // FilterMessageTypes.
+  // APIKey, BoundingBoxes, FiltersShipMMSI (strings, 9 characters). The optional
+  // FilterMessageTypes is deliberately not sent — see the check above.
   withFakeSocket((sockets) => {
     Ais.start('k'.repeat(40), [319000001, 232012345]);
     const socket = sockets[0];
@@ -2116,7 +2138,7 @@ test('the subscription matches the published schema', () => {
     socket.onopen();
     const sub = JSON.parse(socket.sent[0]);
     assert.deepStrictEqual(Object.keys(sub).sort(),
-      ['APIKey', 'BoundingBoxes', 'FilterMessageTypes', 'FiltersShipMMSI']);
+      ['APIKey', 'BoundingBoxes', 'FiltersShipMMSI']);
     sub.FiltersShipMMSI.forEach((m) => {
       assert.strictEqual(typeof m, 'string', 'MMSIs go up as strings');
       assert.strictEqual(m.length, 9, 'nine characters, as the schema requires');
@@ -2633,6 +2655,81 @@ test('no file refers to something that was never declared', () => {
     if (/could not determine executable|not found|Cannot find module/i.test(output)) return;
     assert.fail('undefined identifiers:\n' + output.trim());
   }
+});
+
+test('a couple of vessels either way is not a finding', () => {
+  /**
+   * Nine against seven, out of sixty-one, in one three-minute sample of world
+   * traffic — a plain `>` read that as proof and named the bounding box. It sent
+   * us after a cause that had not been demonstrated at all, and buried the real
+   * one, which was sitting in the stage above.
+   */
+  const source = readRepo('js/ais.js');
+  assert.ok(/function materiallyMore/.test(source), 'differences are tested for size');
+  assert.ok(/a >= b \+ 5 && a >= b \* 1\.5/.test(source),
+    'and a margin of two out of sixty-one does not clear it');
+  assert.ok(/materiallyMore\(n\(reversed\), n\(unfiltered\)\)/.test(source),
+    'the bounding-box verdict in particular goes through it');
+});
+
+test('message 27 places a vessel, with its own not-available codes', () => {
+  /**
+   * The low-rate position a Class A sends for long-range and satellite
+   * reception. It was not in the old subscription's type list, and it is not in
+   * the same shape as the others: ITU M.1371 codes speed-not-available as 63
+   * here and course as 511, where the ordinary position report uses 102.3 and
+   * 360. Reusing the usual constants would have shown a yacht doing 63 knots.
+   */
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    socket.onmessage({ data: JSON.stringify({
+      MessageType: 'LongRangeAisBroadcastMessage',
+      MetaData: { MMSI: 319000001 },
+      Message: { LongRangeAisBroadcastMessage: {
+        Latitude: 36.75, Longitude: 28.94, Sog: 63, Cog: 511, Valid: true
+      } }
+    }) });
+    const v = Store.byMmsi['319000001'];
+    assert.ok(v.fix, 'she is placed');
+    assert.ok(Math.abs(v.fix.lat - 36.75) < 0.001, 'where the message said');
+    assert.strictEqual(v.fix.sog, null, '63 knots is this message saying "unknown"');
+    assert.strictEqual(v.fix.cog, null, 'and 511 likewise, not a course');
+    assert.strictEqual(v.fix.heading, null, 'message 27 carries no heading at all');
+  });
+});
+
+test('a Class B static report is read from its two halves', () => {
+  /**
+   * Message 24 nests its content: ReportA carries the name, ReportB the call
+   * sign and dimensions, and nothing useful sits at the top level. Handing the
+   * message straight to applyIdentity — as it was — read every field as
+   * undefined and quietly learned nothing, which is how a Class B yacht could be
+   * heard from all day and still have no name.
+   */
+  withFakeSocket((sockets) => {
+    Ais.start('k'.repeat(40), [319000001]);
+    const socket = sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    socket.onmessage({ data: JSON.stringify({
+      MessageType: 'StaticDataReport',
+      MetaData: { MMSI: 319000001 },
+      Message: { StaticDataReport: {
+        Valid: true,
+        ReportA: { Name: 'QUIET ONE           ', Valid: true },
+        ReportB: { CallSign: 'ZGAA1  ', ShipType: 37,
+                   Dimension: { A: 40, B: 20, C: 5, D: 5 }, Valid: true }
+      } }
+    }) });
+    const ais = Store.byMmsi['319000001'].ais;
+    assert.strictEqual(ais.name, 'QUIET ONE', 'the name comes out of ReportA');
+    assert.strictEqual(ais.callSign, 'ZGAA1', 'the call sign out of ReportB');
+    assert.strictEqual(ais.shipType, 37, 'and the ship type, which fills in M/Y');
+    assert.strictEqual(ais.loa, 60, 'dimensions add up to a length');
+  });
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
