@@ -533,9 +533,11 @@
           'subscription was accepted — a malformed one gets closed — and then no ' +
           'data was served against it.\n\n' +
           'What is left is at their end, not this one: a key that is not yet ' +
-          'active on the account, or a second connection already holding the slot ' +
-          '(aisstream.io serves one per key, so close every other window showing ' +
-          'the fleet and run this again). If neither, the subscription below is ' +
+          'active on the account, or another screen already connected on the same ' +
+          'key. That second one is worth ruling out by closing every other window ' +
+          'showing the fleet and running this again — a per-key connection limit ' +
+          'is common and would look exactly like this, though aisstream.io does ' +
+          'not document one either way. If neither, the subscription below is ' +
           'exactly what was sent — worth putting to aisstream.io support with the ' +
           'account, since nothing here can make them serve it.';
       } else if (results[0] && results[0].matched > 0) {
