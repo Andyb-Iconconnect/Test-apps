@@ -139,6 +139,27 @@ window.CONFIG = {
   // there is somebody present to work the toggle and to put it back.
   discreetLocked: false,
 
+  /* --- Anonymity ---------------------------------------------------------- */
+
+  // A different protection from discretion above, for a different risk.
+  //
+  // Discretion hides WHERE a yacht is. Anonymity hides WHOSE she is — that this
+  // fleet is our client list. Positions are public: every vessel broadcasts hers
+  // in clear, and anyone with an AIS receiver or a free website can read them.
+  // The association between Icon Connect and a particular yacht is not public,
+  // and that is what a visitor in reception, or a prospect being shown the
+  // breadth of the fleet, should not be able to read off the screen.
+  //
+  // On, the board keeps its shape — how many yachts, how large, where they are
+  // — and drops every field that identifies one: name, MMSI, IMO, call sign,
+  // builder, year, and photographs. Length stays, because length is the point of
+  // the demonstration.
+  //
+  // Press A to toggle, unless anonymousLocked is set. Build with --anonymous to
+  // ship a screen that is anonymous from start-up and cannot be talked out of it.
+  anonymousMode: false,
+  anonymousLocked: false,
+
   /* --- Demo mode --------------------------------------------------------- */
 
   // Only used while aisStreamApiKey is empty. Time is compressed so movement is

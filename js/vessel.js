@@ -275,6 +275,50 @@
     return out;
   };
 
+  /* --- Showing a fleet without naming its clients ---------------------------- */
+
+  /**
+   * The name to put on screen.
+   *
+   * Discreet mode blurs POSITIONS, which turns out to protect the wrong thing.
+   * What Icon Connect needs kept back from a passing visitor is not where a
+   * yacht is — that is public AIS, broadcast in clear by the vessel herself —
+   * but that she is a client at all. A board in full discreet mode still listed
+   * all sixty-one by name down the rail: the client list, on a wall, in a
+   * reception area.
+   *
+   * Anonymous mode answers that instead. The fleet keeps its shape — how many,
+   * how large, how far apart — which is exactly what makes it worth showing to a
+   * prospect, and loses the one thing that identifies a customer.
+   *
+   * Size stays because size is the point of the demonstration. Builder, year and
+   * the identifiers do not: to anyone in this trade a 2016 Abeking & Rasmussen
+   * of 72 metres has exactly one answer.
+   */
+  Vessel.publicName = function (yacht, index) {
+    if (!window.CONFIG || !window.CONFIG.anonymousMode) return yacht.name;
+    var n = 'Vessel ' + (index != null ? pad(index + 1) : '');
+    var loa = yacht.loa != null ? Math.round(yacht.loa) + ' m' : null;
+    return loa ? n.trim() + ' \u00b7 ' + loa : n.trim();
+  };
+
+  // Whether a field may be shown at all. Anything that names the vessel to
+  // somebody who knows yachts is withheld, not merely the name itself.
+  var IDENTIFYING = ['name', 'mmsi', 'imo', 'callSign', 'builder',
+                     'yearBuilt', 'lastRefit', 'photo'];
+
+  Vessel.showsIdentity = function () {
+    return !(window.CONFIG && window.CONFIG.anonymousMode);
+  };
+
+  Vessel.isIdentifying = function (field) {
+    return IDENTIFYING.indexOf(field) !== -1;
+  };
+
+  function pad(n) {
+    return n < 10 ? '0' + n : String(n);
+  }
+
   Vessel.slugify = function (name) {
     return String(name).toLowerCase().trim()
       .replace(/[^a-z0-9]+/g, '-')

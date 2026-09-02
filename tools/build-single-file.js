@@ -6,6 +6,9 @@
  * Useful when the board has to travel: one file to email, drop on a USB stick,
  * or open straight off disk with no server at all.
  *
+ *   --anonymous     no vessel names, builders, years, identifiers or
+ *                   photographs — the fleet's shape without its client list.
+ *                   For a screen visitors see, or for showing a prospect.
  *   --display       for a screen nobody is sitting at: the D key is locked
  *                   out, so it shows what this build decided and nobody
  *                   passing it can change that. Yachts marked `discreet` in fleet.js
@@ -35,6 +38,7 @@ const entry = entryFlag ? entryFlag.split('=')[1] : 'index.html';
 const offline = flags.has('--offline');
 const display = flags.has('--display');
 const blurAll = flags.has('--blur-all');
+const anonymous = flags.has('--anonymous');
 const fragment = flags.has('--fragment');
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -113,6 +117,15 @@ if (display) {
 if (blurAll) {
   config = rewriteConfig(config, /discreetMode: false/, 'discreetMode: true',
                          '--blur-all', 'discreetMode');
+}
+
+// The sales copy, and the one for a screen a visitor can read. Names off from
+// start-up, and the A key locked so nobody turns them back on mid-conversation.
+if (anonymous) {
+  config = rewriteConfig(config, /anonymousMode: false/, 'anonymousMode: true',
+                         '--anonymous', 'anonymousMode');
+  config = rewriteConfig(config, /anonymousLocked: false/, 'anonymousLocked: true',
+                         '--anonymous', 'anonymousLocked');
 }
 
 // A silent no-op here ships an unlocked board to a public screen, which is the
@@ -218,6 +231,7 @@ console.log(`${entry}: ${scripts.length} scripts + ${styles.length} stylesheets 
             (photoBytes ? ` [${Math.round(photoBytes / 1024)} KB of photos]` : '') +
             (display ? ' [display: D key locked]' : '') +
             (blurAll ? ' [every position approximate]' : '') +
+            (anonymous ? ' [names withheld]' : '') +
             (offline ? ' [offline]' : '') + (fragment ? ' [fragment]' : ''));
 
 // The artifact host refuses anything over 16 MB, and photographs are the only

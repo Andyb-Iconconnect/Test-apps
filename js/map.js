@@ -1261,7 +1261,7 @@
 
     placed.forEach(function (p) {
       var v = p.vessel, d = v.derived;
-      var name = v.yacht.name;
+      var name = window.Vessel.publicName(v.yacht, v.index);
       var sub = labelSub(v);
 
       ctx.font = '500 ' + nameSize + 'px ' + FONT_DISPLAY;

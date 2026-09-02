@@ -27,9 +27,13 @@
   /* --- Setup ------------------------------------------------------------- */
 
   Store.init = function (fleet) {
-    Store.vessels = fleet.map(function (yacht) {
+    Store.vessels = fleet.map(function (yacht, i) {
       return {
         yacht: yacht,
+        // Position in the fleet, fixed at boot. Anonymous mode numbers vessels
+        // by it, and a number that changed with what happened to be on screen
+        // would be no use to anyone trying to refer to one.
+        index: i,
         fix: null,             // { lon, lat, cog, heading, sog, navStatus, at }
         voyage: {},            // { destination, eta, draught } from AIS static messages
         ais: null,             // who the transponder says she is — see applyIdentity

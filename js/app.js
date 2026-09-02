@@ -100,6 +100,10 @@
       var key = document.getElementById('hint-discreet');
       if (key) key.remove();
     }
+    if (window.CONFIG.anonymousLocked) {
+      var akey = document.getElementById('hint-anonymous');
+      if (akey) akey.remove();
+    }
     el('chart-canvas').addEventListener('click', onCanvasClick);
     el('rail-list').addEventListener('click', onRailClick);
     el('hint-close').addEventListener('click', function () {
@@ -392,8 +396,12 @@
    * someone chose and can undo, the lock is how this screen is built.
    */
   function renderDiscreetFlag() {
-    el('discreet-flag').textContent = !window.CONFIG.discreetMode ? ''
-      : window.CONFIG.discreetLocked ? 'Approximate positions' : 'Discreet mode';
+    var parts = [];
+    if (window.CONFIG.anonymousMode) parts.push('Names withheld');
+    if (window.CONFIG.discreetMode) {
+      parts.push(window.CONFIG.discreetLocked ? 'Approximate positions' : 'Discreet mode');
+    }
+    el('discreet-flag').textContent = parts.join('  ·  ');
   }
 
   function tickClock() {
@@ -561,6 +569,14 @@
         break;
       case 'r': case 'R': location.reload(); break;
       case 'k': case 'K': window.Settings.openAisDialog(); break;
+      case 'a': case 'A':
+        // Same reasoning as D: a locked screen is not argued with at the keyboard.
+        if (window.CONFIG.anonymousLocked) break;
+        window.CONFIG.anonymousMode = !window.CONFIG.anonymousMode;
+        renderDiscreetFlag();
+        window.Store.recompute();
+        enterScene(App.scene);
+        break;
     }
   }
 

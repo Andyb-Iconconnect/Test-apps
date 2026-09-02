@@ -389,6 +389,30 @@ Set `weather.enabled: false` to run with no outbound requests beyond AIS.
 
 ---
 
+## Anonymity — a different thing from discretion
+
+These guard two different risks, and it is worth being precise about which.
+
+**Discretion** hides *where* a yacht is. **Anonymity** hides *whose* she is.
+
+A position is public. Every vessel broadcasts hers in clear, several times a
+minute, and anyone with a receiver or a free website can read it. What is not
+public is that a particular yacht is a client — and a board listing sixty-one by
+name is that list, on a wall, readable by anyone in reception.
+
+Build with **`--anonymous`** for a screen visitors see, or for showing a prospect
+the size and breadth of the fleet. Names become `Vessel 07 · 54 m`; the MMSI,
+IMO, call sign, builder, year and photographs go with them, because to anyone in
+this trade a 2016 Abeking & Rasmussen of 72 metres has exactly one answer.
+
+Length, tonnage, flag, status and position all stay. Those are the demonstration
+— how many, how large, how far apart — and none of them names a customer.
+
+`A` toggles it; `--anonymous` locks the key so it cannot be turned back on
+mid-conversation. The footer says **Names withheld** while it is in force.
+
+---
+
 ## Discretion
 
 Owners pay for privacy, and a screen visible to visitors, reception, or through a

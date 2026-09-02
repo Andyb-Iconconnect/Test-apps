@@ -62,7 +62,7 @@
       }
       row.appendChild(marker);
 
-      row.appendChild(h('span', 'name', v.yacht.name));
+      row.appendChild(h('span', 'name', window.Vessel.publicName(v.yacht, v.index)));
 
       var state = h('span', 'state');
       if (d.status === 'underway' && v.fix && v.fix.sog != null && !d.discreet) {
@@ -88,18 +88,23 @@
   Views.renderSpotlight = function (v) {
     var y = v.yacht, d = v.derived;
 
+    // Flag stays either way: thirty-seven of this fleet are Cayman, so it names
+    // nobody, and the spread of them is part of what the board is showing.
     el('spot-eyebrow').textContent = window.Fmt.text(y.prefix) + ' · ' + window.Fmt.text(y.flag);
-    el('spot-name').textContent = y.name;
+    el('spot-name').textContent = window.Vessel.publicName(y, v.index);
 
     var spec = el('spot-spec');
     spec.textContent = '';
+    // Size and tonnage stay in anonymous mode: they are the demonstration. Year,
+    // builder and IMO go, because to anyone in this trade they are a name.
+    var named = window.Vessel.showsIdentity();
     [
       [window.Fmt.metres(y.loa), 'LOA'],
-      [window.Fmt.year(y.yearBuilt), 'built'],
-      [window.Fmt.year(y.lastRefit), 'refit'],
+      [named ? window.Fmt.year(y.yearBuilt) : null, 'built'],
+      [named ? window.Fmt.year(y.lastRefit) : null, 'refit'],
       [window.Fmt.tonnage(y.grossTonnage), ''],
-      ['IMO ' + window.Fmt.text(y.imo), ''],
-      [window.Fmt.text(y.classSociety), '']
+      [named ? 'IMO ' + window.Fmt.text(y.imo) : null, ''],
+      [named ? window.Fmt.text(y.classSociety) : null, '']
     ].filter(function (pair) {
       // A sparse record otherwise reads as a row of em dashes.
       return pair[0] && pair[0].indexOf('—') === -1;
@@ -123,7 +128,10 @@
     // An uploaded photograph lives in this browser's storage; `photo` in the
     // record is a path or a URL. Either is just a src as far as this is
     // concerned.
-    var source = window.Photos.resolve(v.yacht);
+    // A photograph is a name. There is no anonymising one, so in anonymous mode
+    // the drawn profile stands in — which still shows her size and rig, and that
+    // is what the panel is for.
+    var source = window.Vessel.showsIdentity() ? window.Photos.resolve(v.yacht) : null;
     if (source) {
       var img = document.createElement('img');
       img.src = source;
@@ -506,7 +514,7 @@
     vessels.forEach(function (v) {
       var value = v.derived.distance7d || 0;
       var row = h('div', 'bar-row');
-      row.appendChild(h('div', 'bar-name', v.yacht.name));
+      row.appendChild(h('div', 'bar-name', window.Vessel.publicName(v.yacht, v.index)));
       var track = h('div', 'bar-track');
       var fill = h('div', 'bar-fill');
       fill.style.width = (value / max * 100).toFixed(1) + '%';
@@ -581,11 +589,11 @@
         loa.count ? basis(loa) : 'no lengths on file yet'],
       ['Average age', age.mean != null ? age.mean.toFixed(0) + ' yrs' : '—',
         age.mean != null ? basis(age) : 'no build years on file'],
-      ['Furthest away', furthest ? furthest.yacht.name : '—',
+      ['Furthest away', furthest ? window.Vessel.publicName(furthest.yacht, furthest.index) : '—',
         furthest ? window.Fmt.distance(furthest.derived.fromOffice) + ' from ' + window.CONFIG.office.label : null],
-      ['Fastest now', moving ? moving.yacht.name : 'None underway',
+      ['Fastest now', moving ? window.Vessel.publicName(moving.yacht, moving.index) : 'None underway',
         moving ? window.Fmt.speed(moving.fix.sog) : null],
-      ['Busiest this week', busiest ? busiest.yacht.name : '—',
+      ['Busiest this week', busiest ? window.Vessel.publicName(busiest.yacht, busiest.index) : '—',
         busiest ? window.Fmt.distance(busiest.derived.distance7d || 0) : null],
       ['Reporting', summary.tracked + ' of ' + summary.total,
         summary.tracked === summary.total ? 'all of them' : 'the rest are dark']
@@ -646,7 +654,7 @@
         row.appendChild(h('div', 'r-name', name));
         row.appendChild(h('div', 'r-count', String(groups[name].length)));
         row.appendChild(h('div', 'r-detail',
-          groups[name].map(function (v) { return v.yacht.name; }).join(' · ')));
+          groups[name].map(function (v) { return window.Vessel.publicName(v.yacht, v.index); }).join(' · ')));
         host.appendChild(row);
       });
 

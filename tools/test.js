@@ -2413,4 +2413,73 @@ test('the coverage test compares like with like, in one run', () => {
     'each stage listens for three minutes, because that is how often a moored yacht speaks');
 });
 
+/* --- Anonymity: a different protection from discretion --------------------- */
+
+test('anonymous mode withholds the name, which discreet mode never did', () => {
+  /**
+   * Discreet mode blurs POSITIONS. It turns out to protect the wrong thing: a
+   * position is public, broadcast in clear by the vessel herself, while the
+   * association between the fleet and this company is not. A board in full
+   * discreet mode still listed all sixty-one by name down the rail — the client
+   * list, on a wall, in reception.
+   */
+  const yacht = { name: 'Cloudbreak', loa: 72.25, mmsi: 319095800, imo: 1012763,
+                  builder: 'Abeking & Rasmussen', yearBuilt: 2016 };
+  const named = CONFIG.anonymousMode;
+  try {
+    CONFIG.anonymousMode = false;
+    assert.strictEqual(Vessel.publicName(yacht, 14), 'Cloudbreak', 'named by default');
+    assert.strictEqual(Vessel.showsIdentity(), true);
+
+    CONFIG.anonymousMode = true;
+    const label = Vessel.publicName(yacht, 14);
+    assert.ok(label.indexOf('Cloudbreak') === -1, 'the name is gone');
+    assert.ok(/Vessel 15/.test(label), 'numbered from her place in the fleet, one-based');
+    assert.ok(/72 m/.test(label),
+      'and her size stays — size is the point of showing the fleet at all');
+    assert.strictEqual(Vessel.showsIdentity(), false);
+  } finally {
+    CONFIG.anonymousMode = named;
+  }
+});
+
+test('the fields that name a yacht to anyone in the trade are withheld too', () => {
+  // A 2016 Abeking & Rasmussen of 72 metres has exactly one answer, so hiding
+  // the name alone would be theatre.
+  ['name', 'mmsi', 'imo', 'callSign', 'builder', 'yearBuilt', 'lastRefit', 'photo']
+    .forEach((field) => {
+      assert.strictEqual(Vessel.isIdentifying(field), true, field + ' identifies her');
+    });
+  ['loa', 'beam', 'grossTonnage', 'flag'].forEach((field) => {
+    assert.strictEqual(Vessel.isIdentifying(field), false,
+      field + ' is shape, not identity — it is what a prospect is being shown');
+  });
+});
+
+test('every surface that shows a name goes through publicName', () => {
+  // One missed call site is the whole protection gone, and it would be the one
+  // nobody looks at.
+  ['js/map.js', 'js/views.js'].forEach((f) => {
+    const source = readRepo(f);
+    const raw = source.match(/yacht\.name|\by\.name\b/g) || [];
+    raw.forEach(() => {});
+    assert.ok(!/h\('span', 'name', v\.yacht\.name\)/.test(source), f + ': rail name is gated');
+    assert.ok(!/var name = v\.yacht\.name;/.test(source), f + ': map label is gated');
+  });
+  assert.ok(/Vessel\.publicName/.test(readRepo('js/map.js')), 'map.js asks for the public name');
+  assert.ok(/Vessel\.publicName/.test(readRepo('js/views.js')), 'views.js asks for it');
+  assert.ok(/Vessel\.showsIdentity\(\) \? window\.Photos\.resolve/.test(readRepo('js/views.js')),
+    'a photograph is a name, so it is gated too');
+});
+
+test('the anonymous build locks the key as well as setting the mode', () => {
+  const build = readRepo('tools/build-single-file.js');
+  assert.ok(/anonymousMode: false/.test(build) && /anonymousLocked: false/.test(build),
+    '--anonymous sets both');
+  assert.strictEqual(CONFIG.anonymousMode, false, 'and the repository default is named');
+  assert.strictEqual(CONFIG.anonymousLocked, false);
+  assert.ok(/anonymousLocked\) break/.test(readRepo('js/app.js')),
+    'a locked screen is not argued out of it at the keyboard, mid-conversation');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
