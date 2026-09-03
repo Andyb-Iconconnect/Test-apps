@@ -163,6 +163,20 @@
     return Math.round(days) + ' day' + (Math.round(days) === 1 ? '' : 's');
   };
 
+  /**
+   * Bytes, in the unit somebody judging a connection would use.
+   *
+   * Decimal MB rather than binary MiB: an office broadband allowance is sold in
+   * decimal gigabytes, and this figure exists to be compared against one.
+   */
+  Fmt.bytes = function (n) {
+    if (n == null || !isFinite(n)) return '—';
+    if (n < 1000) return Math.round(n) + ' B';
+    if (n < 1e6) return (n / 1e3).toFixed(n < 1e5 ? 1 : 0) + ' kB';
+    if (n < 1e9) return (n / 1e6).toFixed(n < 1e8 ? 1 : 0) + ' MB';
+    return (n / 1e9).toFixed(1) + ' GB';
+  };
+
   Fmt.age = function (fromDate, now) {
     if (!fromDate) return 'no fix';
     var ms = (now || new Date()) - fromDate;

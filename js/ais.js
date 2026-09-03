@@ -124,25 +124,38 @@
       // The subscription must be the first thing sent, within a second or so,
       // or the server drops the connection.
       /**
-       * No FilterMessageTypes.
+       * Nothing is filtered at the server. Not message types, not MMSIs.
        *
-       * It used to name the five types this code understands, which looked
-       * tidy and cost most of the fleet. A probe sending this exact MMSI list
+       * FilterMessageTypes went first. It named the five types this code
+       * understands, which looked tidy and cost most of the fleet: a probe
+       * sending the same key, the same box and the same sixty-one MMSIs
        * WITHOUT that field heard nine vessels the board had never once heard in
-       * a day of running — same key, same box, same sixty-one MMSIs, three
-       * minutes. The message-type filter was the only difference.
+       * a day of running.
        *
-       * There is nothing to gain from it anyway. The subscription is already
-       * narrowed to our own vessels, so the traffic is tiny either way, and
-       * handle() ignores a type it does not know. Filtering here rather than
-       * there costs nothing and cannot silently drop a vessel whose transponder
-       * happens to speak in a way we did not list.
+       * FiltersShipMMSI is the same mistake, one layer down, and it took a day
+       * of real running to see it. Thirty-one of sixty-one, holding steady,
+       * while a second provider had every one of the silent ones reporting
+       * within minutes. Unfiltered, this key floods — five and a half thousand
+       * frames in under a minute. aisstream's own issue tracker carries the
+       * same report from other people more than once: filtered by MMSI returns
+       * little or nothing, unfiltered returns everything.
+       *
+       * So the fleet is picked out here instead, where it can be seen to
+       * happen. `Store.applyFix` already ignores an MMSI that is not ours, and
+       * `handle` drops one before it does any work, so the cost is a lookup per
+       * message. What it buys is that no vessel can go missing in a filter
+       * nobody can inspect.
+       *
+       * The traffic that costs is measured and shown in the AIS panel rather
+       * than guessed at. Set `CONFIG.ais.filterAtServer` if it ever needs to go
+       * back to asking for only our own.
        */
-      socket.send(JSON.stringify({
+      var sub = {
         APIKey: Ais.apiKey,
-        BoundingBoxes: [[[-90, -180], [90, 180]]],   // note: [lat, lon] pairs
-        FiltersShipMMSI: Ais.mmsiList
-      }));
+        BoundingBoxes: [[[-90, -180], [90, 180]]]    // note: [lat, lon] pairs
+      };
+      if (window.CONFIG.ais.filterAtServer) sub.FiltersShipMMSI = Ais.mmsiList;
+      socket.send(JSON.stringify(sub));
       // Not 'open' yet: the socket is up, but a subscription the server rejects
       // leaves it up and silent. 'open' is claimed on the first message.
       window.Store.setConnection('listening');
@@ -244,6 +257,11 @@
   function receive(socket, onPayload) {
     try { socket.binaryType = 'arraybuffer'; } catch (e) {}
     socket.onmessage = function (event) {
+      // Measured off the wire, before anything is decoded. Taking the whole
+      // world instead of asking for sixty-one vessels has a cost on somebody's
+      // office connection, and it should be a figure they can read rather than
+      // an assurance from me.
+      window.Store.bytes += frameBytes(event.data);
       var text = frameText(event.data);
       if (text === null && event.data && typeof event.data.text === 'function') {
         // Last resort: a Blob arrived anyway. Asynchronous, but never dropped.
@@ -252,6 +270,18 @@
       }
       parseInto(text, onPayload);
     };
+  }
+
+  // Bytes as they arrived. A UTF-8 string is counted at its byte length rather
+  // than its character count, or a feed full of accented ship names reads light.
+  function frameBytes(data) {
+    if (data == null) return 0;
+    if (typeof data === 'string') {
+      return typeof Blob === 'function' ? new Blob([data]).size : data.length;
+    }
+    if (typeof data.byteLength === 'number') return data.byteLength;
+    if (typeof data.size === 'number') return data.size;
+    return 0;
   }
 
   function parseInto(text, onPayload) {
@@ -369,7 +399,19 @@
      * bounding box. A cause that only shows up as a couple of vessels either way
      * has not been demonstrated; a real one shows up as a gulf.
      */
-    function materiallyMore(a, b) {
+    /**
+   * Appended to any verdict that blames the MMSI filter.
+   *
+   * It used to be the finding and the fix in one. It is now only the finding:
+   * the board stopped filtering after a day of real running said the same
+   * thing. Without this line the report reads as a job to do, and somebody
+   * spends an afternoon making a change that is already in the file.
+   */
+  var ALREADY_UNFILTERED = '\n\nThe board no longer sends that filter — it ' +
+    'takes the whole feed and picks this fleet out of it. So this is a ' +
+    'confirmation, not something left to do.';
+
+  function materiallyMore(a, b) {
       return a >= b + 5 && a >= b * 1.5;
     }
 
@@ -414,11 +456,13 @@
           'of ' + fleet.length + ', over the same window and in the same conditions, ' +
           'found ' + n(full) + '.\n\nThey are transmitting, and the only difference ' +
           'between the two requests was the length of the MMSI list. A subscription ' +
-          'filtering ' + fleet.length + ' vessels is not being honoured in full.';
+          'filtering ' + fleet.length + ' vessels is not being honoured in full.' +
+          ALREADY_UNFILTERED;
       } else if (unfiltered && materiallyMore(n(unfiltered), n(full))) {
         verdict = 'With no MMSI filter at all, ' + n(unfiltered) + ' of the silent ' +
           'vessels came through; with the full list, ' + n(full) + '. They are ' +
-          'transmitting and the filter is dropping them — not the key, not the box.';
+          'transmitting and the filter is dropping them — not the key, not the box.' +
+          ALREADY_UNFILTERED;
       } else if (reversed && materiallyMore(n(reversed), n(unfiltered))) {
         verdict = 'The reversed bounding box heard ' + n(reversed) + ' of the silent ' +
           'vessels where ours heard ' + n(unfiltered) + '. The server reads the box ' +
@@ -763,14 +807,26 @@
     var mmsi = meta.MMSI != null ? String(meta.MMSI) : null;
     if (!mmsi) return;
 
-    if (Ais.mmsiList && Ais.mmsiList.indexOf(mmsi) !== -1) {
-      Ais.matched++;
-      window.Store.matched++;
-    }
     // The first message of any kind means the subscription was accepted and the
     // feed is delivering. That is a different thing from having heard one of
     // ours, and the board should not claim the second when it only has the first.
     if (window.Store.connection === 'listening') window.Store.setConnection('open');
+
+    /**
+     * Now that the whole world arrives, this is the hot path: one hash lookup
+     * per message and an early return for the overwhelming majority of them.
+     * `indexOf` down a sixty-one-long array would be six thousand string
+     * comparisons a second for nothing.
+     *
+     * Against the STORE's map, not a copy kept here. A second list of our own
+     * MMSIs is a second thing to keep in step with a fleet edited in the
+     * console — and an empty one would silence the whole board while the pill
+     * stayed green, which is the failure this file has already made twice.
+     * `Store.byMmsi` is what applyFix consults anyway.
+     */
+    if (!window.Store.byMmsi[mmsi]) return;
+    Ais.matched++;
+    window.Store.matched++;
 
     var at = parseTime(meta.time_utc);
     var body = payload.Message || {};

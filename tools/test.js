@@ -1867,9 +1867,9 @@ test('a socket that opened and then dropped is reconnecting, not blocked', () =>
 
     const sub = JSON.parse(socket.sent[0]);
     assert.strictEqual(sub.APIKey, 'k'.repeat(40), 'the key goes up first');
-    assert.deepStrictEqual(sub.FiltersShipMMSI, ['319000001'], 'ours only, as strings');
-    assert.strictEqual(sub.FilterMessageTypes, undefined,
-      'and no message-type filter — every type this fleet sends, sorted here');
+    assert.strictEqual(sub.FiltersShipMMSI, undefined,
+      'and nothing is narrowed at the server — see "nothing is filtered at the server"');
+    assert.strictEqual(sub.FilterMessageTypes, undefined);
 
     socket.onmessage({ data: JSON.stringify({
       MessageType: 'PositionReport',
@@ -2117,13 +2117,20 @@ test('heard and matched are counted apart', () => {
   });
 });
 
-test('the subscription does not restrict message types', () => {
+test('nothing is filtered at the server', () => {
   /**
-   * Naming the five types this code understands looked tidy and cost most of
-   * the fleet. A probe sending the same sixty-one MMSIs WITHOUT that field heard
-   * nine vessels the board had never heard in a day — same key, same box, three
-   * minutes. Filtering by type is done here instead, where it cannot silently
-   * drop a vessel whose transponder speaks in a way nobody listed.
+   * Both server-side filters cost us most of the fleet, and each took a
+   * different kind of evidence to see.
+   *
+   * FilterMessageTypes named the five types this code understands. A probe
+   * sending the same sixty-one MMSIs without it heard nine vessels the board
+   * had never heard in a day — same key, same box, three minutes.
+   *
+   * FiltersShipMMSI took a full day of real running: thirty-one of sixty-one,
+   * holding steady, while a second provider had every one of the silent ones
+   * reporting within minutes. The same key unfiltered floods.
+   *
+   * The fleet is picked out in handle() instead, where it can be watched.
    */
   withFakeSocket((sockets) => {
     Ais.start('k'.repeat(40), [319000001]);
@@ -2132,10 +2139,58 @@ test('the subscription does not restrict message types', () => {
     socket.onopen();
     const sub = JSON.parse(socket.sent[0]);
     assert.strictEqual(sub.FilterMessageTypes, undefined,
-      'the server sends every type it has for our vessels');
-    assert.deepStrictEqual(sub.FiltersShipMMSI, ['319000001'],
-      'and the narrowing that matters — ours only — is still there');
+      'every message type the server has');
+    assert.strictEqual(sub.FiltersShipMMSI, undefined,
+      'and every vessel, not only ours');
   });
+});
+
+test('a message for a vessel that is not ours is counted and dropped', () => {
+  /**
+   * The whole world now arrives, so this is the gate that used to be the
+   * server's. It has to let ours through, drop everyone else's, and still
+   * count the traffic — "heard" against "matched" is what tells you the feed is
+   * alive while the fleet is quiet.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  const before = { heard: s.heard, matched: s.matched };
+  try {
+    const fix = (mmsi) => Ais._handle({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: mmsi, time_utc: new Date().toISOString() },
+      Message: { PositionReport: {
+        Valid: true, Latitude: 39.5, Longitude: 2.6, Cog: 91.2, Sog: 9.4
+      } }
+    });
+    fix(FLEET[0].mmsi);
+    fix('999999999');                 // a container ship off Rotterdam
+    fix('123456789');
+  } finally {
+    window.Store = original;
+  }
+
+  assert.strictEqual(s.heard - before.heard, 3, 'all three counted as heard');
+  assert.strictEqual(s.matched - before.matched, 1, 'one of them ours');
+  assert.ok(s.byMmsi[String(FLEET[0].mmsi)].fix, 'ours got her fix');
+  assert.strictEqual(s.byMmsi['999999999'], undefined,
+    'and nobody else left a trace — at world rate that would be a leak');
+});
+
+test('the fleet gate reads the store, not a copy of the fleet', () => {
+  /**
+   * A second list of our own MMSIs kept in ais.js is a second thing to keep in
+   * step with a fleet edited in the console, and an empty one would silence the
+   * whole board while the pill stayed green. Store.byMmsi is what applyFix
+   * consults anyway.
+   */
+  const source = readRepo('js/ais.js');
+  const handle = source.slice(source.indexOf('function handle('),
+                              source.indexOf('function handle(') + 2000);
+  assert.ok(/window\.Store\.byMmsi\[mmsi\]/.test(handle),
+    'the gate is the store\'s own map');
+  assert.ok(!/Ais\.mine/.test(source), 'and there is no second copy of it');
 });
 
 test('a message type we do not handle is ignored, not fatal', () => {
@@ -2157,21 +2212,41 @@ test('a message type we do not handle is ignored, not fatal', () => {
 
 test('the subscription matches the published schema', () => {
   // Field names checked against aisstream/ais-message-models, not recalled:
-  // APIKey, BoundingBoxes, FiltersShipMMSI (strings, 9 characters). The optional
-  // FilterMessageTypes is deliberately not sent — see the check above.
+  // APIKey, BoundingBoxes, and the optional FiltersShipMMSI (strings, nine
+  // characters) which is deliberately not sent — see the check above.
   withFakeSocket((sockets) => {
     Ais.start('k'.repeat(40), [319000001, 232012345]);
     const socket = sockets[0];
     socket.readyState = 1;
     socket.onopen();
     const sub = JSON.parse(socket.sent[0]);
-    assert.deepStrictEqual(Object.keys(sub).sort(),
-      ['APIKey', 'BoundingBoxes', 'FiltersShipMMSI']);
-    sub.FiltersShipMMSI.forEach((m) => {
-      assert.strictEqual(typeof m, 'string', 'MMSIs go up as strings');
-      assert.strictEqual(m.length, 9, 'nine characters, as the schema requires');
-    });
+    assert.deepStrictEqual(Object.keys(sub).sort(), ['APIKey', 'BoundingBoxes']);
   });
+});
+
+test('the MMSI filter can be put back, and goes up in the shape the schema wants', () => {
+  // Kept working rather than deleted: on a metered connection, hearing half the
+  // fleet cheaply may one day be the lesser problem. Nine-character strings, as
+  // the published model requires — a number or a short string is rejected.
+  const original = CONFIG.ais.filterAtServer;
+  CONFIG.ais.filterAtServer = true;
+  try {
+    withFakeSocket((sockets) => {
+      Ais.start('k'.repeat(40), [319000001, 232012345]);
+      const socket = sockets[0];
+      socket.readyState = 1;
+      socket.onopen();
+      const sub = JSON.parse(socket.sent[0]);
+      assert.deepStrictEqual(Object.keys(sub).sort(),
+        ['APIKey', 'BoundingBoxes', 'FiltersShipMMSI']);
+      sub.FiltersShipMMSI.forEach((m) => {
+        assert.strictEqual(typeof m, 'string', 'MMSIs go up as strings');
+        assert.strictEqual(m.length, 9, 'nine characters, as the schema requires');
+      });
+    });
+  } finally {
+    CONFIG.ais.filterAtServer = original;
+  }
 });
 
 test('the probe log is drawn from live state, never accumulated', () => {
@@ -3391,6 +3466,56 @@ test('the board never calls one place by two names', () => {
   assert.strictEqual(here[0].name, office.label,
     'and under the same name the clock uses — got "' + here[0].name +
     '" against "' + office.label + '"');
+});
+
+
+test('what the feed costs is measured, not estimated', () => {
+  /**
+   * Taking the whole world instead of asking for sixty-one vessels puts real
+   * traffic on somebody's office connection. Measured on a stand-in running at
+   * the rate the live key delivers — about a hundred messages a second — that
+   * is 144 MB an hour. Nobody should have to take my word for it, least of all
+   * on a connection I cannot see, so the panel shows the figure from their own
+   * run.
+   */
+  const ais = readRepo('js/ais.js');
+  const receive = ais.slice(ais.indexOf('function receive('),
+                            ais.indexOf('function receive(') + 700);
+  assert.ok(/Store\.bytes \+= frameBytes\(event\.data\)/.test(receive),
+    'counted off the wire, before anything is decoded');
+
+  // A UTF-8 string counted by character would under-report a feed full of
+  // accented ship names.
+  const fn = ais.slice(ais.indexOf('function frameBytes('),
+                       ais.indexOf('function frameBytes(') + 500);
+  assert.ok(/byteLength/.test(fn), 'a binary frame is counted by its byte length');
+  assert.ok(/new Blob\(\[data\]\)\.size/.test(fn), 'and a string by its encoded size');
+
+  const settings = readRepo('js/settings.js');
+  assert.ok(/Fmt\.bytes\(r\.bytesPerHour\)/.test(settings), 'the panel says the rate');
+});
+
+test('the byte rate is reported against the same clock as the counts', () => {
+  // "144 MB an hour" beside "21 hours" has to mean the same stretch of time, or
+  // it is the per-socket-versus-per-feed mistake all over again.
+  const store = readRepo('js/store.js');
+  const rec = store.slice(store.indexOf('Store.reception = '),
+                          store.indexOf('var SETTLE_MS'));
+  assert.ok(/feedStartedAt/.test(rec) && /bytesPerHour/.test(rec),
+    'the rate is derived from feedStartedAt, like heard and matched');
+  assert.ok(/Store\.bytes \/ seconds \* 3600/.test(rec), 'and is a rate, not a total');
+});
+
+test('bytes are shown in the unit an allowance is sold in', () => {
+  // Decimal MB, because a broadband allowance is quoted in decimal gigabytes
+  // and this figure exists to be compared against one.
+  assert.strictEqual(Fmt.bytes(0), '0 B');
+  assert.strictEqual(Fmt.bytes(999), '999 B');
+  assert.strictEqual(Fmt.bytes(1500), '1.5 kB');
+  assert.strictEqual(Fmt.bytes(143.6e6), '144 MB');
+  assert.strictEqual(Fmt.bytes(3.4e9), '3.4 GB');
+  assert.strictEqual(Fmt.bytes(null), '—', 'and nothing is not zero');
+  assert.strictEqual(Fmt.bytes(Infinity), '—');
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

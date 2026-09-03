@@ -263,7 +263,14 @@
           : r.waiting
             ? '\nThe other ' + r.waiting + ' have said nothing. Beyond ten minutes ' +
               'that is out of range or transponder off, not late.'
-            : '');
+            : '') +
+        // What taking the whole world actually costs on this connection.
+        // Measured here rather than argued about anywhere else.
+        (r.bytesPerHour
+          ? '\nThe board reads every vessel on the feed and keeps its own: ' +
+            window.Fmt.bytes(r.bytesPerHour) + ' an hour on this connection, ' +
+            window.Fmt.bytes(r.bytes) + ' so far.'
+          : '');
     }
   }
 

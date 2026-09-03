@@ -21,6 +21,11 @@
     // messages received" in the same sentence as "21 hours" and read as a feed
     // that had almost stopped. It had reconnected a minute earlier.
     heard: 0, matched: 0, unreadable: 0,
+    // Bytes off the wire over that same stretch. The board takes the whole
+    // world's AIS and picks its own vessels out of it, which is the only way
+    // that has been shown to hear all of them — but it runs on somebody's
+    // office connection, so what it costs is measured and shown.
+    bytes: 0,
     connection: 'starting',    // starting | connecting | open | retrying | closed | demo
     vessels: [],               // in fleet.js order
     byMmsi: {},
@@ -279,11 +284,16 @@
     Store.vessels.forEach(function (v) {
       if (v.firstHeardAt) heard++; else waiting++;
     });
+    var seconds = Store.feedStartedAt
+      ? Math.max(1, (new Date() - Store.feedStartedAt) / 1000) : 0;
     return {
       heard: heard,
       waiting: waiting,
       total: Store.vessels.length,
       since: Store.feedStartedAt,
+      bytes: Store.bytes,
+      // Per hour, because that is the unit a monthly allowance is judged in.
+      bytesPerHour: seconds ? Store.bytes / seconds * 3600 : 0,
       // Whether the fleet is still assembling, in the sense that a vessel
       // alongside has not yet had time to say anything.
       settling: Store.feedStartedAt

@@ -59,6 +59,25 @@ window.CONFIG = {
   // "last known position" rather than as errors.
   ais: {
     endpoint: 'wss://stream.aisstream.io/v0/stream',
+
+    /**
+     * Ask the server for only our own vessels?
+     *
+     * No, and this was learned the hard way. Subscribing with FiltersShipMMSI
+     * reached thirty-one of sixty-one after a full day and stopped there, while
+     * a second provider had every one of the silent ones reporting within
+     * minutes. The same key with no filter floods — five and a half thousand
+     * frames in under a minute — and aisstream's own issue tracker carries the
+     * same complaint from other people more than once.
+     *
+     * So the board takes everything and picks its own fleet out of it. That
+     * costs bandwidth, which the AIS panel measures and shows in MB per hour
+     * rather than leaving to anyone's judgement. Turn this on to go back to
+     * asking the server, if a metered connection ever makes that the lesser
+     * problem.
+     */
+    filterAtServer: false,
+
     reconnectBaseMs: 2000,      // exponential backoff, capped below
     reconnectMaxMs: 60000,
     // A position older than this is drawn faded and labelled with its age.
