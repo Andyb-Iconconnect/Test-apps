@@ -139,7 +139,9 @@
       placeLand: v('--map-place-land', 'rgba(20, 40, 62, 0.75)'),
       siteHq: v('--map-site-hq', '#3CB4E4'),
       siteYard: v('--map-site-yard', 'rgba(147, 190, 220, 0.7)'),
-      sentinel: v('--sentinel', '#D4A64A')
+      sentinel: v('--sentinel', '#D4A64A'),
+      clusterFill: v('--map-cluster', 'rgba(16, 32, 48, 0.92)'),
+      clusterRing: v('--map-cluster-ring', 'rgba(139, 152, 168, 0.85)')
     };
   }
   Map.readTheme = function () { readTheme(); baseKey = ''; };
@@ -317,35 +319,61 @@
     // so the port names can be told which space is already spoken for. Yachts
     // win; ports yield. Then everything is painted in z-order.
     var placed = locateVessels(vessels);
-    var labels, claimed;
+    var groups = groupPlaced(placed, opts);
+    settleClusters(groups, opts);
+    var labels, claimed, winds, sites;
+
+    // Space is claimed in order of what matters: the marks, then the names, then
+    // the wind — which is an ornament and yields to both — then the chart's own
+    // place names, and last our offices. Whatever cannot fit is not drawn: a
+    // chart that prints everything it has prints nothing anyone can read.
+    //
+    // The wind used to be claimed BEFORE the names, so a breeze could push a
+    // yacht's name off the chart. It is the wrong way round: her name and her
+    // speed are why anyone is looking.
+    var boxes = markerBoxes(groups.singles).concat(clusterBoxes(groups.clusters));
+
     if (Map.profile) {
       var m2 = function (name, fn) {
         var t = performance.now(); var r = fn();
         Map.profile[name] = (Map.profile[name] || 0) + (performance.now() - t); return r;
       };
-      labels = m2('layout', function () { return opts.labels === false ? [] : layoutLabels(placed, opts); });
-      claimed = labels.map(function (l) { return l.box; }).concat(markerBoxes(placed));
+      labels = m2('layout', function () {
+        return opts.labels === false ? [] : layoutLabels(groups.singles, opts, boxes);
+      });
+      winds = m2('wind-layout', function () { return layoutWind(groups.singles, boxes); });
+      claimed = boxes;
       claimed = claimed.concat(m2('places', function () { return drawPlaces(claimed, opts); }));
       m2('ports', function () { drawPorts(claimed); });
-      claimed = claimed.concat(m2('sites', function () { return drawSites(claimed, opts); }));
+      sites = m2('sites', function () { return layoutSites(claimed, opts); });
+      claimed = claimed.concat(sites.boxes);
       m2('courses', function () { drawCourses(vessels); });
       m2('tracks', function () { drawTracks(vessels); });
-      m2('markers', function () { paintMarkers(placed, opts, now); });
-      m2('wind', function () { drawWind(placed); });
+      m2('clusters', function () { paintClusters(groups.clusters, now); });
+      m2('markers', function () { paintMarkers(groups.singles, opts, now); });
+      m2('wind', function () { drawWind(winds); });
       m2('labels', function () { paintLabels(labels); });
+      m2('site-marks', function () { paintSites(sites); });
       m2('scale', function () { drawScaleBar(opts); });
     } else {
-      labels = opts.labels === false ? [] : layoutLabels(placed, opts);
-      claimed = labels.map(function (l) { return l.box; }).concat(markerBoxes(placed));
+      labels = opts.labels === false ? [] : layoutLabels(groups.singles, opts, boxes);
+      winds = layoutWind(groups.singles, boxes);
+      claimed = boxes;
       // Place names go under the ports and the fleet, and yield to both.
       claimed = claimed.concat(drawPlaces(claimed, opts));
       drawPorts(claimed);
-      claimed = claimed.concat(drawSites(claimed, opts));
+      sites = layoutSites(claimed, opts);
+      claimed = claimed.concat(sites.boxes);
       drawCourses(vessels);
       drawTracks(vessels);
-      paintMarkers(placed, opts, now);
-      drawWind(placed);
+      paintClusters(groups.clusters, now);
+      paintMarkers(groups.singles, opts, now);
+      drawWind(winds);
       paintLabels(labels);
+      // Our own places paint last, over the fleet. Both marks are outlines, so
+      // a yacht sitting on Monaco still shows through the ring rather than
+      // being hidden by it — which is what the order was guarding against.
+      paintSites(sites);
       drawScaleBar(opts);
     }
 
@@ -357,7 +385,10 @@
     // Labels come with it: they are the thing most likely to collide with
     // something new, and a check that can read them is worth more than one that
     // has to squint at a screenshot.
-    Map.lastFrame = { placed: placed, labels: labels, driftX: driftPx, driftY: driftPy };
+    Map.lastFrame = {
+      placed: placed, singles: groups.singles, clusters: groups.clusters,
+      labels: labels, driftX: driftPx, driftY: driftPy
+    };
     return placed;
   };
 
@@ -377,6 +408,25 @@
    * effectively not on the chart. This returns all of them with their screen
    * positions, so the caller can offer a choice.
    */
+  /**
+   * The crowd under the pointer, if the pointer is on one.
+   *
+   * A cluster is bigger than a marker and stands in for vessels that may be a
+   * little outside it, so this answers by the disc's own radius rather than by
+   * a finger's reach.
+   */
+  Map.clusterAt = function (x, y) {
+    var frame = Map.lastFrame;
+    if (!frame || !frame.clusters) return null;
+    var best = null, bestD = Infinity;
+    for (var i = 0; i < frame.clusters.length; i++) {
+      var c = frame.clusters[i];
+      var d = Math.hypot(x - (c.drawnX + frame.driftX), y - (c.drawnY + frame.driftY));
+      if (d <= c.r + 4 && d < bestD) { bestD = d; best = c; }
+    }
+    return best;
+  };
+
   Map.hitTestAll = function (x, y, radius) {
     var frame = Map.lastFrame;
     if (!frame) return [];
@@ -939,28 +989,26 @@
   /**
    * Headquarters and build yards.
    *
-   * Drawn above the ports and below the fleet: they are fixed context, and a
-   * yacht must never be hidden behind one. Both marks are outlines rather than
-   * filled shapes, so they read as places rather than as vessels — nothing on
-   * this chart should be mistaken for a boat that is not one.
+   * Laid out with the ports — they yield to the fleet for their *labels*, so a
+   * yacht's name always wins the space — but painted last, over everything.
+   * Both marks are outlines rather than filled shapes, so a vessel sitting on
+   * Monaco shows through the ring instead of being hidden by it, and nothing on
+   * this chart that is not a boat can be mistaken for one.
    *
    * The headquarters mark is the company's own device, the same ring-and-bar
    * the header draws: a circle open at twelve o'clock with a bar through the
    * gap. Drawing it here rather than loading artwork keeps it crisp at every
    * zoom and lets it take its colour from the stylesheet.
    */
-  function drawSites(claimed, opts) {
+  function layoutSites(claimed, opts) {
     var sites = (window.CONFIG && window.CONFIG.sites) || [];
-    if (!sites.length) return [];
+    var out = { marks: [], boxes: [] };
+    if (!sites.length) return out;
 
     var taken = claimed.slice();
-    var mine = [];
     var leftLimit = (opts && opts.inset && opts.inset.left ? opts.inset.left : 0) + 4;
     ctx.save();
     ctx.font = '500 11px ' + FONT;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
 
     for (var i = 0; i < sites.length; i++) {
       var site = sites[i];
@@ -970,11 +1018,13 @@
       if (x < -40 || x > width + 40 || y < -30 || y > height + 30) continue;
 
       var yard = site.kind === 'yard';
-      var colour = yard ? theme.siteYard : theme.siteHq;
-      if (yard) drawYardMark(x, y, colour); else drawHqMark(x, y, colour);
+      var mark = {
+        x: x, y: y, yard: yard,
+        colour: yard ? theme.siteYard : theme.siteHq,
+        text: null
+      };
 
-      var text = site.name;
-      var box = { x: x + 11, y: y - 7, w: ctx.measureText(text).width + 4, h: 14 };
+      var box = { x: x + 11, y: y - 7, w: ctx.measureText(site.name).width + 4, h: 14 };
       // Our own places yield to the fleet, like the ports do — but unlike a
       // port, one that cannot be labelled is still worth marking.
       //
@@ -983,23 +1033,53 @@
       // as text tangled in the list. Letchworth did exactly that.
       if (box.x >= leftLimit && box.x + box.w < width - 4 && !collides(box, taken, null)) {
         taken.push(box);
-        mine.push(box);
-        ctx.fillStyle = colour;
-        ctx.globalAlpha = 0.85;
-        ctx.fillText(text, x + 11, y);
-        ctx.globalAlpha = 1;
+        out.boxes.push(box);
+        mark.text = site.name;
       }
+      out.marks.push(mark);
     }
     ctx.restore();
-    return mine;
+    return out;
+  }
+
+  function paintSites(sites) {
+    if (!sites || !sites.marks.length) return;
+    ctx.save();
+    ctx.font = '500 11px ' + FONT;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+
+    sites.marks.forEach(function (m) {
+      // Drawn twice: a dark under-stroke, then the mark itself. Over open sea
+      // that costs nothing; over a chevron it is what keeps the ring readable.
+      if (m.yard) {
+        drawYardMark(m.x, m.y, HALO, 3.6);
+        drawYardMark(m.x, m.y, m.colour);
+      } else {
+        drawHqMark(m.x, m.y, HALO, 4);
+        drawHqMark(m.x, m.y, m.colour);
+      }
+      if (!m.text) return;
+      // A halo, because this now paints over the fleet rather than under it and
+      // the type has to hold against whatever ends up beneath it.
+      ctx.strokeStyle = HALO;
+      ctx.lineWidth = 3.5;
+      ctx.strokeText(m.text, m.x + 11, m.y);
+      ctx.fillStyle = m.colour;
+      ctx.globalAlpha = 0.9;
+      ctx.fillText(m.text, m.x + 11, m.y);
+      ctx.globalAlpha = 1;
+    });
+    ctx.restore();
   }
 
   // Centre (50,55) radius 33 in the header's 100-unit box, with a gap at twelve
   // o'clock for the bar. Scaled to a 7px radius here and drawn the same way.
-  function drawHqMark(x, y, colour) {
+  function drawHqMark(x, y, colour, weight) {
     var r = 7;
     ctx.strokeStyle = colour;
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = weight || 1.6;
     ctx.beginPath();
     // The arc runs the long way round, from just right of the gap clockwise
     // back to just left of it, so the opening sits square at the top.
@@ -1012,10 +1092,10 @@
   }
 
   // A diamond: a facility, not a vessel and not a port.
-  function drawYardMark(x, y, colour) {
+  function drawYardMark(x, y, colour, weight) {
     var r = 5.5;
     ctx.strokeStyle = colour;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = weight || 1.4;
     ctx.beginPath();
     ctx.moveTo(x, y - r);
     ctx.lineTo(x + r, y);
@@ -1140,13 +1220,12 @@
    * points the opposite way — towards where it is going, which is what anyone
    * reading a chart expects an arrow to mean.
    */
-  function drawWind(placed) {
-    for (var i = 0; i < placed.length; i++) {
-      var w = placed[i].vessel.weather;
+  function drawWind(winds) {
+    for (var i = 0; i < winds.length; i++) {
+      var w = winds[i].vessel.weather;
       if (!w || w.windSpeed == null || w.windDirection == null) continue;
-      if (placed[i].vessel.derived.discreet) continue;
 
-      var x = placed[i].x + 22, y = placed[i].y - 20;
+      var x = winds[i].x, y = winds[i].y;
       var heading = (w.windDirection + 180) * Math.PI / 180;
       var dx = Math.sin(heading), dy = -Math.cos(heading);
       var len = 9;
@@ -1271,24 +1350,225 @@
     var boxes = [];
     placed.forEach(function (p) {
       boxes.push({ x: p.x - 9, y: p.y - 9, w: 18, h: 18, owner: p.vessel.yacht.id });
-      // The wind arrow and its speed sit up and to the right of the marker.
-      // Without claiming that space the name label lands on top of it, which is
-      // exactly what happened the first time.
-      if (windBox(p)) boxes.push(windBox(p));
     });
     return boxes;
   }
 
-  function windBox(p) {
+  /* --- Crowds ------------------------------------------------------------- */
+
+  /**
+   * Which vessels are drawn as themselves and which as part of a crowd.
+   *
+   * Off by default nowhere: a chart that lies about how many yachts are in a
+   * bay is worse than one that draws a disc. `opts.cluster === false` exists so
+   * a test can measure the ungrouped chart.
+   */
+  function groupPlaced(placed, opts) {
+    if (opts.cluster === false || !window.Cluster) {
+      return { clusters: [], singles: placed };
+    }
+    return window.Cluster.group(placed, opts.clusterRadius, opts.highlight);
+  }
+
+  function clusterBoxes(clusters) {
+    return clusters.map(function (c) {
+      return { x: c.drawnX - c.r, y: c.drawnY - c.r, w: c.r * 2, h: c.r * 2 };
+    });
+  }
+
+  /**
+   * Where each crowd is actually drawn.
+   *
+   * The yacht under the spotlight is held out of the crowd she is in, which is
+   * right — you asked for her by name — but she is still standing in the same
+   * bay, so her marker lands on the disc and buries the count.
+   *
+   * The disc moves, not the yacht. A crowd's centre is an average of several
+   * positions and was never claimed to be one of them; a marker IS a position
+   * and may never be moved. So the disc is the one of the two that can give
+   * way. Settled here rather than at paint time so the label layout, the boxes
+   * and the hit test all agree about where it ended up.
+   */
+  function settleClusters(groups, opts) {
+    // Monaco is both a headquarters and the busiest bay in the fleet, so the
+    // office mark and the crowd's count land on precisely the same pixels. The
+    // lone markers matter for the same reason: a vessel is never hidden to
+    // tidy up a disc, so if the two overlap it is the digit that suffers.
+    var fixed = sitePoints();
+    groups.singles.forEach(function (p) {
+      fixed.push({ x: p.x, y: p.y, r: p.vessel.yacht.id === opts.highlight ? 11 : 8 });
+    });
+
+    groups.clusters.forEach(function (c) {
+      var x = c.x, y = c.y;
+      // Two passes: pushing clear of one obstacle can slide the disc into
+      // another. Two is enough for the handful of marks around any one crowd,
+      // and a bounded loop cannot stall a frame.
+      for (var pass = 0; pass < 2; pass++) {
+        for (var i = 0; i < fixed.length; i++) {
+          var f = fixed[i];
+          var dx = x - f.x, dy = y - f.y;
+          var d = Math.hypot(dx, dy);
+          var want = c.r + f.r + 4;
+          if (d >= want) continue;
+          if (d < 0.5) { dx = 0; dy = -1; d = 1; }   // dead centre: straight up
+          x = f.x + (dx / d) * want;
+          y = f.y + (dy / d) * want;
+        }
+      }
+      // A disc shoved right across the bay by a thicket of marks has stopped
+      // saying where the crowd is, and a leader long enough to need following
+      // is no better than the pile it replaced. Past that, stay put and let
+      // something overlap.
+      if (Math.hypot(x - c.x, y - c.y) > c.r * 2.5) { x = c.x; y = c.y; }
+      c.drawnX = x;
+      c.drawnY = y;
+    });
+  }
+
+  // The office and yard marks, as obstacles. Their positions depend on nothing
+  // but the camera, so they can be known before anything is laid out.
+  function sitePoints() {
+    var sites = (window.CONFIG && window.CONFIG.sites) || [];
+    var out = [];
+    for (var i = 0; i < sites.length; i++) {
+      if (sites[i].lat == null || sites[i].lon == null) continue;
+      var x = sx(window.Geo.worldX(sites[i].lon));
+      var y = sy(window.Geo.worldY(sites[i].lat));
+      if (x < -40 || x > width + 40 || y < -30 || y > height + 30) continue;
+      out.push({ x: x, y: y, r: sites[i].kind === 'yard' ? 7 : 11 });
+    }
+    return out;
+  }
+
+  /**
+   * A crowd, drawn as one: a disc carrying its count.
+   *
+   * Deliberately not a vessel shape and not a status colour. Nothing on this
+   * chart that is not a boat may be mistaken for one, and a crowd of nine is a
+   * fact about the chart rather than about any yacht in it.
+   */
+  function paintClusters(clusters, now) {
+    if (!clusters.length) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    clusters.forEach(function (c) {
+      var cx = c.drawnX, cy = c.drawnY;
+
+      // Where a disc has been pushed off its own centre to clear an office mark
+      // or the spotlighted yacht, a hairline says so. A count floating a
+      // hundred miles from the yachts it counts is a chart telling a lie; the
+      // same count on the end of a leader is a chart being explicit about a
+      // symbol it had to move.
+      if (Math.hypot(cx - c.x, cy - c.y) > 1) {
+        ctx.beginPath();
+        ctx.moveTo(c.x, c.y);
+        ctx.lineTo(cx, cy);
+        ctx.strokeStyle = theme.clusterRing;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.5;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        // And a tick on the true centre, so the line ends somewhere.
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 1.6, 0, Math.PI * 2);
+        ctx.fillStyle = theme.clusterRing;
+        ctx.fill();
+      }
+      // Gold survives the crowd. "Where are my out-of-hours customers" is the
+      // question the glow exists to answer, and it must still answer it when
+      // the customer is one of nine yachts in the same bay.
+      if (c.sentinel) drawSentinelGlow(cx, cy, now);
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, c.r, 0, Math.PI * 2);
+      ctx.fillStyle = theme.clusterFill;
+      ctx.fill();
+
+      ctx.lineWidth = c.sentinel ? 2 : 1.6;
+      ctx.strokeStyle = c.sentinel ? theme.sentinel : theme.clusterRing;
+      ctx.stroke();
+
+      // How much of the crowd is moving, as an arc off the top of the ring, in
+      // the same blue a single underway yacht is drawn in. Nine alongside and
+      // nine underway are different pictures and the count cannot tell them
+      // apart; a ring that is a quarter blue says "most of them are in".
+      if (c.underway > 0) {
+        var share = c.underway / c.members.length;
+        ctx.beginPath();
+        ctx.arc(cx, cy, c.r, -Math.PI / 2, -Math.PI / 2 + share * Math.PI * 2);
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = theme.underway;
+        ctx.stroke();
+      }
+
+      ctx.font = '600 ' + (c.members.length > 9 ? 12 : 13) + 'px ' + FONT;
+      ctx.fillStyle = theme.label;
+      ctx.fillText(String(c.members.length), cx, cy + 0.5);
+    });
+
+    ctx.restore();
+  }
+
+  /**
+   * Which wind arrows there is room for.
+   *
+   * The wind used to draw at every marker unconditionally, and the label layout
+   * was told to work around all of them. In a bay holding a dozen yachts that
+   * put a dozen arrows and a dozen speeds inside a hundred pixels — the single
+   * biggest source of the mess — while saying nothing, because the wind two
+   * miles away is the same wind.
+   *
+   * Now it is what it always was: an ornament. It draws where there is room and
+   * stays out of the way where there is not.
+   */
+  function layoutWind(singles, boxes) {
+    var out = [];
+    for (var i = 0; i < singles.length; i++) {
+      var p = singles[i];
+      if (!hasWind(p)) continue;
+      for (var k = 0; k < WIND_OFFSETS.length; k++) {
+        var box = windBox(p, WIND_OFFSETS[k]);
+        if (box.x < 0 || box.x + box.w > width) continue;
+        if (box.y < 0 || box.y + box.h > height) continue;
+        // Her own marker is not an obstacle — the arrow belongs to it. Passed
+        // as selfId rather than owning the box, because the box must still
+        // block her NAME, which is the collision this was built to stop.
+        if (collides(box, boxes, p.vessel.yacht.id)) continue;
+        boxes.push(box);
+        out.push({ vessel: p.vessel, x: box.x + 12, y: box.y + 12 });
+        break;
+      }
+    }
+    return out;
+  }
+
+  // Where a wind arrow may sit relative to its marker, in order of preference:
+  // the box's top-left corner. Up and to the right first, as it always was;
+  // the rest are what it falls back to when her name has taken that space.
+  var WIND_OFFSETS = [[10, -32], [-72, -32], [10, 8], [-72, 8], [10, -54], [-72, -54]];
+  var WIND_BOX = { w: 62, h: 24 };
+
+  function hasWind(p) {
     var w = p.vessel.weather;
-    if (!w || w.windSpeed == null || w.windDirection == null) return null;
-    if (p.vessel.derived.discreet) return null;
-    // Centre (p.x + 22, p.y - 20), arrow half-length 9, then the speed out to +48.
-    //
-    // Deliberately NOT owned by the vessel. `collides` lets a label sit on its
-    // own marker, which is right for the marker and wrong for this: her name
-    // would land squarely on her own wind arrow, which is what it did.
-    return { x: p.x + 10, y: p.y - 32, w: 62, h: 24, tight: true };
+    if (!w || w.windSpeed == null || w.windDirection == null) return false;
+    return !p.vessel.derived.discreet;
+  }
+
+  // The arrow's half-length is 9 and the speed runs out to about +48, so the
+  // box is 62 by 24 with the arrow's centre 12 in from its top-left corner.
+  //
+  // Deliberately NOT owned by the vessel. `collides` lets a label sit on its own
+  // marker, which is right for the marker and wrong for this: her name would
+  // land squarely on her own wind arrow, which is what it did.
+  function windBox(p, offset) {
+    if (!hasWind(p)) return null;
+    return {
+      x: p.x + offset[0], y: p.y + offset[1],
+      w: WIND_BOX.w, h: WIND_BOX.h, tight: true
+    };
   }
 
   function paintMarkers(placed, opts, now) {
@@ -1468,10 +1748,10 @@
     [0, -26, 'center'], [0, 28, 'center']
   ];
 
-  function layoutLabels(placed, opts) {
-    // Seed the occupancy list with the markers, so a label never lands on top of
-    // another yacht's chevron.
-    var boxes = markerBoxes(placed);
+  function layoutLabels(placed, opts, seeded) {
+    // The occupancy list already holds the markers, the crowds and whichever
+    // wind arrows found room, so a label never lands on top of any of them.
+    var boxes = seeded || markerBoxes(placed);
     var out = [];
     var scale = opts.labelScale || 1;
     var nameSize = Math.round(14 * scale);

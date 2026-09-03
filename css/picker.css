@@ -16,9 +16,20 @@
   background: var(--surface-1);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
   font: inherit;
+  /* A crowd on the chart can now be twenty-one deep, so the list has to have
+     an end to it rather than running off the bottom of the screen. */
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, 26rem);
+}
+
+.chart-picker-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .chart-picker-head {
+  flex: none;
   padding: 0.3rem 0.5rem 0.4rem;
   font-size: 0.68rem;
   letter-spacing: 0.09em;

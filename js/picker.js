@@ -36,6 +36,17 @@
    */
   Picker.handleClick = function (x, y, select) {
     Picker.close();
+
+    // A crowd drawn as one disc must open as the crowd it stands for, not as
+    // whatever happens to lie within a finger's reach of where you clicked.
+    // Otherwise the number on the disc and the length of the list disagree,
+    // which is the one thing a count must never do.
+    var crowd = window.FleetMap.clusterAt ? window.FleetMap.clusterAt(x, y) : null;
+    if (crowd) {
+      open(crowd.members.map(function (p) { return { vessel: p.vessel }; }), x, y, select);
+      return true;
+    }
+
     var under = window.FleetMap.hitTestAll(x, y, Picker.RADIUS);
     if (!under.length) return false;
     if (under.length === 1) {
@@ -70,11 +81,20 @@
     var head = document.createElement('div');
     head.className = 'chart-picker-head';
     head.textContent = under.length + ' vessels here';
+    // Alphabetical, so the same crowd always reads the same way round.
+    under = under.slice().sort(function (a, b) {
+      var an = window.Vessel.publicName(a.vessel.yacht, a.vessel.index);
+      var bn = window.Vessel.publicName(b.vessel.yacht, b.vessel.index);
+      return an < bn ? -1 : an > bn ? 1 : 0;
+    });
     host.appendChild(head);
 
+    var list = document.createElement('div');
+    list.className = 'chart-picker-list';
     under.forEach(function (hit) {
-      host.appendChild(row(hit.vessel));
+      list.appendChild(row(hit.vessel));
     });
+    host.appendChild(list);
 
     document.body.appendChild(host);
     position(x, y);

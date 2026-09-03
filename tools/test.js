@@ -43,9 +43,9 @@ function stubCanvasContext() {
 const readRepo = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 ['config.js', 'fleet.js', 'data/mid.js', 'data/ports.js', 'data/world-land.js',
  'js/geo.js', 'js/format.js', 'js/store.js', 'js/ais.js', 'js/vessel.js',
- 'js/demo.js', 'js/csv.js', 'js/map.js'].forEach(load);
+ 'js/demo.js', 'js/csv.js', 'js/map.js', 'js/cluster.js'].forEach(load);
 
-const { Geo, Fmt, Store, Ais, Vessel, Demo, Csv, PORTS, CONFIG } = window;
+const { Geo, Fmt, Store, Ais, Vessel, Demo, Csv, PORTS, CONFIG, Cluster } = window;
 const FleetMap = window.FleetMap;
 
 // The behavioural tests run against a fixed sample fleet, NOT against fleet.js.
@@ -2821,10 +2821,10 @@ test('our own places survive anonymous mode', () => {
   // Anonymous mode withholds the CLIENTS' identities. These are ours, and on a
   // board being shown to a prospect they are rather the point.
   const source = readRepo('js/map.js');
-  const draw = source.slice(source.indexOf('function drawSites'),
-                            source.indexOf('function drawSites') + 2000);
+  const draw = source.slice(source.indexOf('function layoutSites'),
+                            source.indexOf('function layoutSites') + 2000);
   assert.ok(!/publicName|showsIdentity|anonymous/i.test(draw),
-    'drawSites does not consult the anonymity gate');
+    'layoutSites does not consult the anonymity gate');
   assert.ok(/CONFIG\.sites/.test(draw), 'and reads them straight from config');
 });
 
@@ -2994,6 +2994,250 @@ test('a drag is not a click, and browsing suspends automatic aiming', () => {
     'and choosing a vessel gives the chart back, because that is an instruction to look');
   assert.ok(/chart-home/.test(readRepo('console.html')),
     'there is a visible way back, not one you have to know about');
+});
+
+
+/* --- Crowds ---------------------------------------------------------------- */
+
+// A stand-in for what the map hands the clusterer.
+function at(id, x, y, extra) {
+  const o = extra || {};
+  return {
+    x, y,
+    vessel: {
+      yacht: { id, name: id, sentinel: !!o.sentinel },
+      derived: { status: o.status || 'moored', discreet: !!o.discreet }
+    }
+  };
+}
+
+test('a crowd becomes one mark and the loners are left alone', () => {
+  const placed = [
+    at('a', 100, 100), at('b', 108, 104), at('c', 96, 112), at('d', 112, 96),
+    at('far', 600, 400)
+  ];
+  const g = Cluster.group(placed, 26, null);
+
+  assert.strictEqual(g.clusters.length, 1, 'the four in the bay are one crowd');
+  assert.strictEqual(g.clusters[0].members.length, 4);
+  assert.strictEqual(g.singles.length, 1, 'and the one out at sea is still herself');
+  assert.strictEqual(g.singles[0].vessel.yacht.id, 'far');
+});
+
+test('two side by side stay two vessels', () => {
+  // Collapsing a pair into a disc reading "2" trades two headings for a digit
+  // and buys nothing: both markers were already readable.
+  const g = Cluster.group([at('a', 200, 200), at('b', 210, 204)], 26, null);
+  assert.strictEqual(g.clusters.length, 0);
+  assert.strictEqual(g.singles.length, 2);
+});
+
+test('every vessel comes out exactly once', () => {
+  /**
+   * The failure this guards against is a count that lies. The greedy sweep
+   * consumes members as it goes; get the bookkeeping wrong and a yacht is
+   * either drawn twice or silently dropped off the chart, and the number on the
+   * disc stops meaning anything.
+   */
+  const placed = [];
+  for (let i = 0; i < 60; i++) {
+    // Three loose knots plus a scatter, which is roughly the Mediterranean.
+    const knot = i % 3;
+    placed.push(at('v' + i, 150 + knot * 90 + (i % 7) * 6, 200 + knot * 40 + (i % 5) * 7));
+  }
+  const g = Cluster.group(placed, 26, null);
+
+  const seen = new Set();
+  g.singles.forEach((p) => seen.add(p.vessel.yacht.id));
+  g.clusters.forEach((c) => c.members.forEach((p) => seen.add(p.vessel.yacht.id)));
+  assert.strictEqual(seen.size, 60, 'none lost');
+
+  const total = g.singles.length +
+    g.clusters.reduce((n, c) => n + c.members.length, 0);
+  assert.strictEqual(total, 60, 'and none counted twice');
+
+  assert.ok(g.clusters.length + g.singles.length < 20,
+    'and sixty yachts draw as fewer than twenty marks — got ' +
+    (g.clusters.length + g.singles.length));
+});
+
+test('the selected yacht is never swallowed by a crowd', () => {
+  // You asked for her by name. A disc reading "4" is not an answer.
+  const placed = [at('a', 100, 100), at('b', 104, 104), at('c', 108, 96), at('me', 102, 108)];
+  const g = Cluster.group(placed, 26, 'me');
+
+  assert.ok(g.singles.some((p) => p.vessel.yacht.id === 'me'), 'she is drawn as herself');
+  g.clusters.forEach((c) => {
+    assert.ok(!c.members.some((p) => p.vessel.yacht.id === 'me'),
+      'and is not also inside the crowd');
+  });
+});
+
+test('a crowd holding a Sentinel yacht still shows gold', () => {
+  /**
+   * The gold glow exists to answer "where are my out-of-hours customers" at a
+   * glance. A crowd that hides one has taken the answer away in exactly the
+   * place — a busy marina — where it is most likely to be needed.
+   */
+  const g = Cluster.group([
+    at('a', 100, 100), at('b', 106, 104), at('s', 110, 98, { sentinel: true })
+  ], 26, null);
+
+  assert.strictEqual(g.clusters.length, 1);
+  assert.strictEqual(g.clusters[0].sentinel, true);
+});
+
+test('a crowd reports how much of it is moving', () => {
+  const g = Cluster.group([
+    at('a', 100, 100, { status: 'underway' }),
+    at('b', 106, 104, { status: 'underway' }),
+    at('c', 110, 98, { status: 'moored' })
+  ], 26, null);
+  assert.strictEqual(g.clusters[0].underway, 2, 'two of the three');
+});
+
+test('a discreet vessel is never folded into a crowd', () => {
+  // Her position is deliberately vague and drawn as an area rather than a
+  // point. Averaging that into a centre would quietly make it precise again.
+  const g = Cluster.group([
+    at('a', 100, 100), at('b', 106, 104), at('c', 110, 98),
+    at('d', 104, 102, { discreet: true })
+  ], 26, null);
+
+  assert.ok(g.singles.some((p) => p.vessel.yacht.id === 'd'));
+  assert.strictEqual(g.clusters[0].members.length, 3);
+});
+
+test('the same positions group the same way twice', () => {
+  // A cluster that shimmers between frames is worse than no cluster at all.
+  const make = () => [
+    at('c', 108, 96), at('a', 100, 100), at('d', 112, 108),
+    at('b', 104, 104), at('e', 300, 300), at('f', 306, 304), at('g', 310, 296)
+  ];
+  const one = Cluster.group(make(), 26, null);
+  const two = Cluster.group(make().reverse(), 26, null);
+
+  const shape = (g) => g.clusters
+    .map((c) => c.members.map((p) => p.vessel.yacht.id).sort().join(','))
+    .sort().join(' | ');
+  assert.strictEqual(shape(one), shape(two),
+    'input order must not change the answer');
+});
+
+test('a crowd grows with its count but not without limit', () => {
+  const three = Cluster.radiusFor(3);
+  const twelve = Cluster.radiusFor(12);
+  const forty = Cluster.radiusFor(40);
+  assert.ok(twelve > three, 'a bigger crowd is a bigger mark');
+  assert.ok(forty - twelve < twelve - three, 'but it stops running away');
+  assert.ok(forty < 20, 'and never swallows the coast — got ' + forty.toFixed(1));
+});
+
+test('the wind yields to the fleet rather than the other way round', () => {
+  /**
+   * The mess in a busy sea was a wind arrow and a speed drawn at every single
+   * marker, unconditionally, with the labels told to work around all of them.
+   * A dozen yachts in one bay share one wind; twelve arrows saying so was the
+   * single biggest source of clutter on the chart.
+   */
+  const source = readRepo('js/map.js');
+  const layout = source.slice(source.indexOf('function layoutWind'),
+                              source.indexOf('function layoutWind') + 900);
+  assert.ok(/collides\(box, boxes/.test(layout),
+    'a wind arrow has to find room before it is drawn');
+
+  const draw = source.slice(source.indexOf('function drawWind'),
+                            source.indexOf('function drawWind') + 400);
+  assert.ok(/winds\[i\]/.test(draw) && !/placed/.test(draw),
+    'and drawWind paints the vetted list, not every marker');
+});
+
+test('our own places paint over the fleet, not under it', () => {
+  // Asked for directly: the offices are meant to be findable at a glance, and a
+  // chevron parked on Monaco was hiding the mark.
+  const source = readRepo('js/map.js');
+  // Both branches build the frame — one instrumented for the profiler, one not.
+  // Checking only the first meant a reordering of the other went unnoticed.
+  const body = source.slice(source.indexOf('Map.render = function'),
+                            source.indexOf('Map.lastFrame = {'));
+  const where = (needle) => [...body.matchAll(new RegExp(needle, 'g'))].map((m) => m.index);
+  const marks = where('paintMarkers\\(');
+  const names = where('paintLabels\\(');
+  const sites = where('paintSites\\(');
+  assert.strictEqual(sites.length, 2, 'both branches paint the site marks');
+  sites.forEach((at, i) => {
+    assert.ok(at > marks[i], 'over the fleet (branch ' + (i + 1) + ')');
+    assert.ok(at > names[i], 'and over the names (branch ' + (i + 1) + ')');
+  });
+  assert.ok(/drawHqMark\(m\.x, m\.y, HALO/.test(source),
+    'and carry a dark under-stroke so they read over whatever is beneath');
+});
+
+
+test('a crowd sitting on an office mark moves, and says that it moved', () => {
+  /**
+   * Monaco is both a headquarters and the busiest bay in the fleet, so the
+   * office mark lands on precisely the pixels the count is drawn in. The disc
+   * gives way rather than the mark — that was asked for — but a count floating
+   * clear of the yachts it counts is the chart lying about where they are, so
+   * the displacement is drawn as a leader back to the true centre.
+   */
+  const source = readRepo('js/map.js');
+  const settle = source.slice(source.indexOf('function settleClusters'),
+                              source.indexOf('function sitePoints'));
+  assert.ok(/sitePoints\(\)/.test(settle), 'the office marks are obstacles');
+  assert.ok(/c\.drawnX = x;/.test(settle),
+    'and the disc records where it ended up, separately from where it is');
+
+  const paint = source.slice(source.indexOf('function paintClusters'),
+                             source.indexOf('function paintClusters') + 1400);
+  assert.ok(/Math\.hypot\(cx - c\.x, cy - c\.y\) > 1/.test(paint),
+    'a moved disc is drawn with a leader back to the crowd');
+});
+
+test('the hit test follows the disc that was actually drawn', () => {
+  // Otherwise a nudged crowd opens on empty water and does nothing where the
+  // number is — which is the only place anyone would click.
+  const source = readRepo('js/map.js');
+  const hit = source.slice(source.indexOf('Map.clusterAt'),
+                           source.indexOf('Map.clusterAt') + 700);
+  assert.ok(/c\.drawnX/.test(hit) && !/c\.x \+ frame\.driftX/.test(hit),
+    'clusterAt measures from drawnX/drawnY');
+});
+
+
+test('a name outranks a wind arrow for the same space', () => {
+  /**
+   * The wind used to claim its space before the labels were laid out, so a
+   * breeze could push a yacht's name off the chart entirely. Her name and her
+   * speed are what anyone is looking at; the wind is decoration.
+   */
+  const source = readRepo('js/map.js');
+  // Two branches build the frame — one instrumented for the profiler, one not —
+  // and the order has to hold in both.
+  const body = source.slice(source.indexOf('Map.render = function'),
+                            source.indexOf('Map.lastFrame = {'));
+  const labels = [...body.matchAll(/layoutLabels\(/g)].map((m) => m.index);
+  const winds = [...body.matchAll(/layoutWind\(/g)].map((m) => m.index);
+  assert.strictEqual(labels.length, 2, 'both branches lay out labels');
+  assert.strictEqual(winds.length, 2, 'and both lay out wind');
+  labels.forEach((at, i) => assert.ok(at < winds[i],
+    'the names are placed first, and the wind fills what is left (branch ' + (i + 1) + ')'));
+});
+
+test('a wind arrow is not blocked by its own vessel', () => {
+  // The arrow belongs to that marker. Treating the marker as an obstacle
+  // suppressed every arrow on the chart rather than only the crowded ones.
+  const source = readRepo('js/map.js');
+  const layout = source.slice(source.indexOf('function layoutWind'),
+                              source.indexOf('function layoutWind') + 1400);
+  assert.ok(/collides\(box, boxes, p\.vessel\.yacht\.id\)/.test(layout),
+    'her own id is passed as selfId');
+
+  const box = source.slice(source.indexOf('function windBox'),
+                           source.indexOf('function windBox') + 400);
+  assert.ok(!/owner/.test(box),
+    'but the box itself stays unowned, so it still blocks her name');
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

@@ -117,6 +117,13 @@
      status hue on the board — cyan, green, grey — so a glance can pick it out
      without first reading anything. Warm against a chart that is entirely cool,
      which is what makes it carry across a room. */
+  /* A crowd of yachts drawn as one. Deliberately no status colour: it is a
+     fact about the chart, not about any vessel on it. */
+  --map-cluster: rgba(14, 30, 46, 0.94);
+  /* The ring reads as the crowd's resting state, so the underway arc drawn
+     over it in --status-underway can be told apart from it at a glance. */
+  --map-cluster-ring: rgba(139, 152, 168, 0.85);
+
   --sentinel:        #D4A64A;
   --sentinel-glow:   rgba(212, 166, 74, 0.55);
 
