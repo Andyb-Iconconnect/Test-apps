@@ -291,6 +291,122 @@
     onPayload(payload, null);
   }
 
+  /* --- What is actually on the feed? --------------------------------------- */
+
+  /**
+   * How often does this feed hear a vessel — any vessel — and does it hear ours
+   * any differently?
+   *
+   * The counts panel can say "two hundred thousand messages, a hundred and four
+   * of them ours" without either number meaning anything on its own. Ours works
+   * out at one message per vessel per five minutes. Whether that is bad depends
+   * entirely on what the feed manages for everybody else, and nothing until now
+   * has measured that.
+   *
+   * Two answers, and they point opposite ways:
+   *
+   *   - the median vessel on the feed is also heard once every few minutes.
+   *     Then the network is simply thin — a scatter of volunteer receivers
+   *     hearing whoever is in range — and no filter, box or key will change it.
+   *     The fix is a different provider, and knowing that is worth more than
+   *     another week of tuning this one.
+   *
+   *   - the median vessel is heard every few SECONDS and ours every few
+   *     minutes. Then ours are being treated differently, and the survey says
+   *     how: Class B transponders, which broadcast at a fraction of the power
+   *     and a fraction of the rate, are the first suspect on a fleet of
+   *     yachts.
+   *
+   * Bounded by design: it counts for a fixed window and then stops, so a map of
+   * every MMSI on earth cannot grow all afternoon behind a panel nobody closed.
+   */
+  Ais.survey = function (seconds, onProgress, onDone) {
+    var counts = {};       // mmsi -> messages
+    var types = {};        // MessageType -> messages
+    var total = 0;
+    var startedAt = Date.now();
+    var stopped = false;
+
+    Ais.observer = function (mmsi, type) {
+      total++;
+      counts[mmsi] = (counts[mmsi] || 0) + 1;
+      if (type) types[type] = (types[type] || 0) + 1;
+    };
+
+    var tick = setInterval(function () {
+      if (stopped) return;
+      var elapsed = (Date.now() - startedAt) / 1000;
+      if (elapsed >= seconds) { finish(); return; }
+      if (onProgress) onProgress({ elapsed: Math.round(elapsed), seconds: seconds, total: total });
+    }, 1000);
+
+    function finish() {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(tick);
+      Ais.observer = null;
+      if (onDone) onDone(summarise(counts, types, total, (Date.now() - startedAt) / 1000));
+    }
+
+    return function cancel() {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(tick);
+      Ais.observer = null;
+    };
+  };
+
+  // Which transponder a message came from. Class B is the small-vessel set —
+  // 2 watts against 12.5, and a position every 30 seconds against every 2 to 10.
+  var CLASS_B_TYPES = {
+    StandardClassBPositionReport: true,
+    ExtendedClassBPositionReport: true,
+    StaticDataReport: true
+  };
+
+  function summarise(counts, types, total, seconds) {
+    var all = [];
+    var ours = [];
+    var mmsis = Object.keys(counts);
+    for (var i = 0; i < mmsis.length; i++) {
+      var n = counts[mmsis[i]];
+      all.push(n);
+      if (window.Store.byMmsi[mmsis[i]]) ours.push({ mmsi: mmsis[i], n: n });
+    }
+    all.sort(function (a, b) { return a - b; });
+
+    var classB = 0;
+    var typeNames = Object.keys(types);
+    for (var t = 0; t < typeNames.length; t++) {
+      if (CLASS_B_TYPES[typeNames[t]]) classB += types[typeNames[t]];
+    }
+
+    return {
+      seconds: Math.round(seconds),
+      total: total,
+      rate: seconds ? total / seconds : 0,
+      vessels: all.length,
+      // Per vessel, over the window. The median is the honest middle: a handful
+      // of ferries running circuits in front of a receiver would drag a mean
+      // anywhere.
+      median: pick(all, 0.5),
+      upper: pick(all, 0.9),
+      best: all.length ? all[all.length - 1] : 0,
+      classBShare: total ? classB / total : 0,
+      types: types,
+      ours: ours.sort(function (a, b) { return b.n - a.n; }),
+      oursTotal: ours.reduce(function (a, b) { return a + b.n; }, 0),
+      fleet: window.Store.vessels.length
+    };
+  }
+
+  function pick(sorted, q) {
+    if (!sorted.length) return 0;
+    return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
+  }
+
+  Ais._summarise = summarise;      // for tests
+
   /* --- Why is only part of the fleet reporting? ----------------------------- */
 
   /**
@@ -806,6 +922,11 @@
     var meta = payload.MetaData || {};
     var mmsi = meta.MMSI != null ? String(meta.MMSI) : null;
     if (!mmsi) return;
+
+    // A survey watches the live feed rather than opening a socket of its own.
+    // The question it answers is about the traffic already arriving, so taking
+    // the feed down to ask it would be absurd.
+    if (Ais.observer) Ais.observer(mmsi, payload.MessageType);
 
     // The first message of any kind means the subscription was accepted and the
     // feed is delivering. That is a different thing from having heard one of

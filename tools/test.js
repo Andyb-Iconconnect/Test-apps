@@ -2849,8 +2849,13 @@ test('the coverage test refuses to pick a winner out of noise', () => {
    * wrong thing, with evidence in hand.
    */
   const source = readRepo('js/ais.js');
-  const finish = source.slice(source.indexOf('function finish()'),
-                              source.indexOf('function finish()') + 4000);
+  // Anchored inside diagnoseCoverage, not on the first `function finish()` in
+  // the file — the survey has one of those too now, and the slice quietly
+  // landed on it, checking a function that has nothing to do with this.
+  const coverage = source.indexOf('Ais.diagnoseCoverage = ');
+  assert.ok(coverage !== -1, 'the coverage test exists');
+  const finish = source.slice(source.indexOf('function finish()', coverage),
+                              source.indexOf('function finish()', coverage) + 4000);
 
   // No bare comparison of two sampled counts survives.
   assert.ok(!/n\(shortRun\) > n\(full\)/.test(finish), 'the list-length branch has a margin');
@@ -3518,4 +3523,197 @@ test('bytes are shown in the unit an allowance is sold in', () => {
   assert.strictEqual(Fmt.bytes(Infinity), '—');
 });
 
+
+/* --- What is actually on the feed? ---------------------------------------- */
+
+// settings.js is loaded by an earlier test, which also has to stand up a
+// localStorage for it. Don't lean on that having happened: these checks are
+// about the report builder and should not fail because a test above moved.
+function settingsModule() {
+  if (!window.Settings) {
+    const store = {};
+    window.localStorage = {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v); },
+      removeItem: (k) => { delete store[k]; }
+    };
+    load('js/settings.js');
+  }
+  return window.Settings;
+}
+
+// Build a survey summary the way handle() would, from a list of [mmsi, type].
+function surveyOf(messages, seconds) {
+  const counts = {}, types = {};
+  messages.forEach(([mmsi, type]) => {
+    counts[mmsi] = (counts[mmsi] || 0) + 1;
+    types[type] = (types[type] || 0) + 1;
+  });
+  return Ais._summarise(counts, types, messages.length, seconds);
+}
+
+test('the survey measures our vessels against the rest of the feed', () => {
+  /**
+   * "One message per vessel every five minutes" is neither good nor bad until
+   * you know what the feed manages for everybody else. That comparison is the
+   * whole instrument; the raw number was never going to settle anything.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const msgs = [];
+    // A busy feed: strangers heard every few seconds.
+    for (let v = 0; v < 100; v++) {
+      for (let n = 0; n < 60; n++) msgs.push(['20000' + String(v).padStart(4, '0'), 'PositionReport']);
+    }
+    // Ours, heard twice each in the same three minutes.
+    FLEET.slice(0, 5).forEach((y) => {
+      msgs.push([String(y.mmsi), 'StandardClassBPositionReport']);
+      msgs.push([String(y.mmsi), 'StandardClassBPositionReport']);
+    });
+    const r = surveyOf(msgs, 180);
+
+    assert.strictEqual(r.vessels, 105, 'every distinct MMSI counted');
+    assert.strictEqual(r.median, 60, 'the middle vessel on the feed');
+    assert.strictEqual(r.best, 60, 'and on a flat feed the busiest is the same');
+    assert.strictEqual(r.ours.length, 5, 'and ours picked out of it');
+    assert.strictEqual(r.oursTotal, 10);
+    assert.ok(r.classBShare > 0 && r.classBShare < 0.01,
+      'Class B share is of the whole feed');
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('the middle of the feed is the middle, not the loudest thing on it', () => {
+  /**
+   * A ferry running a circuit past a receiver reports every few seconds all
+   * day. Two of those in a survey of a thousand quiet vessels would drag a mean
+   * — or a badly taken quantile — up to something that makes a thin feed look
+   * healthy, and the verdict then blames our fleet for a network that is not
+   * carrying anyone.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const msgs = [];
+    for (let v = 0; v < 300; v++) msgs.push(['30000' + String(v).padStart(4, '0'), 'PositionReport']);
+    // Three ferries, heard two hundred times each.
+    for (let f = 0; f < 3; f++) {
+      for (let n = 0; n < 200; n++) msgs.push(['99900000' + f, 'PositionReport']);
+    }
+    const r = surveyOf(msgs, 180);
+    assert.strictEqual(r.vessels, 303);
+    assert.strictEqual(r.best, 200, 'the busiest is a ferry');
+    assert.strictEqual(r.median, 1, 'and the middle vessel is still heard once');
+    assert.strictEqual(r.upper, 1, 'nine in ten are heard once');
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('a thin feed is called thin, not blamed on our fleet', () => {
+  /**
+   * The failure mode that matters. If every vessel on the feed is heard once
+   * every few minutes, then so are ours, and there is nothing at this end to
+   * fix — no key, no filter, no bounding box. Saying otherwise sends somebody
+   * to spend a week tuning a subscription that was never the problem.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const msgs = [];
+    for (let v = 0; v < 200; v++) {
+      for (let n = 0; n < 2; n++) msgs.push(['20000' + String(v).padStart(4, '0'), 'PositionReport']);
+    }
+    FLEET.slice(0, 8).forEach((y) => {
+      msgs.push([String(y.mmsi), 'PositionReport']);
+      msgs.push([String(y.mmsi), 'PositionReport']);
+    });
+    const r = surveyOf(msgs, 180);
+    assert.strictEqual(r.median, 2, 'the whole feed is thin');
+
+    const report = settingsModule()._surveyReport(r);
+    assert.ok(/heard as often as anything else/.test(report),
+      'the verdict says ours are not being singled out');
+    assert.ok(/denser receivers|satellite/.test(report),
+      'and points at the provider, which is the only thing that changes it');
+    // The feed's Class B share is printed as a statistic either way; what must
+    // not appear is Class B offered as the CAUSE, which this run has no
+    // evidence for.
+    assert.ok(!/The usual reason/.test(report),
+      'and does not reach for a cause it has no evidence for');
+    assert.ok(!/MarineTraffic/.test(report),
+      'nor send anyone off to check one');
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('a feed that hears everyone but us says so, and names the likely reason', () => {
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const msgs = [];
+    for (let v = 0; v < 200; v++) {
+      for (let n = 0; n < 40; n++) msgs.push(['20000' + String(v).padStart(4, '0'), 'PositionReport']);
+    }
+    FLEET.slice(0, 6).forEach((y) => msgs.push([String(y.mmsi), 'StandardClassBPositionReport']));
+    const r = surveyOf(msgs, 180);
+    assert.strictEqual(r.median, 40);
+
+    const report = settingsModule()._surveyReport(r);
+    assert.ok(/markedly less/.test(report), 'the difference is stated');
+    assert.ok(/Class B/.test(report), 'with the first thing to check on a fleet of yachts');
+    assert.ok(/MarineTraffic/.test(report), 'and where to check it');
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('the survey watches the live feed and never takes it down', () => {
+  /**
+   * The question is about traffic already arriving. Stopping the feed to ask it
+   * would be absurd — and the coverage test, which does stop it, once left the
+   * board dead because it threw before its cancel handle was assigned.
+   */
+  const source = readRepo('js/ais.js');
+  const survey = source.slice(source.indexOf('Ais.survey = '),
+                              source.indexOf('var CLASS_B_TYPES'));
+  assert.ok(!/new WebSocket|Ais\.stop\(\)|connect\(\)/.test(survey),
+    'no socket of its own, and nothing stopped');
+  assert.ok(/Ais\.observer = function/.test(survey), 'it observes the live one');
+
+  // BOTH ways out have to let go: finishing and being stopped. Checking that
+  // the line appears somewhere passes with either one deleted.
+  assert.strictEqual((survey.match(/Ais\.observer = null/g) || []).length, 2,
+    'released when it finishes and when it is cancelled');
+  assert.strictEqual((survey.match(/clearInterval\(tick\)/g) || []).length, 2,
+    'and the tick is cleared on both paths');
+});
+
+test('stopping a survey lets go of the feed immediately', () => {
+  // Behaviour, not source: an observer left attached counts every message on
+  // earth into a map behind a panel nobody has open.
+  const cancel = Ais.survey(180, null, null);
+  assert.strictEqual(typeof window.Ais.observer, 'function', 'attached while it runs');
+  cancel();
+  assert.strictEqual(window.Ais.observer, null, 'and gone the moment it is stopped');
+  cancel();
+  assert.strictEqual(window.Ais.observer, null, 'stopping twice is harmless');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
+
+// Exit rather than waiting for the event loop to drain.
+//
+// A timer left running by code under test keeps node alive for ever, so the
+// suite hangs after printing its result instead of ending — which in CI is a
+// build that times out with no failure named. Found by a mutation that removed
+// a clearInterval: the check that catches it had already printed FAIL, and the
+// run hung anyway.
+process.exit(process.exitCode || 0);

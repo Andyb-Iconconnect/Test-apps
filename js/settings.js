@@ -167,6 +167,9 @@
             '<button class="button-quiet ais-test" id="ais-test" type="button">' +
               'Nothing arriving? Ask the server why' +
             '</button>' +
+            '<button class="button-quiet ais-test" id="ais-survey" type="button">' +
+              'How good is this feed? Survey it (3 minutes)' +
+            '</button>' +
             '<button class="button-quiet ais-test" id="ais-coverage" type="button">' +
               'Only some of the fleet? Find out why (about 12 minutes)' +
             '</button>' +
@@ -182,6 +185,7 @@
 
     d.querySelector('#ais-close').addEventListener('click', function () { close(d); });
     d.querySelector('#ais-test').addEventListener('click', function () { runDiagnosis(d); });
+    d.querySelector('#ais-survey').addEventListener('click', function () { runSurvey(d); });
     d.querySelector('#ais-coverage').addEventListener('click', function () { runCoverage(d); });
     d.querySelector('#ais-forget').addEventListener('click', function () {
       Settings.setAisKey('');
@@ -354,6 +358,117 @@
    * Every probe runs to completion — the point is the comparison between them,
    * so stopping at the first that hears something would answer nothing.
    */
+  /**
+   * The feed, measured against itself.
+   *
+   * Runs on the live socket: the question is about traffic already arriving,
+   * so nothing is stopped and nothing is reconnected. Three minutes is enough
+   * for a vessel alongside to have had a turn.
+   */
+  var SURVEY_SECONDS = 180;
+  var cancelSurvey = null;
+
+  function runSurvey(d) {
+    var button = d.querySelector('#ais-survey');
+    var log = d.querySelector('#ais-log');
+
+    if (cancelSurvey) {
+      cancelSurvey();
+      cancelSurvey = null;
+      button.textContent = 'How good is this feed? Survey it (3 minutes)';
+      log.textContent += '\n\nStopped.';
+      return;
+    }
+    if (!window.Store || window.Store.mode !== 'live') {
+      log.hidden = false;
+      log.textContent = 'This measures a live feed. Put a key in first.';
+      return;
+    }
+
+    log.hidden = false;
+    log.textContent = 'Watching the feed for three minutes. Nothing is stopped — ' +
+      'the board keeps running and this counts what arrives.';
+    button.textContent = 'Stop';
+
+    cancelSurvey = window.Ais.survey(SURVEY_SECONDS, function (p) {
+      log.textContent = 'Watching the feed: ' + p.elapsed + ' of ' + p.seconds +
+        ' seconds, ' + p.total.toLocaleString() + ' messages so far.';
+    }, function (r) {
+      cancelSurvey = null;
+      button.textContent = 'Run it again';
+      log.textContent = surveyReport(r);
+    });
+  }
+
+  function surveyReport(r) {
+    var lines = [];
+    var per = function (n) {
+      // Messages over the window, said as an interval, which is how anyone
+      // thinks about how often a boat reports.
+      if (!n) return 'never';
+      var s = r.seconds / n;
+      return s < 60 ? 'every ' + Math.round(s) + 's'
+                    : 'every ' + (s / 60).toFixed(1) + ' min';
+    };
+
+    lines.push('THE FEED, over ' + r.seconds + ' seconds');
+    lines.push('  ' + r.total.toLocaleString() + ' messages, ' +
+               Math.round(r.rate) + ' a second, from ' +
+               r.vessels.toLocaleString() + ' different vessels.');
+    lines.push('  The middle vessel was heard ' + r.median + ' time' +
+               (r.median === 1 ? '' : 's') + ' — ' + per(r.median) + '.');
+    lines.push('  The busiest was heard ' + r.best + ' times — ' + per(r.best) + '.');
+    lines.push('  ' + Math.round(r.classBShare * 100) + '% of it was Class B.');
+    lines.push('');
+    lines.push('THIS FLEET, over the same window');
+    lines.push('  ' + r.ours.length + ' of ' + r.fleet + ' vessels said anything at all, ' +
+               r.oursTotal + ' messages between them.');
+    if (r.ours.length) {
+      var mid = r.ours[Math.floor(r.ours.length / 2)].n;
+      lines.push('  The middle one of those was heard ' + mid + ' time' +
+                 (mid === 1 ? '' : 's') + ' — ' + per(mid) + '.');
+    }
+    lines.push('');
+
+    /**
+     * The verdict is the comparison, and only the comparison.
+     *
+     * "One message every five minutes" is not bad or good until you know what
+     * the feed manages for everybody else. If the middle vessel on the whole
+     * feed fares the same as ours, the network is thin and no amount of
+     * filtering, boxing or re-keying will change that — which is worth knowing,
+     * because it is the difference between a fix and a provider.
+     */
+    var oursMid = r.ours.length ? r.ours[Math.floor(r.ours.length / 2)].n : 0;
+    if (!r.vessels) {
+      lines.push('Nothing arrived at all. That is a different problem — use the ' +
+                 'first test.');
+    } else if (oursMid >= r.median) {
+      lines.push('Our vessels are heard as often as anything else on this feed, ' +
+                 'or more. Nothing is singling them out: this is simply how much ' +
+                 'this network carries. A provider with denser receivers — or ' +
+                 'satellite — is the only thing that changes it, not a setting ' +
+                 'at this end.');
+    } else if (r.median >= 5 && oursMid * 3 <= r.median) {
+      lines.push('The middle vessel on this feed is heard ' + per(r.median) +
+                 ' and ours ' + per(oursMid) + '. Ours are being heard markedly ' +
+                 'less than the traffic around them, which is not about the key ' +
+                 'or the subscription.');
+      lines.push('');
+      lines.push('The usual reason on a fleet of yachts is Class B: a tenth of ' +
+                 'the transmit power and a position every 30 seconds rather than ' +
+                 'every 2 to 10. Check two or three of the silent ones on ' +
+                 'MarineTraffic — the vessel record names the transponder class. ' +
+                 'If they are Class B, terrestrial AIS will always be patchy for ' +
+                 'them and the answer is a provider with satellite.');
+    } else {
+      lines.push('Ours are heard a little less often than the middle of the feed ' +
+                 '(' + per(oursMid) + ' against ' + per(r.median) + '), but not ' +
+                 'enough to call it different treatment. The feed itself is thin.');
+    }
+    return lines.join('\n');
+  }
+
   function runCoverage(d) {
     var button = d.querySelector('#ais-coverage');
     var log = d.querySelector('#ais-log');
@@ -485,6 +600,8 @@
       forget.hidden = true;
     }
   }
+
+  Settings._surveyReport = surveyReport;   // for tests
 
   window.Settings = Settings;
 })();
