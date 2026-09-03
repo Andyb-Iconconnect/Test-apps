@@ -765,7 +765,11 @@
   function renderChartHome() {
     var host = el('chart-home');
     if (!host) return;
-    host.hidden = !window.Browse.hasHold();
+    var held = window.Browse.hasHold();
+    host.hidden = !held;
+    // The hint has done its job once they are moving the chart.
+    var holder = document.querySelector('.chart-holder');
+    if (holder) holder.classList.toggle('browsing', held);
   }
 
   function chartHome() {

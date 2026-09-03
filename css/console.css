@@ -1198,14 +1198,19 @@ body.dropping::after {
 .chart-home:hover { color: var(--text-primary); border-color: var(--brand-cyan); }
 .chart-home[hidden] { display: none; }
 
-/* Said once, quietly, at the foot of the chart. */
+/* Said once, quietly. Top-left rather than the foot of the chart, where it
+   landed on top of the scale bar — and faded out once somebody has taken hold,
+   because by then they know. */
 .chart-hint {
   position: absolute;
-  left: 0; right: 0; bottom: 0.45rem;
+  left: 0.7rem; top: 0.7rem;
+  max-width: 11rem;
   margin: 0;
-  text-align: center;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  line-height: 1.45;
   color: var(--text-muted);
-  opacity: 0.55;
+  opacity: 0.6;
   pointer-events: none;
+  transition: opacity 400ms ease;
 }
+.chart-holder.browsing .chart-hint { opacity: 0; }
