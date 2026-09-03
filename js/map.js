@@ -224,6 +224,57 @@
     cam.cx = target.cx; cam.cy = target.cy; cam.scale = target.scale;
   };
 
+  /* --- Direct manipulation --------------------------------------------------
+   *
+   * Everything above moves the camera by easing toward a target. A hand on a
+   * mouse is not that: a drag must track the pointer exactly, or the chart feels
+   * like it is being pulled through treacle. So these move `cam` AND `target`
+   * together — the easing has nothing left to do, and the next scripted move
+   * still works from wherever the browsing left off.
+   * ----------------------------------------------------------------------- */
+
+  Map.limits = { min: 260, max: 9000000 };
+
+  // Screen point back to the world. The inverse of sx/sy, and the thing that
+  // makes zoom-to-cursor possible: without it a wheel zoom drifts whatever is
+  // under the pointer off toward the centre.
+  Map.unproject = function (x, y) {
+    var worldX = (x - width / 2) / cam.scale + cam.cx;
+    var worldY = (y - height / 2) / cam.scale + cam.cy;
+    return [window.Geo.lonFromWorldX(worldX), window.Geo.latFromWorldY(worldY)];
+  };
+
+  Map.panBy = function (dxPx, dyPx) {
+    var dx = dxPx / cam.scale;
+    var dy = dyPx / cam.scale;
+    cam.cx = target.cx = ((cam.cx - dx) % 1 + 1) % 1;
+    // Latitude does not wrap: past the poles there is nothing to show, and a
+    // chart that lets you scroll into blank space feels broken rather than free.
+    var cy = clamp(cam.cy - dy, 0, 1);
+    cam.cy = target.cy = cy;
+  };
+
+  /**
+   * Zoom about a screen point, keeping whatever is under it in place.
+   *
+   * Done by measuring where the point sits in the world before the zoom and
+   * shifting the centre afterwards so it lands there again. Anything else and
+   * the thing you are aiming at slides away as you approach it.
+   */
+  Map.zoomAt = function (x, y, factor) {
+    var before = { wx: (x - width / 2) / cam.scale + cam.cx,
+                   wy: (y - height / 2) / cam.scale + cam.cy };
+    var scale = clamp(cam.scale * factor, Map.limits.min, Map.limits.max);
+    if (scale === cam.scale) return;
+    cam.scale = target.scale = scale;
+    cam.cx = target.cx = ((before.wx - (x - width / 2) / scale) % 1 + 1) % 1;
+    cam.cy = target.cy = clamp(before.wy - (y - height / 2) / scale, 0, 1);
+  };
+
+  Map.zoomLevel = function () { return cam.scale; };
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
   // Exponential easing, framerate-independent.
   function easeCamera(dtMs) {
     var k = 1 - Math.pow(0.0022, dtMs / 1000);

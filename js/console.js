@@ -94,7 +94,8 @@
     el('rail-list').addEventListener('click', onRailClick);
     el('work').addEventListener('click', onWorkClick);
     el('filters').addEventListener('click', onFilterClick);
-    el('chart-canvas').addEventListener('click', onChartClick);
+    window.Browse.attach(el('chart-canvas'), onChartClick, renderChartHome);
+    el('chart-home').addEventListener('click', chartHome);
     el('clear-selection').addEventListener('click', function () { select(null); });
     el('discreet-toggle').addEventListener('click', toggleDiscreet);
     wireAddDialog();
@@ -739,6 +740,9 @@
   /* --- Chart pane ---------------------------------------------------------- */
 
   function aimChart() {
+    // Somebody is browsing. Re-aiming here would pull the view out from under
+    // them on the next fix, which arrives every few seconds.
+    if (window.Browse.hasHold()) return;
     var v = selectedVessel();
     if (v && v.derived.lat != null) {
       var rect = el('chart-canvas').getBoundingClientRect();
@@ -749,6 +753,25 @@
         .filter(function (x) { return x.derived.lat != null; })
         .map(function (x) { return [x.derived.lon, x.derived.lat]; }), 40);
     }
+  }
+
+  /**
+   * The way back.
+   *
+   * A chart you can wander needs somewhere to wander back to, and it needs to
+   * be visible the moment you start — otherwise the way out is a thing you have
+   * to know rather than a thing you can see.
+   */
+  function renderChartHome() {
+    var host = el('chart-home');
+    if (!host) return;
+    host.hidden = !window.Browse.hasHold();
+  }
+
+  function chartHome() {
+    window.Browse.release();
+    aimChart();
+    renderChartHome();
   }
 
   function renderReadout() {
@@ -858,10 +881,15 @@
     renderRail(true);
   }
 
-  function onChartClick(event) {
-    var rect = el('chart-canvas').getBoundingClientRect();
-    window.Picker.handleClick(event.clientX - rect.left, event.clientY - rect.top,
-                              select);
+  // Browse owns the pointer now: it tells us when a press was a click rather
+  // than the start of a drag, in canvas coordinates.
+  function onChartClick(x, y) {
+    window.Picker.handleClick(x, y, function (id) {
+      // Choosing a vessel is an instruction to look at her, so the chart comes
+      // back under the console's control.
+      window.Browse.release();
+      select(id);
+    });
   }
 
   // Discretion here is a visible, deliberate act with an unmissable banner —
@@ -2199,6 +2227,7 @@
     renderRail(false);
     renderWork(false);
     renderReadout();
+    renderChartHome();
     if (App.selected) aimChart();
   }
 

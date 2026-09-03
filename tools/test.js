@@ -21,6 +21,24 @@ global.localStorage = {
 
 const fs = require('fs');
 const load = (f) => require(path.join(__dirname, '..', f));
+
+// Enough of a 2D context for map.js to initialise. The camera maths under test
+// touches none of it, but init insists on having one.
+function stubCanvasContext() {
+  const noop = () => {};
+  return new Proxy({}, {
+    get(_, key) {
+      if (key === 'measureText') return () => ({ width: 40 });
+      if (key === 'createRadialGradient' || key === 'createLinearGradient') {
+        return () => ({ addColorStop: noop });
+      }
+      if (key === 'canvas') return { width: 1200, height: 800 };
+      if (key === 'getImageData') return () => ({ data: new Uint8ClampedArray(4) });
+      return typeof key === 'string' ? noop : undefined;
+    },
+    set() { return true; }
+  });
+}
 // Some checks are about the source of a file rather than its behaviour.
 const readRepo = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 ['config.js', 'fleet.js', 'data/mid.js', 'data/ports.js', 'data/world-land.js',
@@ -2879,6 +2897,103 @@ test('the picker keeps the promises the rest of the board makes', () => {
   });
   assert.ok(/Picker\.isOpen\(\)/.test(readRepo('js/app.js')),
     'and Escape closes the list before it reaches the board’s own shortcuts');
+});
+
+/* --- Browsing the chart ---------------------------------------------------- */
+
+test('zoom about a point leaves that point where it was', () => {
+  /**
+   * The whole of zoom-to-cursor. Without it, whatever you are aiming at slides
+   * toward the centre as you approach it, and closing in on a marina becomes a
+   * chase.
+   */
+  // readTheme reads the stylesheet through getComputedStyle, which does not
+  // exist here. The camera maths under test does not care what colour anything
+  // is; only that init completed.
+  global.getComputedStyle = () => ({ getPropertyValue: () => '' });
+  FleetMap.init({
+    width: 1200, height: 800, style: {},
+    getContext: () => stubCanvasContext(),
+    getBoundingClientRect: () => ({ width: 1200, height: 800, left: 0, top: 0 })
+  });
+  FleetMap.centreOn(7.42, 43.73, 4000);
+  FleetMap.snap();
+
+  const point = [900, 260];
+  const before = FleetMap.unproject(point[0], point[1]);
+  FleetMap.zoomAt(point[0], point[1], 2.5);
+  const after = FleetMap.unproject(point[0], point[1]);
+
+  close(after[0], before[0], 0.0005, 'longitude under the pointer');
+  close(after[1], before[1], 0.0005, 'latitude under the pointer');
+  assert.ok(FleetMap.zoomLevel() > 4000, 'and it did actually zoom');
+});
+
+test('the chart cannot be scrolled off the world', () => {
+  /**
+   * Not "is the latitude still a number" — latFromWorldY asymptotes to ±90, so
+   * that can never fail and the check was vacuous. The symptom of no clamp is
+   * scrolling the world off the screen entirely and staring at blank space, so
+   * measure that: where the top edge of the Mercator world lands.
+   */
+  const MERC_TOP = 85.0511;
+  FleetMap.centreOn(0, 0, 900);
+  FleetMap.snap();
+
+  FleetMap.panBy(0, 100000);                 // far past the north pole
+  const topEdge = FleetMap.project(0, MERC_TOP)[1];
+  assert.ok(topEdge <= 400 + 1,
+    'the top of the world never drops below the middle of the view, ' +
+    'so there is always chart on screen — got y=' + Math.round(topEdge));
+
+  FleetMap.panBy(0, -200000);                // and far past the south
+  const bottomEdge = FleetMap.project(0, -MERC_TOP)[1];
+  assert.ok(bottomEdge >= 400 - 1,
+    'nor the bottom above it — got y=' + Math.round(bottomEdge));
+
+  // Longitude does wrap: sailing west past the dateline is a real thing.
+  FleetMap.centreOn(179, 0, 900);
+  FleetMap.snap();
+  FleetMap.panBy(-4000, 0);
+  assert.ok(isFinite(FleetMap.unproject(600, 400)[0]), 'longitude wraps rather than sticking');
+});
+
+test('zoom is bounded at both ends', () => {
+  FleetMap.centreOn(0, 0, 900);
+  FleetMap.snap();
+  for (let i = 0; i < 60; i++) FleetMap.zoomAt(600, 400, 4);
+  const tightest = FleetMap.zoomLevel();
+  for (let i = 0; i < 120; i++) FleetMap.zoomAt(600, 400, 0.25);
+  const widest = FleetMap.zoomLevel();
+  assert.ok(tightest <= FleetMap.limits.max, 'it stops zooming in');
+  assert.ok(widest >= FleetMap.limits.min, 'and stops zooming out');
+  assert.ok(widest < tightest, 'and the two limits are the right way round');
+});
+
+test('a drag is not a click, and browsing suspends automatic aiming', () => {
+  /**
+   * Driven in a browser as well — a drag beginning on a marker must not select
+   * her, a plain click must, and two pixels of jitter is still a click. This
+   * holds the reasoning so it cannot be undone by an edit.
+   */
+  const browse = readRepo('js/browse.js');
+  assert.ok(/CLICK_SLOP_PX = 4/.test(browse), 'a few pixels of jitter is still a click');
+  assert.ok(/CLICK_SLOP_MS = 400/.test(browse), 'and a press held a long time is not');
+  assert.ok(/!wasDragging && moved <= CLICK_SLOP_PX && quick/.test(browse),
+    'a click needs all three: no drag, little movement, little time');
+  assert.ok(/window\.addEventListener\('mousemove'/.test(browse),
+    'the drag follows the pointer off the canvas rather than sticking');
+  assert.ok(/event\.preventDefault\(\)/.test(browse),
+    'the wheel zooms rather than scrolling the page behind it');
+
+  const console_ = readRepo('js/console.js');
+  assert.ok(/if \(window\.Browse\.hasHold\(\)\) return;/.test(console_),
+    'aimChart stands down while somebody is holding the chart — a fix arrives ' +
+    'every few seconds and would drag the view out from under them');
+  assert.ok(/window\.Browse\.release\(\);\s*\n\s*select\(id\)/.test(console_),
+    'and choosing a vessel gives the chart back, because that is an instruction to look');
+  assert.ok(/chart-home/.test(readRepo('console.html')),
+    'there is a visible way back, not one you have to know about');
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

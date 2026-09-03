@@ -1174,3 +1174,38 @@ body.dropping::after {
 }
 
 .sentinel-word { color: var(--sentinel); font-weight: 600; }
+
+/* --- Browsing the chart --------------------------------------------------- */
+
+.chart-holder { position: relative; }
+
+#chart-canvas { cursor: grab; }
+#chart-canvas.dragging { cursor: grabbing; }
+
+/* The way back, shown only once somebody has taken hold of the chart. A way out
+   that has to be known rather than seen is not a way out. */
+.chart-home {
+  position: absolute;
+  top: 0.6rem; right: 0.6rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--scrim);
+  color: var(--text-secondary);
+  font: inherit; font-size: 0.78rem;
+  cursor: pointer;
+}
+.chart-home:hover { color: var(--text-primary); border-color: var(--brand-cyan); }
+.chart-home[hidden] { display: none; }
+
+/* Said once, quietly, at the foot of the chart. */
+.chart-hint {
+  position: absolute;
+  left: 0; right: 0; bottom: 0.45rem;
+  margin: 0;
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  opacity: 0.55;
+  pointer-events: none;
+}
