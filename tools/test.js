@@ -3376,4 +3376,21 @@ test('a build yard is filled, not outlined', () => {
   assert.ok(!/rgba/.test(value), 'and drawn at full opacity — got ' + value);
 });
 
+
+test('the board never calls one place by two names', () => {
+  /**
+   * The header clock and the chart both name the UK office. They are set in
+   * different blocks of config and drifted apart the moment one of them was
+   * shortened — "Letchworth" in the corner and "Letchworth Garden City" on the
+   * chart, which reads as two places to anyone who has not seen the file.
+   */
+  const office = CONFIG.office;
+  const here = (CONFIG.sites || []).filter((s) =>
+    Math.abs(s.lat - office.lat) < 0.05 && Math.abs(s.lon - office.lon) < 0.05);
+  assert.strictEqual(here.length, 1, 'the office appears once among the sites');
+  assert.strictEqual(here[0].name, office.label,
+    'and under the same name the clock uses — got "' + here[0].name +
+    '" against "' + office.label + '"');
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

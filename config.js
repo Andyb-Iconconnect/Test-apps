@@ -119,11 +119,20 @@ window.CONFIG = {
    * prospect they are rather the point.
    */
   sites: [
-    { name: 'Letchworth Garden City', kind: 'hq',   lat: 51.9781, lon: -0.2296 },
-    { name: 'Monaco',                 kind: 'hq',   lat: 43.7384, lon: 7.4246 },
-    { name: 'Antalya',                kind: 'yard', lat: 36.8969, lon: 30.7133 },
-    { name: 'Istanbul',               kind: 'yard', lat: 41.0082, lon: 28.9784 },
-    { name: 'Amsterdam',              kind: 'yard', lat: 52.3676, lon: 4.9041 }
+    // The short form, and the same one the header clock uses, so the board
+    // never calls one place by two names.
+    //
+    // Not for legibility, though it was offered as that: measured across
+    // thirty-three framings the office is on screen for, the long name and the
+    // short one both label twenty-seven times. Length mattered when a site had
+    // exactly one position to try — 9 against 15 — but it now has eight, and
+    // that absorbed the difference. A name is a naming decision; the layout
+    // was the layout's problem and is fixed in the layout.
+    { name: 'Letchworth', kind: 'hq',   lat: 51.9781, lon: -0.2296 },
+    { name: 'Monaco',     kind: 'hq',   lat: 43.7384, lon: 7.4246 },
+    { name: 'Antalya',    kind: 'yard', lat: 36.8969, lon: 30.7133 },
+    { name: 'Istanbul',   kind: 'yard', lat: 41.0082, lon: 28.9784 },
+    { name: 'Amsterdam',  kind: 'yard', lat: 52.3676, lon: 4.9041 }
   ],
 
   /* --- Rotation ---------------------------------------------------------- */
