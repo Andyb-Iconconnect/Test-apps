@@ -3240,4 +3240,140 @@ test('a wind arrow is not blocked by its own vessel', () => {
     'but the box itself stays unowned, so it still blocks her name');
 });
 
+
+/* --- Clicking a crowd on the board ----------------------------------------- */
+
+test('holding the camera abandons the journey rather than finishing it', () => {
+  /**
+   * The board's chart tour is always easing somewhere, so a mark is usually
+   * moving under the pointer. snap() would finish the journey — jumping the
+   * chart to wherever it was heading and taking with it the very disc somebody
+   * has just put a finger on. hold() stops where it is.
+   */
+  global.getComputedStyle = () => ({ getPropertyValue: () => '' });
+  FleetMap.init({
+    width: 1200, height: 800, style: {},
+    getContext: () => stubCanvasContext(),
+    getBoundingClientRect: () => ({ width: 1200, height: 800, left: 0, top: 0 })
+  });
+  FleetMap.centreOn(7.42, 43.73, 4000);
+  FleetMap.snap();
+  const where = { cx: FleetMap.camera.cx, cy: FleetMap.camera.cy, scale: FleetMap.camera.scale };
+
+  FleetMap.centreOn(-64.8, 32.3, 90000);              // off to Bermuda
+  assert.notStrictEqual(FleetMap.target.scale, where.scale, 'a journey is in flight');
+
+  FleetMap.hold();
+  assert.strictEqual(FleetMap.camera.cx, where.cx, 'the camera has not moved');
+  assert.strictEqual(FleetMap.target.cx, FleetMap.camera.cx, 'and has nowhere left to go');
+  assert.strictEqual(FleetMap.target.cy, FleetMap.camera.cy);
+  assert.strictEqual(FleetMap.target.scale, FleetMap.camera.scale);
+});
+
+test('the camera stamp changes when the chart moves, and not otherwise', () => {
+  // What tells a list drawn over the chart that the chart has gone.
+  FleetMap.centreOn(7.42, 43.73, 4000);
+  FleetMap.snap();
+  const at = FleetMap.cameraStamp();
+  assert.strictEqual(FleetMap.cameraStamp(), at, 'a still chart reads the same twice');
+
+  FleetMap.panBy(40, 0);
+  assert.notStrictEqual(FleetMap.cameraStamp(), at, 'a pan shows');
+
+  // Zoom on its own, with the centre held, or a stamp that only watched the
+  // centre would call a chart that had zoomed right in "unchanged".
+  FleetMap.centreOn(7.42, 43.73, 4000);
+  FleetMap.snap();
+  const near = FleetMap.cameraStamp();
+  FleetMap.centreOn(7.42, 43.73, 16000);
+  FleetMap.snap();
+  assert.notStrictEqual(FleetMap.cameraStamp(), near, 'a zoom shows too');
+
+  FleetMap.zoomAt(600, 400, 1);
+  assert.strictEqual(FleetMap.cameraStamp(), FleetMap.cameraStamp(),
+    'and a zoom of one is not a move');
+});
+
+test('the board stops the chart when a hand goes near it', () => {
+  /**
+   * Aiming at a disc on a chart that is panning under the pointer is a lottery,
+   * and the miss is silent: you click, and nothing at all happens. The press
+   * freezes the chart so the click that follows lands on the frame the pointer
+   * was aimed at.
+   */
+  const app = readRepo('js/app.js');
+  assert.ok(/addEventListener\('pointerdown', onCanvasPointerDown\)/.test(app),
+    'the press is listened for');
+
+  const down = app.slice(app.indexOf('function onCanvasPointerDown'),
+                         app.indexOf('function onCanvasClick'));
+  assert.ok(/App\.paused = true/.test(down), 'and pauses the rotation');
+  assert.ok(/FleetMap\.hold\(\)/.test(down), 'and holds the camera where it is');
+  assert.ok(/noteActivity\(\)/.test(down),
+    'and counts as activity, so the five-minute auto-resume still applies');
+});
+
+test('a list does not outlive the chart it was opened on', () => {
+  /**
+   * The board moves on its own. A list positioned once against the viewport
+   * cannot follow it, so left alone it sits there naming three yachts that are
+   * no longer under it — and then floats over whatever view comes next.
+   */
+  const picker = readRepo('js/picker.js');
+  assert.ok(/openedAt = window\.FleetMap\.cameraStamp\(\)/.test(picker),
+    'the list remembers the chart it was opened on');
+  const check = picker.slice(picker.indexOf('Picker.checkStillValid'),
+                             picker.indexOf('Picker.checkStillValid') + 400);
+  assert.ok(/cameraStamp\(\) !== openedAt/.test(check) && /Picker\.close\(\)/.test(check),
+    'and closes when that chart has moved');
+
+  const app = readRepo('js/app.js');
+  assert.ok(/Picker\.checkStillValid\(\)/.test(app), 'the frame loop asks');
+  const enter = app.slice(app.indexOf('function enterScene'),
+                          app.indexOf('function enterScene') + 300);
+  assert.ok(/Picker\.close\(\)/.test(enter), 'and a change of view closes it outright');
+});
+
+test('our own places are placed before the chart names its seas', () => {
+  // "SEA OF MARMARA" was winning the space Istanbul needed. Our offices still
+  // yield to the fleet, which is claimed above both.
+  const source = readRepo('js/map.js');
+  const body = source.slice(source.indexOf('Map.render = function'),
+                            source.indexOf('Map.lastFrame = {'));
+  const sites = [...body.matchAll(/layoutSites\(/g)].map((m) => m.index);
+  const places = [...body.matchAll(/drawPlaces\(/g)].map((m) => m.index);
+  const labels = [...body.matchAll(/layoutLabels\(/g)].map((m) => m.index);
+  assert.strictEqual(sites.length, 2, 'both branches lay out the sites');
+  sites.forEach((at, i) => {
+    assert.ok(at < places[i], 'before the place names (branch ' + (i + 1) + ')');
+    assert.ok(at > labels[i], 'and after the fleet (branch ' + (i + 1) + ')');
+  });
+});
+
+test('a site name that cannot go beside the mark tries elsewhere', () => {
+  // One position meant Letchworth simply did not appear whenever a yacht was
+  // crossing the North Sea, which on this fleet is most of the time.
+  const source = readRepo('js/map.js');
+  const offsets = source.slice(source.indexOf('var SITE_OFFSETS'),
+                               source.indexOf('function layoutSites'));
+  const count = (offsets.match(/\[[-\d]+, [-\d]+, '/g) || []).length;
+  assert.ok(count >= 4, 'several positions are tried, not one — found ' + count);
+});
+
+test('a build yard is filled, not outlined', () => {
+  /**
+   * The yard mark was a thin outline in a desaturated blue at 70% opacity, on
+   * the reasoning that a yard is context rather than the subject. Against this
+   * sea it was invisible, which is not "quiet" — it is absent.
+   */
+  const source = readRepo('js/map.js');
+  const yard = source.slice(source.indexOf('function drawYardMark'),
+                            source.indexOf('function drawYardMark') + 900);
+  assert.ok(/ctx\.fill\(\)/.test(yard), 'the diamond is filled');
+
+  const tokens = readRepo('css/tokens.css');
+  const value = /--map-site-yard:\s*([^;]+);/.exec(tokens)[1].trim();
+  assert.ok(!/rgba/.test(value), 'and drawn at full opacity — got ' + value);
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

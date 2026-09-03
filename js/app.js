@@ -108,6 +108,9 @@
       var akey = document.getElementById('hint-anonymous');
       if (akey) akey.remove();
     }
+    // Down first, so the chart is standing still by the time the click that
+    // follows is hit-tested against it.
+    el('chart-canvas').addEventListener('pointerdown', onCanvasPointerDown);
     el('chart-canvas').addEventListener('click', onCanvasClick);
     el('rail-list').addEventListener('click', onRailClick);
     el('hint-close').addEventListener('click', function () {
@@ -244,6 +247,8 @@
   };
 
   function enterScene(index) {
+    // A list is anchored to a spot on the chart. The chart is about to go.
+    window.Picker.close();
     App.scene = ((index % App.scenes.length) + App.scenes.length) % App.scenes.length;
     App.sceneStartedAt = performance.now();
     setViewTitle();
@@ -365,6 +370,9 @@
           highlight: chartTour.currentId(),
           inset: chartInset()
         });
+        // Belt and braces: pausing stops the tour, but a keypress or a refit
+        // can still move the chart while a list is open over it.
+        window.Picker.checkStillValid();
       }
     }
 
@@ -498,11 +506,36 @@
     hintTimer = setTimeout(function () { hint.classList.remove('visible'); }, 5000);
   }
 
+  /**
+   * A hand on the chart stops it.
+   *
+   * The chart tour is always easing somewhere. Aiming at a yacht — or at a
+   * disc standing for twenty of them — on a chart that is panning under the
+   * pointer is a lottery, and the miss is silent: you click, and nothing at
+   * all happens. So the press freezes the chart, and the click that follows
+   * lands on the frame the pointer was aimed at.
+   *
+   * Held rather than snapped: snapping would jump to wherever the tour was
+   * heading and take the mark with it. Nothing here is permanent — a board
+   * touched and then walked away from starts moving again on its own after
+   * five minutes.
+   */
+  function onCanvasPointerDown() {
+    if (App.scenes[App.scene].view !== 'chart') return;
+    noteActivity();
+    if (!App.paused) {
+      App.paused = true;
+      setViewTitle();
+    }
+    window.FleetMap.hold();
+  }
+
   function onCanvasClick(event) {
     var rect = el('chart-canvas').getBoundingClientRect();
-    // Several yachts inside twenty pixels is normal in Port Hercule. Picker
-    // selects outright when there is only one, and offers a list when there is
-    // not — otherwise the ones behind the nearest marker are unreachable.
+    // Several yachts inside twenty pixels is normal in Port Hercule, and at
+    // fleet zoom twenty of them draw as one disc. Picker selects outright when
+    // there is only one under the pointer, and offers a list when there is a
+    // crowd — otherwise the ones behind the nearest marker are unreachable.
     window.Picker.handleClick(event.clientX - rect.left, event.clientY - rect.top,
                               showVessel);
   }

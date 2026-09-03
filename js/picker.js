@@ -21,6 +21,7 @@
   var host = null;
   var onPick = null;
   var dismiss = null;
+  var openedAt = null;      // the camera stamp the list was positioned against
 
   // How close two markers must be before a click is treated as ambiguous. A
   // little wider than the marker itself, because the thing being disambiguated
@@ -59,6 +60,19 @@
 
   Picker.isOpen = function () { return !!host; };
 
+  /**
+   * Close the list if the chart has moved out from under it.
+   *
+   * It is positioned once, against the viewport, and cannot follow a camera
+   * that pans away. On the board — which moves on its own — a list left behind
+   * sits there naming three yachts that are no longer under it, and then floats
+   * over whatever view comes next. Called from the frame loop.
+   */
+  Picker.checkStillValid = function () {
+    if (!host || openedAt == null) return;
+    if (window.FleetMap.cameraStamp() !== openedAt) Picker.close();
+  };
+
   Picker.close = function () {
     if (!host) return;
     if (dismiss) {
@@ -69,10 +83,12 @@
     if (host.parentNode) host.parentNode.removeChild(host);
     host = null;
     onPick = null;
+    openedAt = null;
   };
 
   function open(under, x, y, select) {
     onPick = select;
+    openedAt = window.FleetMap.cameraStamp();
     host = document.createElement('div');
     host.className = 'chart-picker';
     host.setAttribute('role', 'listbox');

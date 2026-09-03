@@ -138,7 +138,7 @@
       placeWater: v('--map-place-water', 'rgba(147, 190, 220, 0.55)'),
       placeLand: v('--map-place-land', 'rgba(20, 40, 62, 0.75)'),
       siteHq: v('--map-site-hq', '#3CB4E4'),
-      siteYard: v('--map-site-yard', 'rgba(147, 190, 220, 0.7)'),
+      siteYard: v('--map-site-yard', '#6FCBEA'),
       sentinel: v('--sentinel', '#D4A64A'),
       clusterFill: v('--map-cluster', 'rgba(16, 32, 48, 0.92)'),
       clusterRing: v('--map-cluster-ring', 'rgba(139, 152, 168, 0.85)')
@@ -224,6 +224,24 @@
 
   Map.snap = function () {
     cam.cx = target.cx; cam.cy = target.cy; cam.scale = target.scale;
+  };
+
+  /**
+   * Stop where you are.
+   *
+   * snap() jumps to wherever the camera was heading; this abandons the journey
+   * instead, which is what you want when somebody has just put a finger on
+   * something. A jump at the moment of the click would move the thing they
+   * clicked out from under the list about to open beside it.
+   */
+  Map.hold = function () {
+    target.cx = cam.cx; target.cy = cam.cy; target.scale = cam.scale;
+  };
+
+  // Enough to tell whether the chart has moved under something drawn over it.
+  Map.cameraStamp = function () {
+    return Math.round(cam.cx * 1e6) + ':' + Math.round(cam.cy * 1e6) + ':' +
+           Math.round(cam.scale);
   };
 
   /* --- Direct manipulation --------------------------------------------------
@@ -342,11 +360,10 @@
         return opts.labels === false ? [] : layoutLabels(groups.singles, opts, boxes);
       });
       winds = m2('wind-layout', function () { return layoutWind(groups.singles, boxes); });
-      claimed = boxes;
+      sites = m2('sites', function () { return layoutSites(boxes, opts); });
+      claimed = boxes.concat(sites.boxes);
       claimed = claimed.concat(m2('places', function () { return drawPlaces(claimed, opts); }));
       m2('ports', function () { drawPorts(claimed); });
-      sites = m2('sites', function () { return layoutSites(claimed, opts); });
-      claimed = claimed.concat(sites.boxes);
       m2('courses', function () { drawCourses(vessels); });
       m2('tracks', function () { drawTracks(vessels); });
       m2('clusters', function () { paintClusters(groups.clusters, now); });
@@ -358,12 +375,14 @@
     } else {
       labels = opts.labels === false ? [] : layoutLabels(groups.singles, opts, boxes);
       winds = layoutWind(groups.singles, boxes);
-      claimed = boxes;
+      // Our offices are placed before the chart's own place names, so it is
+      // "SEA OF MARMARA" that gives way to Istanbul rather than the other way
+      // round. They still yield to the fleet, which is claimed above them.
+      sites = layoutSites(boxes, opts);
+      claimed = boxes.concat(sites.boxes);
       // Place names go under the ports and the fleet, and yield to both.
       claimed = claimed.concat(drawPlaces(claimed, opts));
       drawPorts(claimed);
-      sites = layoutSites(claimed, opts);
-      claimed = claimed.concat(sites.boxes);
       drawCourses(vessels);
       drawTracks(vessels);
       paintClusters(groups.clusters, now);
@@ -989,8 +1008,9 @@
   /**
    * Headquarters and build yards.
    *
-   * Laid out with the ports — they yield to the fleet for their *labels*, so a
-   * yacht's name always wins the space — but painted last, over everything.
+   * Laid out after the fleet and before the chart's own place names: a yacht's
+   * name always wins the space, and "SEA OF MARMARA" gives way to Istanbul
+   * rather than the other way round. Painted last, over everything.
    * Both marks are outlines rather than filled shapes, so a vessel sitting on
    * Monaco shows through the ring instead of being hidden by it, and nothing on
    * this chart that is not a boat can be mistaken for one.
@@ -1000,6 +1020,15 @@
    * gap. Drawing it here rather than loading artwork keeps it crisp at every
    * zoom and lets it take its colour from the stylesheet.
    */
+  // Beside the mark first, as it always was; then the other side, then over and
+  // under it. Same idea as the vessel labels, and the same reason.
+  var SITE_OFFSETS = [
+    [11, 0, 'left'], [-11, 0, 'right'],
+    [0, -15, 'center'], [0, 16, 'center'],
+    [9, -15, 'left'], [-9, -15, 'right'],
+    [9, 16, 'left'], [-9, 16, 'right']
+  ];
+
   function layoutSites(claimed, opts) {
     var sites = (window.CONFIG && window.CONFIG.sites) || [];
     var out = { marks: [], boxes: [] };
@@ -1021,20 +1050,36 @@
       var mark = {
         x: x, y: y, yard: yard,
         colour: yard ? theme.siteYard : theme.siteHq,
-        text: null
+        text: null, textX: 0, textY: y, align: 'left'
       };
 
-      var box = { x: x + 11, y: y - 7, w: ctx.measureText(site.name).width + 4, h: 14 };
       // Our own places yield to the fleet, like the ports do — but unlike a
-      // port, one that cannot be labelled is still worth marking.
+      // port, one that cannot be labelled is still worth marking, and unlike a
+      // port it gets more than one try. Letchworth sits in a corner of the
+      // chart the fleet is often crossing, and a single position to the right
+      // meant its name simply did not appear.
       //
       // The left inset is the fleet rail, which is an overlay rather than part
       // of the canvas: a label drawn under it shows through the gaps and reads
       // as text tangled in the list. Letchworth did exactly that.
-      if (box.x >= leftLimit && box.x + box.w < width - 4 && !collides(box, taken, null)) {
+      var w = ctx.measureText(site.name).width + 4;
+      for (var k = 0; k < SITE_OFFSETS.length; k++) {
+        var o = SITE_OFFSETS[k];
+        var bx = o[2] === 'left' ? x + o[0]
+               : o[2] === 'right' ? x + o[0] - w
+               : x - w / 2;
+        var box = { x: bx, y: y + o[1] - 7, w: w, h: 14 };
+        if (box.x < leftLimit || box.x + box.w > width - 4) continue;
+        if (box.y < 4 || box.y + box.h > height - 4) continue;
+        if (collides(box, taken, null)) continue;
         taken.push(box);
         out.boxes.push(box);
         mark.text = site.name;
+        mark.textX = o[2] === 'right' ? box.x + w : box.x;
+        mark.textY = y + o[1];
+        mark.align = o[2] === 'center' ? 'center' : (o[2] === 'right' ? 'right' : 'left');
+        if (o[2] === 'center') mark.textX = box.x + w / 2;
+        break;
       }
       out.marks.push(mark);
     }
@@ -1046,7 +1091,6 @@
     if (!sites || !sites.marks.length) return;
     ctx.save();
     ctx.font = '500 11px ' + FONT;
-    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
 
@@ -1063,12 +1107,13 @@
       if (!m.text) return;
       // A halo, because this now paints over the fleet rather than under it and
       // the type has to hold against whatever ends up beneath it.
+      ctx.textAlign = m.align;
       ctx.strokeStyle = HALO;
       ctx.lineWidth = 3.5;
-      ctx.strokeText(m.text, m.x + 11, m.y);
+      ctx.strokeText(m.text, m.textX, m.textY);
       ctx.fillStyle = m.colour;
       ctx.globalAlpha = 0.9;
-      ctx.fillText(m.text, m.x + 11, m.y);
+      ctx.fillText(m.text, m.textX, m.textY);
       ctx.globalAlpha = 1;
     });
     ctx.restore();
@@ -1091,24 +1136,31 @@
     ctx.stroke();
   }
 
-  // A diamond: a facility, not a vessel and not a port.
+  /**
+   * A diamond: a facility, not a vessel and not a port.
+   *
+   * Filled rather than outlined. A six-pixel outline in a desaturated blue is
+   * invisible against this sea — it vanished into the water on every screen it
+   * was looked at. The shape still carries the meaning; the fill is what makes
+   * it findable across a room.
+   */
   function drawYardMark(x, y, colour, weight) {
-    var r = 5.5;
-    ctx.strokeStyle = colour;
-    ctx.lineWidth = weight || 1.4;
+    var r = 6;
     ctx.beginPath();
     ctx.moveTo(x, y - r);
     ctx.lineTo(x + r, y);
     ctx.lineTo(x, y + r);
     ctx.lineTo(x - r, y);
     ctx.closePath();
-    ctx.stroke();
-    // A small centre dot, so it still reads at a glance when the outline is
-    // only a few pixels across.
-    ctx.beginPath();
-    ctx.arc(x, y, 1.3, 0, Math.PI * 2);
     ctx.fillStyle = colour;
     ctx.fill();
+    // The halo pass strokes as well as fills, so the mark proper sits inside a
+    // dark rim and holds its edge over a coastline or a chevron.
+    if (weight) {
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = weight;
+      ctx.stroke();
+    }
   }
 
   /* --- Vessels ----------------------------------------------------------- */

@@ -107,23 +107,28 @@
   --map-place-land:  rgba(150, 172, 194, 0.55);
 
   /* Our own places. The headquarters mark is the logotype's own cyan, because it
-     IS the logotype; a yard is quieter, because it is context rather than the
-     subject. Neither is a status colour — nothing on this chart should be
-     mistaken for a vessel that is not one. */
+     IS the logotype; a yard is a lighter cyan of the same family, told apart by
+     its shape rather than by a fourth hue. Neither is a status colour — nothing
+     on this chart should be mistaken for a vessel that is not one.
+
+     The yard was a desaturated blue at 70%, on the reasoning that it is context
+     rather than the subject. On a navy sea that is not quiet, it is invisible:
+     it vanished into the water on every screen it was looked at. A mark nobody
+     can find is not context, it is nothing. */
   --map-site-hq:    #3CB4E4;
-  --map-site-yard:  rgba(147, 190, 220, 0.70);
+  --map-site-yard:  #6FCBEA;
+
+  /* A crowd of yachts drawn as one. Deliberately no status colour: it is a fact
+     about the chart, not about any vessel on it. The ring reads as the crowd's
+     resting state, so the underway arc drawn over it in --status-underway can
+     be told apart from it at a glance. */
+  --map-cluster:      rgba(14, 30, 46, 0.94);
+  --map-cluster-ring: rgba(139, 152, 168, 0.85);
 
   /* Sentinel: the out-of-hours service package. Gold, kept away from every
      status hue on the board — cyan, green, grey — so a glance can pick it out
      without first reading anything. Warm against a chart that is entirely cool,
      which is what makes it carry across a room. */
-  /* A crowd of yachts drawn as one. Deliberately no status colour: it is a
-     fact about the chart, not about any vessel on it. */
-  --map-cluster: rgba(14, 30, 46, 0.94);
-  /* The ring reads as the crowd's resting state, so the underway arc drawn
-     over it in --status-underway can be told apart from it at a glance. */
-  --map-cluster-ring: rgba(139, 152, 168, 0.85);
-
   --sentinel:        #D4A64A;
   --sentinel-glow:   rgba(212, 166, 74, 0.55);
 
