@@ -360,6 +360,10 @@
       classSociety: text(fields.classSociety),
       photo: text(fields.photo),
       discreet: !!fields.discreet,
+      // The out-of-hours service package. Not a status and not a secret — a
+      // commercial relationship, drawn as a gold halo so the yachts that carry
+      // it can be picked out across a room without reading anything.
+      sentinel: !!fields.sentinel,
       demo: Vessel.buildDemo(fields)
     };
   };
@@ -430,6 +434,7 @@
       loa: y.loa, beam: y.beam, grossTonnage: y.grossTonnage,
       builder: y.builder, yearBuilt: y.yearBuilt, lastRefit: y.lastRefit,
       classSociety: y.classSociety, photo: y.photo, discreet: !!y.discreet,
+      sentinel: !!y.sentinel,
       demoStatus: Vessel.normaliseStatus(d.status),
       demoPort: d.port || null,
       demoLat: d.position ? d.position[1] : null,

@@ -136,7 +136,10 @@
       courseLine: v('--map-course', 'rgba(60, 180, 228, 0.45)'),
       wind: v('--map-wind', 'rgba(147, 190, 220, 0.6)'),
       placeWater: v('--map-place-water', 'rgba(147, 190, 220, 0.55)'),
-      placeLand: v('--map-place-land', 'rgba(20, 40, 62, 0.75)')
+      placeLand: v('--map-place-land', 'rgba(20, 40, 62, 0.75)'),
+      siteHq: v('--map-site-hq', '#3CB4E4'),
+      siteYard: v('--map-site-yard', 'rgba(147, 190, 220, 0.7)'),
+      sentinel: v('--sentinel', '#D4A64A')
     };
   }
   Map.readTheme = function () { readTheme(); baseKey = ''; };
@@ -273,6 +276,7 @@
       claimed = labels.map(function (l) { return l.box; }).concat(markerBoxes(placed));
       claimed = claimed.concat(m2('places', function () { return drawPlaces(claimed, opts); }));
       m2('ports', function () { drawPorts(claimed); });
+      claimed = claimed.concat(m2('sites', function () { return drawSites(claimed, opts); }));
       m2('courses', function () { drawCourses(vessels); });
       m2('tracks', function () { drawTracks(vessels); });
       m2('markers', function () { paintMarkers(placed, opts, now); });
@@ -285,6 +289,7 @@
       // Place names go under the ports and the fleet, and yield to both.
       claimed = claimed.concat(drawPlaces(claimed, opts));
       drawPorts(claimed);
+      claimed = claimed.concat(drawSites(claimed, opts));
       drawCourses(vessels);
       drawTracks(vessels);
       paintMarkers(placed, opts, now);
@@ -308,16 +313,32 @@
   // The vessel nearest a point on the canvas, within a comfortable finger's
   // reach. Returns null when the click was on open sea.
   Map.hitTest = function (x, y, radius) {
+    var under = Map.hitTestAll(x, y, radius);
+    return under.length ? under[0].vessel : null;
+  };
+
+  /**
+   * Everything under the pointer, nearest first.
+   *
+   * In Port Hercule or Antibes half a dozen markers can sit inside twenty
+   * pixels, and picking only the nearest means the other five cannot be reached
+   * at all: every click lands on the same yacht, and the ones behind her are
+   * effectively not on the chart. This returns all of them with their screen
+   * positions, so the caller can offer a choice.
+   */
+  Map.hitTestAll = function (x, y, radius) {
     var frame = Map.lastFrame;
-    if (!frame) return null;
+    if (!frame) return [];
     var limit = radius || 30;
-    var best = null, bestDistance = limit;
+    var under = [];
     for (var i = 0; i < frame.placed.length; i++) {
       var p = frame.placed[i];
-      var d = Math.hypot(x - (p.x + frame.driftX), y - (p.y + frame.driftY));
-      if (d < bestDistance) { bestDistance = d; best = p.vessel; }
+      var px = p.x + frame.driftX, py = p.y + frame.driftY;
+      var d = Math.hypot(x - px, y - py);
+      if (d < limit) under.push({ vessel: p.vessel, distance: d, x: px, y: py });
     }
-    return best;
+    under.sort(function (a, b) { return a.distance - b.distance; });
+    return under;
   };
 
   /**
@@ -862,6 +883,103 @@
     ctx.restore();
   }
 
+  /* --- Our own places ------------------------------------------------------- */
+
+  /**
+   * Headquarters and build yards.
+   *
+   * Drawn above the ports and below the fleet: they are fixed context, and a
+   * yacht must never be hidden behind one. Both marks are outlines rather than
+   * filled shapes, so they read as places rather than as vessels — nothing on
+   * this chart should be mistaken for a boat that is not one.
+   *
+   * The headquarters mark is the company's own device, the same ring-and-bar
+   * the header draws: a circle open at twelve o'clock with a bar through the
+   * gap. Drawing it here rather than loading artwork keeps it crisp at every
+   * zoom and lets it take its colour from the stylesheet.
+   */
+  function drawSites(claimed, opts) {
+    var sites = (window.CONFIG && window.CONFIG.sites) || [];
+    if (!sites.length) return [];
+
+    var taken = claimed.slice();
+    var mine = [];
+    var leftLimit = (opts && opts.inset && opts.inset.left ? opts.inset.left : 0) + 4;
+    ctx.save();
+    ctx.font = '500 11px ' + FONT;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+
+    for (var i = 0; i < sites.length; i++) {
+      var site = sites[i];
+      if (site.lat == null || site.lon == null) continue;
+      var x = sx(window.Geo.worldX(site.lon));
+      var y = sy(window.Geo.worldY(site.lat));
+      if (x < -40 || x > width + 40 || y < -30 || y > height + 30) continue;
+
+      var yard = site.kind === 'yard';
+      var colour = yard ? theme.siteYard : theme.siteHq;
+      if (yard) drawYardMark(x, y, colour); else drawHqMark(x, y, colour);
+
+      var text = site.name;
+      var box = { x: x + 11, y: y - 7, w: ctx.measureText(text).width + 4, h: 14 };
+      // Our own places yield to the fleet, like the ports do — but unlike a
+      // port, one that cannot be labelled is still worth marking.
+      //
+      // The left inset is the fleet rail, which is an overlay rather than part
+      // of the canvas: a label drawn under it shows through the gaps and reads
+      // as text tangled in the list. Letchworth did exactly that.
+      if (box.x >= leftLimit && box.x + box.w < width - 4 && !collides(box, taken, null)) {
+        taken.push(box);
+        mine.push(box);
+        ctx.fillStyle = colour;
+        ctx.globalAlpha = 0.85;
+        ctx.fillText(text, x + 11, y);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+    return mine;
+  }
+
+  // Centre (50,55) radius 33 in the header's 100-unit box, with a gap at twelve
+  // o'clock for the bar. Scaled to a 7px radius here and drawn the same way.
+  function drawHqMark(x, y, colour) {
+    var r = 7;
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    // The arc runs the long way round, from just right of the gap clockwise
+    // back to just left of it, so the opening sits square at the top.
+    ctx.arc(x, y, r, -Math.PI / 2 + 0.34, -Math.PI / 2 - 0.34, false);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y - r - 3.5);
+    ctx.lineTo(x, y - r + 4.5);
+    ctx.stroke();
+  }
+
+  // A diamond: a facility, not a vessel and not a port.
+  function drawYardMark(x, y, colour) {
+    var r = 5.5;
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r, y);
+    ctx.closePath();
+    ctx.stroke();
+    // A small centre dot, so it still reads at a glance when the outline is
+    // only a few pixels across.
+    ctx.beginPath();
+    ctx.arc(x, y, 1.3, 0, Math.PI * 2);
+    ctx.fillStyle = colour;
+    ctx.fill();
+  }
+
   /* --- Vessels ----------------------------------------------------------- */
 
   function statusColor(status) {
@@ -1131,6 +1249,11 @@
         ? (v.fix.cog != null ? v.fix.cog : v.fix.heading)
         : null;
 
+      // Under the marker, so it reads as a halo around her rather than another
+      // mark beside her — and so her own status colour stays the thing you read
+      // first. A Sentinel yacht is still moored, or underway, or dark.
+      if (v.yacht.sentinel) drawSentinelGlow(p.x, p.y, now);
+
       if (d.discreet) {
         drawDiscreetArea(p.x, p.y, p.color, d);
       } else if (d.status === 'underway' && course != null) {
@@ -1205,6 +1328,50 @@
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The gold halo on a Sentinel yacht.
+   *
+   * The point is a glance across a room: which of the out-of-hours customers is
+   * where, without reading a single word. So it breathes rather than flashes —
+   * a slow swell on a four-second cycle, never fully off, because a mark that
+   * disappears is a mark you have to wait for.
+   *
+   * Gold sits outside the status palette entirely (cyan, green, greys), so it
+   * adds a dimension to the marker instead of competing with one. Warm against
+   * a chart that is otherwise wholly cool is what makes it carry.
+   */
+  function drawSentinelGlow(x, y, now) {
+    // A gradient rejects a non-finite argument by throwing, and a camera that
+    // has gone NaN turns that into a console full of exceptions once per frame
+    // rather than one quiet blank marker. Nothing here is worth an exception.
+    if (!isFinite(x) || !isFinite(y) || !isFinite(now)) return;
+    var phase = (now % 4000) / 4000;
+    // A sine swell, so there is no moment of discontinuity as it loops.
+    var swell = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    var glow = ctx.createRadialGradient(x, y, 2, x, y, 17 + swell * 5);
+    glow.addColorStop(0, theme.sentinel);
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.20 + swell * 0.18;
+    ctx.beginPath();
+    ctx.arc(x, y, 17 + swell * 5, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
+
+    // A thin ring at the edge of the swell gives it a definite boundary; a
+    // gradient alone reads as a smudge at small sizes.
+    ctx.globalAlpha = 0.30 + swell * 0.35;
+    ctx.beginPath();
+    ctx.arc(x, y, 11 + swell * 3, 0, Math.PI * 2);
+    ctx.strokeStyle = theme.sentinel;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawHighlightRing(x, y, color, now) {

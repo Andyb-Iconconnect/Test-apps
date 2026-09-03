@@ -31,6 +31,10 @@
   }
 
   function statusVar(status) {
+    // Sentinel has no --status- of its own: it is not a state, and giving it one
+    // would have the chip render as var(--status-sentinel), which resolves to
+    // nothing and paints an invisible swatch.
+    if (status === 'sentinel') return 'var(--sentinel)';
     return 'var(--status-' + (status === 'unknown' ? 'dark' : status) + ')';
   }
 
@@ -193,6 +197,7 @@
 
   var FILTERS = [
     ['all', 'All'],
+    ['sentinel', 'Sentinel'],
     ['underway', 'Underway'],
     ['anchored', 'At anchor'],
     ['moored', 'Alongside'],
@@ -220,6 +225,16 @@
 
   // "fix " + Fmt.age reads "fix no fix" for a vessel never heard from, which is
   // most of a fleet on its first day.
+  // The same gold as the chart halo, beside her name in the list. Without it the
+  // rail and the chart disagree about which yachts are covered, and the rail is
+  // where somebody checks.
+  function sentinelPip() {
+    var pip = h('span', 'sentinel-pip');
+    pip.title = 'Sentinel — out-of-hours package';
+    pip.setAttribute('aria-label', 'Sentinel');
+    return pip;
+  }
+
   function fixAge(v) {
     if (!v.fix || !v.fix.at) return 'no fix yet';
     return 'fix ' + window.Fmt.age(v.fix.at);
@@ -231,6 +246,9 @@
 
   function matchesFilter(v, filter) {
     if (filter === 'all') return true;
+    // Sentinel is a commercial relationship, not a state she can be in, so it
+    // filters across all four statuses rather than sitting beside them.
+    if (filter === 'sentinel') return !!v.yacht.sentinel;
     var states = STATE_BUCKETS[filter] || [filter];
     return states.indexOf(v.derived.status) !== -1;
   }
@@ -283,6 +301,7 @@
       }
       row.appendChild(marker);
       var nameCell = h('span', 'v-name', v.yacht.name);
+      if (v.yacht.sentinel) nameCell.appendChild(sentinelPip());
       if (v.yacht.addedLocally) nameCell.appendChild(h('span', 'local-dot'));
       row.appendChild(nameCell);
 
@@ -841,8 +860,8 @@
 
   function onChartClick(event) {
     var rect = el('chart-canvas').getBoundingClientRect();
-    var vessel = window.FleetMap.hitTest(event.clientX - rect.left, event.clientY - rect.top);
-    if (vessel) select(vessel.yacht.id);
+    window.Picker.handleClick(event.clientX - rect.left, event.clientY - rect.top,
+                              select);
   }
 
   // Discretion here is a visible, deliberate act with an unmissable banner —
@@ -1638,6 +1657,7 @@
       input.value = fields[key] != null ? String(fields[key]) : '';
     });
     el('f-discreet').checked = !!fields.discreet;
+    el('f-sentinel').checked = !!fields.sentinel;
 
     // A hand-written route survives an edit; say so rather than appearing to
     // have lost it because the position boxes are empty.
@@ -1672,6 +1692,7 @@
       out[key] = input ? input.value.trim() : '';
     });
     out.discreet = el('f-discreet').checked;
+    out.sentinel = el('f-sentinel').checked;
     return out;
   }
 

@@ -1935,10 +1935,20 @@ test('the office is where the board actually is', () => {
   // The clock and the "from us" distances both read from this, and it spent the
   // whole build set to the placeholder demo's Palma.
   assert.strictEqual(CONFIG.office.timeZone, 'Europe/London');
-  assert.ok(/London/.test(CONFIG.office.label), 'labelled for the room it stands in');
-  assert.ok(Math.abs(CONFIG.office.lat - 51.5) < 0.5 &&
-            Math.abs(CONFIG.office.lon - -0.13) < 0.5,
-    'and the coordinates agree with the time zone');
+  assert.ok(/Letchworth/.test(CONFIG.office.label),
+    'labelled for the office it actually is, not the nearest city I offered');
+  assert.ok(Math.abs(CONFIG.office.lat - 51.98) < 0.2 &&
+            Math.abs(CONFIG.office.lon - -0.23) < 0.2,
+    'and the coordinates agree with the label');
+
+  // The reference office must be one of the places drawn on the chart, or the
+  // board measures "from us" from somewhere it does not show.
+  var hq = CONFIG.sites.filter(function (s) { return s.kind === 'hq'; });
+  assert.ok(hq.length >= 2, 'both headquarters are on the chart');
+  assert.ok(hq.some(function (s) {
+    return Math.abs(s.lat - CONFIG.office.lat) < 0.05 &&
+           Math.abs(s.lon - CONFIG.office.lon) < 0.05;
+  }), 'and the one distances are measured from is among them');
 });
 
 test('a board showing approximate positions says so', () => {
@@ -2761,6 +2771,114 @@ test('the coverage test refuses to pick a winner out of noise', () => {
   assert.ok(/Too few to tell/.test(finish), 'in those words, rather than naming a cause');
   assert.ok(/heard since/.test(finish),
     'pointing at the measurement that does work — hours of live running');
+});
+
+/* --- Our own places on the chart ------------------------------------------ */
+
+test('every site is placeable and of a kind the chart can draw', () => {
+  const sites = CONFIG.sites;
+  assert.ok(sites.length >= 5, 'two headquarters and three yards');
+  sites.forEach((s) => {
+    assert.ok(s.name && s.name.length, 'named');
+    assert.ok(['hq', 'yard'].indexOf(s.kind) !== -1, s.name + ': a kind the chart knows');
+    assert.ok(s.lat >= -90 && s.lat <= 90, s.name + ': latitude in range');
+    assert.ok(s.lon >= -180 && s.lon <= 180, s.name + ': longitude in range');
+  });
+
+  // Spot-check against the towns they name, so a transposed pair cannot pass.
+  const at = (name) => sites.filter((s) => s.name.indexOf(name) === 0)[0];
+  const near = (site, lat, lon) =>
+    Math.abs(site.lat - lat) < 0.6 && Math.abs(site.lon - lon) < 0.6;
+  assert.ok(near(at('Letchworth'), 51.98, -0.23), 'Letchworth is in Hertfordshire');
+  assert.ok(near(at('Monaco'), 43.74, 7.42), 'Monaco is on the Côte d\'Azur');
+  assert.ok(near(at('Antalya'), 36.90, 30.71), 'Antalya is on the Turkish south coast');
+  assert.ok(near(at('Istanbul'), 41.01, 28.98), 'Istanbul is on the Bosphorus');
+  assert.ok(near(at('Amsterdam'), 52.37, 4.90), 'Amsterdam is in North Holland');
+
+  const yards = sites.filter((s) => s.kind === 'yard').map((s) => s.name);
+  assert.deepStrictEqual(yards.sort(), ['Amsterdam', 'Antalya', 'Istanbul']);
+});
+
+test('our own places survive anonymous mode', () => {
+  // Anonymous mode withholds the CLIENTS' identities. These are ours, and on a
+  // board being shown to a prospect they are rather the point.
+  const source = readRepo('js/map.js');
+  const draw = source.slice(source.indexOf('function drawSites'),
+                            source.indexOf('function drawSites') + 2000);
+  assert.ok(!/publicName|showsIdentity|anonymous/i.test(draw),
+    'drawSites does not consult the anonymity gate');
+  assert.ok(/CONFIG\.sites/.test(draw), 'and reads them straight from config');
+});
+
+/* --- Sentinel -------------------------------------------------------------- */
+
+test('sentinel survives a round trip through the form and the file', () => {
+  const fields = { name: 'Covered', mmsi: '319000101', sentinel: true, discreet: false };
+  const record = Vessel.buildRecord(fields);
+  assert.strictEqual(record.sentinel, true, 'the form sets it');
+  assert.strictEqual(Vessel.toFields(record).sentinel, true, 'and reading it back keeps it');
+
+  const off = Vessel.buildRecord({ name: 'Plain', mmsi: '319000102' });
+  assert.strictEqual(off.sentinel, false, 'absent means not covered, never undefined');
+
+  // It has to reach fleet.js, or marking a yacht in the console is lost the
+  // moment the file is written.
+  assert.ok(/sentinel: true/.test(Vessel.toSnippet(record)),
+    'the snippet carries it');
+});
+
+test('sentinel is a relationship, not a status', () => {
+  /**
+   * It cuts across all four states — a Sentinel yacht is still moored, or
+   * underway, or dark — so it filters separately and is drawn under the marker
+   * rather than instead of it. Her own status colour stays the thing you read
+   * first.
+   */
+  const console_ = readRepo('js/console.js');
+  assert.ok(/if \(filter === 'sentinel'\) return !!v\.yacht\.sentinel;/.test(console_),
+    'the filter matches on the flag, not on a derived state');
+  assert.ok(!/STATE_BUCKETS\s*=\s*\{[^}]*sentinel/.test(console_),
+    'and it is not folded in with the statuses, which must still add up to the fleet');
+  assert.ok(/status === 'sentinel'\) return 'var\(--sentinel\)'/.test(console_),
+    'its chip has a colour of its own — var(--status-sentinel) resolves to nothing');
+
+  const map = readRepo('js/map.js');
+  assert.ok(/if \(v\.yacht\.sentinel\) drawSentinelGlow/.test(map), 'the chart draws the halo');
+  assert.ok(map.indexOf('drawSentinelGlow') < map.indexOf('if (d.discreet) {'),
+    'under the marker, so the halo never replaces her status');
+  assert.ok(/isFinite\(x\) \|\| !isFinite\(y\) \|\| !isFinite\(now\)/.test(map),
+    'and a non-finite frame is skipped rather than thrown over — a gradient ' +
+    'rejects one by raising, once per marker per frame');
+});
+
+/* --- Choosing between yachts in the same place ----------------------------- */
+
+test('a crowded spot returns everything under the pointer, nearest first', () => {
+  // Port Hercule puts half the fleet inside twenty pixels. Returning only the
+  // nearest makes the ones behind her unreachable: drawn, and unselectable.
+  const map = readRepo('js/map.js');
+  assert.ok(/Map\.hitTestAll = function/.test(map), 'there is a way to ask for all of them');
+  assert.ok(/under\.sort\(function \(a, b\) \{ return a\.distance - b\.distance; \}\)/.test(map),
+    'ordered by distance, so the obvious choice is first');
+  assert.ok(/Map\.hitTest = function[\s\S]{0,200}hitTestAll/.test(map),
+    'and the single-vessel case is expressed in terms of it, not duplicated');
+});
+
+test('the picker keeps the promises the rest of the board makes', () => {
+  const picker = readRepo('js/picker.js');
+  assert.ok(/under\.length === 1/.test(picker),
+    'one vessel under the pointer selects her outright — a list of one is a wasted click');
+  assert.ok(/Vessel\.publicName\(vessel\.yacht, vessel\.index\)/.test(picker),
+    'names go through the anonymity gate, so clicking cannot undo it');
+  assert.ok(/document\.addEventListener\('mousedown', dismiss, true\)/.test(picker),
+    'a click anywhere closes it, in capture, before it reads as a new selection');
+  assert.ok(/event\.key !== 'Escape'/.test(picker), 'and Escape closes it');
+
+  ['js/app.js', 'js/console.js'].forEach((f) => {
+    assert.ok(/Picker\.handleClick/.test(readRepo(f)), f + ' goes through the picker');
+  });
+  assert.ok(/Picker\.isOpen\(\)/.test(readRepo('js/app.js')),
+    'and Escape closes the list before it reaches the board’s own shortcuts');
 });
 
 console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));

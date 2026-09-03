@@ -500,8 +500,11 @@
 
   function onCanvasClick(event) {
     var rect = el('chart-canvas').getBoundingClientRect();
-    var vessel = window.FleetMap.hitTest(event.clientX - rect.left, event.clientY - rect.top);
-    if (vessel) showVessel(vessel.yacht.id);
+    // Several yachts inside twenty pixels is normal in Port Hercule. Picker
+    // selects outright when there is only one, and offers a list when there is
+    // not — otherwise the ones behind the nearest marker are unreachable.
+    window.Picker.handleClick(event.clientX - rect.left, event.clientY - rect.top,
+                              showVessel);
   }
 
   function onRailClick(event) {
@@ -542,6 +545,10 @@
   }
 
   function onKey(event) {
+    if (event.key === 'Escape' && window.Picker.isOpen()) {
+      window.Picker.close();
+      return;
+    }
     switch (event.key) {
       case ' ':
         event.preventDefault();

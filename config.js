@@ -89,15 +89,42 @@ window.CONFIG = {
   },
 
   // Office location — used for the "nearest to us" line and the header clock.
-  // Change to wherever the screen actually is. The coordinates below are
-  // central London, near enough for a distance measured in hundreds of miles;
-  // put the building's own if you want the figure exact.
+  //
+  // Letchworth Garden City: the UK headquarters. This was set to central London
+  // because London was the nearest of the three options I offered, none of which
+  // was Letchworth — thirty-five miles, which is nothing against a distance
+  // measured in hundreds, but the label was wrong and the label is what people
+  // read. Same time zone either way.
   office: {
-    label: 'London office',
-    lat: 51.5074,
-    lon: -0.1278,
+    label: 'Letchworth',
+    lat: 51.9781,
+    lon: -0.2296,
     timeZone: 'Europe/London'   // any IANA zone; used for the header clock
   },
+
+  /* --- Our own places on the chart ---------------------------------------- */
+
+  /**
+   * Icon Connect's own locations, drawn on the chart alongside the fleet.
+   *
+   *   kind: 'hq'    a headquarters — drawn as the company's own mark
+   *   kind: 'yard'  a yard where a yacht is being built — drawn as a diamond
+   *
+   * Coordinates are town-level, which is the right precision for a mark on a
+   * world chart: a yard's exact berth would be false accuracy at any zoom the
+   * board ever shows, and would move as often as the yachts do.
+   *
+   * These are shown whatever else is hidden. Anonymous mode withholds the
+   * CLIENTS' identities; these are ours, and on a board being shown to a
+   * prospect they are rather the point.
+   */
+  sites: [
+    { name: 'Letchworth Garden City', kind: 'hq',   lat: 51.9781, lon: -0.2296 },
+    { name: 'Monaco',                 kind: 'hq',   lat: 43.7384, lon: 7.4246 },
+    { name: 'Antalya',                kind: 'yard', lat: 36.8969, lon: 30.7133 },
+    { name: 'Istanbul',               kind: 'yard', lat: 41.0082, lon: 28.9784 },
+    { name: 'Amsterdam',              kind: 'yard', lat: 52.3676, lon: 4.9041 }
+  ],
 
   /* --- Rotation ---------------------------------------------------------- */
 

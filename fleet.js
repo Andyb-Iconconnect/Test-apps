@@ -239,7 +239,9 @@ window.FLEET = [
     yearBuilt: 2007, lastRefit: null,
     classSociety: null,
     photo: null,
-    discreet: false
+    discreet: false,
+    // Sentinel: the out-of-hours package. Set in the console, or here.
+    sentinel: true
   },
   {
     // formerly Sibelle
@@ -310,6 +312,8 @@ window.FLEET = [
     classSociety: null,
     photo: null,
     discreet: false,
+    // Sentinel: the out-of-hours package. Set in the console, or here.
+    sentinel: true,
     // The one demo position we have, because you told us. Ignored the
     // moment an AIS key is in.
     demo: { status: 'moored', port: 'Göcek' }
@@ -524,7 +528,9 @@ window.FLEET = [
     yearBuilt: 2017, lastRefit: null,
     classSociety: null,
     photo: null,
-    discreet: false
+    discreet: false,
+    // Sentinel: the out-of-hours package. Set in the console, or here.
+    sentinel: true
   },
   {
     // Admiral 584

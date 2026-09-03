@@ -1,0 +1,76 @@
+/* -----------------------------------------------------------------------------
+ * picker.css — the list that opens when several yachts share a spot.
+ *
+ * Positioned against the viewport rather than the chart, so it is never clipped
+ * by the canvas bounds, and styled from the same tokens as everything else.
+ * -------------------------------------------------------------------------- */
+
+.chart-picker {
+  position: fixed;
+  z-index: 60;
+  min-width: 13rem;
+  max-width: 20rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  font: inherit;
+}
+
+.chart-picker-head {
+  padding: 0.3rem 0.5rem 0.4rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.chart-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+.chart-picker-row:hover,
+.chart-picker-row:focus-visible {
+  background: var(--surface-3);
+  outline: none;
+}
+
+.chart-picker-dot {
+  flex: none;
+  width: 0.45rem; height: 0.45rem;
+  border-radius: 50%;
+}
+
+.chart-picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-picker-sentinel {
+  flex: none;
+  width: 0.42rem; height: 0.42rem;
+  border-radius: 50%;
+  background: var(--sentinel);
+  box-shadow: 0 0 6px var(--sentinel-glow);
+}
+
+.chart-picker-where {
+  flex: none;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}

@@ -106,6 +106,20 @@
   --map-place-water: rgba(147, 190, 220, 0.55);
   --map-place-land:  rgba(150, 172, 194, 0.55);
 
+  /* Our own places. The headquarters mark is the logotype's own cyan, because it
+     IS the logotype; a yard is quieter, because it is context rather than the
+     subject. Neither is a status colour — nothing on this chart should be
+     mistaken for a vessel that is not one. */
+  --map-site-hq:    #3CB4E4;
+  --map-site-yard:  rgba(147, 190, 220, 0.70);
+
+  /* Sentinel: the out-of-hours service package. Gold, kept away from every
+     status hue on the board — cyan, green, grey — so a glance can pick it out
+     without first reading anything. Warm against a chart that is entirely cool,
+     which is what makes it carry across a room. */
+  --sentinel:        #D4A64A;
+  --sentinel-glow:   rgba(212, 166, 74, 0.55);
+
   /* Dusk, in the order it happens, filled between successive solar-altitude
      contours and composited with `multiply`.
      

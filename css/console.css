@@ -1157,3 +1157,20 @@ body.dropping::after {
 @media (max-width: 720px) {
   .column-note { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
 }
+
+/* --- Sentinel ------------------------------------------------------------- */
+
+/* The same gold as the chart halo. A pip rather than a word: the rail is a
+   scanning list, and a second word beside every covered vessel would compete
+   with the name it sits next to. */
+.v-name .sentinel-pip {
+  display: inline-block;
+  width: 0.42rem; height: 0.42rem;
+  margin-left: 0.4rem;
+  border-radius: 50%;
+  background: var(--sentinel);
+  box-shadow: 0 0 6px var(--sentinel-glow);
+  vertical-align: 0.08rem;
+}
+
+.sentinel-word { color: var(--sentinel); font-weight: 600; }
