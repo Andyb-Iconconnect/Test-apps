@@ -58,16 +58,32 @@ const REAL_FLEET = window.FLEET;
 
 let passed = 0;
 /**
- * Failure is the default until the run reaches its own last line.
+ * A run is a pass only if it reached its own last line.
  *
- * A `process.exit()` that ended up in the middle of the file — from an edit
- * that appended after it — cut the run short, printed nothing at all, and
- * exited 0. Every check after it simply never ran, and the suite reported
- * success by saying nothing. Anything that stops this file early now exits
- * non-zero with no summary, which cannot be mistaken for a pass.
+ * A `process.exit()` ended up in the middle of this file — twice — after an
+ * edit appended past it. The run stopped there, printed nothing at all and
+ * exited 0: every check below it never ran, and the suite reported success by
+ * saying nothing.
+ *
+ * The first attempt at a guard set `process.exitCode = 1` at the top and let
+ * the epilogue clear it. That did not work, because the stray line was itself
+ * `process.exit(failed ? 1 : 0)` — with no failures recorded yet, it exited 0
+ * and looked exactly like success. The exit code was never the thing to guard;
+ * REACHING THE END was.
+ *
+ * So the end sets a flag, and an exit handler — which runs however the process
+ * leaves, `process.exit()` included — fails the run if the flag is not set.
  */
-process.exitCode = 1;
+let reachedEnd = false;
 let failed = 0;
+
+process.on('exit', function (code) {
+  if (reachedEnd) return;
+  console.error('\nThe suite stopped before its last line. ' + passed +
+    ' checks had run and the rest never did, so this is NOT a pass' +
+    (code ? '' : ' — whatever exited early reported success.'));
+  process.exitCode = 1;
+});
 
 function test(name, fn) {
   try {
@@ -3798,10 +3814,136 @@ test('a feed carrying vessels at their real rate is not called capped', () => {
   }
 });
 
+
+/* --- Is she on the feed under a different number? ------------------------- */
+
+test('a name is compared the way a name survives AIS', () => {
+  /**
+   * AIS pads to twenty characters with '@', and yards, brokers and registries
+   * disagree about spacing and punctuation. Comparing raw strings would find
+   * nothing and the whole check would quietly always pass.
+   */
+  const n = Ais._normaliseName;
+  assert.strictEqual(n('LAZY ME@@@@@@@@@@@@@'), 'LAZYME', 'padding and spaces go');
+  assert.strictEqual(n('Lazy Me'), 'LAZYME', 'so does case');
+  assert.strictEqual(n('LADY M. II'), n('LADY M II'), 'and punctuation');
+  assert.strictEqual(n('Alaïa'), 'ALAIA', 'accents fold to the plain letter');
+  assert.strictEqual(n(''), '');
+  assert.strictEqual(n(null), '', 'and nothing is not a match for anything');
+});
+
+test('a vessel broadcasting our name under another number is caught', () => {
+  /**
+   * The case that prompted this: Class A, reported two minutes ago elsewhere,
+   * never once on the board. A Class A transponder is 12.5 watts every few
+   * seconds — if a network hears anything in that sea it hears her. So either
+   * the feed does not carry her, or it does and we are listening for the wrong
+   * number.
+   *
+   * Sixty-one MMSIs were read off another site and typed in by hand. A wrong
+   * one fails silently for ever, and nothing until now could tell that apart
+   * from a vessel genuinely off the feed.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const target = s.vessels[0];
+    delete target.firstHeardAt;                       // never heard from
+    const heard = s.vessels[1];
+    heard.firstHeardAt = new Date();                  // reporting normally
+
+    const cancel = Ais.chase(300, null, null);
+
+    const say = (mmsi, name) => Ais.observer(String(mmsi), {
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: mmsi, ShipName: name }
+    });
+
+    say(999888777, target.yacht.name.toUpperCase() + '@@@@@');   // ours, wrong number
+    say(999888777, target.yacht.name.toUpperCase() + '@@@@@');
+    say(111222333, 'MAERSK SELETAR');                            // a stranger
+    say(heard.yacht.mmsi, heard.yacht.name);                     // ours, reporting fine
+
+    const r = cancel();
+    assert.strictEqual(r.total, 4, 'every message was seen');
+    assert.strictEqual(r.impostors.length, 1, 'one name under a foreign number');
+    assert.strictEqual(r.impostors[0].feedMmsi, '999888777', 'what the feed says');
+    assert.strictEqual(r.impostors[0].ourMmsi, String(target.yacht.mmsi), 'what we have');
+    assert.strictEqual(r.impostors[0].n, 2);
+    assert.strictEqual(r.found.length, 0, 'she never used our number');
+  } finally {
+    window.Store = original;
+    window.Ais.observer = null;
+  }
+});
+
+test('a vessel reporting under her own number is not called an impostor', () => {
+  // The guard. Every vessel on the feed carries a name, and ours carry ours —
+  // a check that fires on those would report sixty-one impostors a minute.
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    s.vessels.forEach((v) => delete v.firstHeardAt);
+    const cancel = Ais.chase(300, null, null);
+    s.vessels.forEach((v) => Ais.observer(String(v.yacht.mmsi), {
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: v.yacht.mmsi, ShipName: v.yacht.name }
+    }));
+    const r = cancel();
+    assert.strictEqual(r.impostors.length, 0, 'nobody is impersonating anybody');
+    assert.strictEqual(r.found.length, s.vessels.length, 'they simply turned up');
+  } finally {
+    window.Store = original;
+    window.Ais.observer = null;
+  }
+});
+
+test('the chase report names the correction, and warns before you make it', () => {
+  const report = settingsModule()._chaseReport({
+    seconds: 300, total: 72000, silent: 26,
+    found: [{ mmsi: '319071900', name: 'Aviva', n: 3 }],
+    impostors: [{ name: 'Lazy Me', ourMmsi: '319508000', feedMmsi: '319508123', n: 14 }]
+  });
+  assert.ok(/BROADCASTING UNDER A DIFFERENT NUMBER/.test(report));
+  assert.ok(/Lazy Me — the feed says MMSI 319508123, our record says 319508000/.test(report),
+    'both numbers, so the correction is obvious');
+  assert.ok(/two boats can share one/.test(report),
+    'and a warning, because a name is not proof of identity');
+  assert.ok(/TURNED UP AFTER ALL/.test(report), 'the merely slow are listed apart');
+  assert.ok(/The other 24 appeared neither by number nor by name/.test(report),
+    'and the rest are accounted for');
+});
+
+test('a chase that finds nothing says the numbers are right', () => {
+  /**
+   * The most important verdict of the three, because it is the one that stops
+   * somebody re-checking sixty-one MMSIs by hand for nothing.
+   */
+  const report = settingsModule()._chaseReport({
+    seconds: 300, total: 72000, silent: 26, found: [], impostors: []
+  });
+  assert.ok(/None of them appeared, under their own number or their own name/.test(report));
+  assert.ok(/the numbers are not wrong/.test(report), 'said plainly');
+  assert.ok(/whose receivers are where/.test(report), 'and the cause named');
+});
+
+test('the chase lets go of the feed however it ends', () => {
+  const cancel = Ais.chase(300, null, null);
+  assert.strictEqual(typeof window.Ais.observer, 'function');
+  const r = cancel();
+  assert.strictEqual(window.Ais.observer, null, 'released on cancel');
+  assert.ok(r && typeof r.total === 'number', 'and hands back what it had');
+  assert.strictEqual(cancel(), null, 'stopping twice reports nothing twice');
+});
+
+/* --- end of tests. Anything new goes ABOVE this line. --------------------- */
+
+reachedEnd = true;
 console.log(`\n${passed} checks passed` + (failed ? ` — ${failed} failed, above\n` : '\n'));
 
-// Reached the end, so the run is as good as its failures. Exit rather than
-// waiting for the event loop to drain: a timer left running by code under test
-// keeps node alive for ever, and the suite would hang after printing its result
-// — in CI, a build that times out with no failure named.
+// Exit rather than waiting for the event loop to drain: a timer left running by
+// code under test keeps node alive for ever, and the suite would otherwise hang
+// after printing its result — in CI, a build that times out with nothing named.
 process.exit(failed ? 1 : 0);

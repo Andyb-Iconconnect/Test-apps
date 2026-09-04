@@ -327,9 +327,10 @@
     var startedAt = Date.now();
     var stopped = false;
 
-    Ais.observer = function (mmsi, type) {
+    Ais.observer = function (mmsi, payload) {
       total++;
       counts[mmsi] = (counts[mmsi] || 0) + 1;
+      var type = payload && payload.MessageType;
       if (type) types[type] = (types[type] || 0) + 1;
     };
 
@@ -406,6 +407,133 @@
   }
 
   Ais._summarise = summarise;      // for tests
+
+  /* --- Is she on the feed under a different number? ------------------------- */
+
+  /**
+   * Chase the vessels that have never been heard from.
+   *
+   * "Class A, reported two minutes ago, never once on our board" is not
+   * coverage and not a ceiling. A Class A transponder puts out 12.5 watts every
+   * few seconds; if a network hears anything in that sea it hears her. So
+   * either this feed genuinely does not carry her, or it does and we are not
+   * recognising her.
+   *
+   * The second is very much possible: sixty-one MMSIs were read off another
+   * site and typed in by hand, and a wrong one fails silently for ever — the
+   * board simply tracks nobody, or worse, tracks a stranger. Nothing so far
+   * could tell the two apart.
+   *
+   * This can, because AIS carries the vessel's NAME as well as her number. It
+   * watches the live feed and reports two things:
+   *
+   *   - which of the silent MMSIs turned up at all
+   *   - any vessel on the feed broadcasting one of OUR names under a number
+   *     that is not the one in our records
+   *
+   * The second is the answer to a typo, and it names the correction.
+   */
+  Ais.chase = function (seconds, onProgress, onDone) {
+    var wanted = {};        // mmsi we have never heard -> yacht
+    var byName = {};        // normalised name -> yacht
+    var vessels = window.Store.vessels || [];
+    for (var i = 0; i < vessels.length; i++) {
+      var y = vessels[i].yacht;
+      if (!vessels[i].firstHeardAt) wanted[String(y.mmsi)] = y;
+      var key = normaliseName(y.name);
+      if (key) byName[key] = y;
+    }
+
+    var found = {};         // mmsi -> messages, for the silent ones
+    var impostors = {};     // ourMmsi + '|' + feedMmsi -> { name, feedMmsi, yacht, n }
+    var total = 0;
+    var startedAt = Date.now();
+    var stopped = false;
+
+    Ais.observer = function (mmsi, payload) {
+      total++;
+      if (wanted[mmsi]) {
+        found[mmsi] = (found[mmsi] || 0) + 1;
+        return;
+      }
+      // A name we know, arriving under a number we do not. Checked only for
+      // MMSIs that are not ours at all, so a vessel reporting normally never
+      // registers here.
+      var meta = payload && payload.MetaData;
+      var name = meta && normaliseName(meta.ShipName);
+      if (!name || !byName[name]) return;
+      if (window.Store.byMmsi[mmsi]) return;      // already one of ours, fine
+      var yacht = byName[name];
+      var k = yacht.mmsi + '|' + mmsi;
+      if (!impostors[k]) {
+        impostors[k] = { name: yacht.name, ourMmsi: String(yacht.mmsi), feedMmsi: mmsi, n: 0 };
+      }
+      impostors[k].n++;
+    };
+
+    var tick = setInterval(function () {
+      if (stopped) return;
+      var elapsed = (Date.now() - startedAt) / 1000;
+      if (elapsed >= seconds) { finish(); return; }
+      if (onProgress) {
+        onProgress({
+          elapsed: Math.round(elapsed), seconds: seconds, total: total,
+          found: Object.keys(found).length, named: Object.keys(impostors).length
+        });
+      }
+    }, 1000);
+
+    function report() {
+      return {
+        seconds: Math.round((Date.now() - startedAt) / 1000),
+        total: total,
+        silent: Object.keys(wanted).length,
+        found: Object.keys(found).map(function (m) {
+          return { mmsi: m, name: wanted[m].name, n: found[m] };
+        }),
+        impostors: Object.keys(impostors).map(function (k) { return impostors[k]; })
+          .sort(function (a, b) { return b.n - a.n; })
+      };
+    }
+
+    function release() {
+      stopped = true;
+      clearInterval(tick);
+      Ais.observer = null;
+    }
+
+    function finish() {
+      if (stopped) return;
+      release();
+      if (onDone) onDone(report());
+    }
+
+    // Returns what it has. Stopping a five-minute watch after four is not a
+    // reason to throw away four minutes of answer — and it is what lets a test
+    // drive the observer by hand and then read the result.
+    return function cancel() {
+      if (stopped) return null;
+      release();
+      return report();
+    };
+  };
+
+  /**
+   * A name as it can be compared.
+   *
+   * AIS pads names to twenty characters with '@', and yards, brokers and
+   * registries disagree about spacing and punctuation — "LADY M II" against
+   * "Lady M. II". Case, padding and everything that is not a letter or a digit
+   * come out, which is the same treatment portNamed() gives a port.
+   */
+  function normaliseName(raw) {
+    if (!raw) return '';
+    return String(raw).replace(/@+$/, '').normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  Ais._normaliseName = normaliseName;   // for tests
 
   /* --- Why is only part of the fleet reporting? ----------------------------- */
 
@@ -926,7 +1054,7 @@
     // A survey watches the live feed rather than opening a socket of its own.
     // The question it answers is about the traffic already arriving, so taking
     // the feed down to ask it would be absurd.
-    if (Ais.observer) Ais.observer(mmsi, payload.MessageType);
+    if (Ais.observer) Ais.observer(mmsi, payload);
 
     // The first message of any kind means the subscription was accepted and the
     // feed is delivering. That is a different thing from having heard one of

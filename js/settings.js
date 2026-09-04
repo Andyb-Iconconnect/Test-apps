@@ -170,6 +170,9 @@
             '<button class="button-quiet ais-test" id="ais-survey" type="button">' +
               'How good is this feed? Survey it (3 minutes)' +
             '</button>' +
+            '<button class="button-quiet ais-test" id="ais-chase" type="button">' +
+              'Chase the silent ones by name (5 minutes)' +
+            '</button>' +
             '<button class="button-quiet ais-test" id="ais-coverage" type="button">' +
               'Only some of the fleet? Find out why (about 12 minutes)' +
             '</button>' +
@@ -186,6 +189,7 @@
     d.querySelector('#ais-close').addEventListener('click', function () { close(d); });
     d.querySelector('#ais-test').addEventListener('click', function () { runDiagnosis(d); });
     d.querySelector('#ais-survey').addEventListener('click', function () { runSurvey(d); });
+    d.querySelector('#ais-chase').addEventListener('click', function () { runChase(d); });
     d.querySelector('#ais-coverage').addEventListener('click', function () { runCoverage(d); });
     d.querySelector('#ais-forget').addEventListener('click', function () {
       Settings.setAisKey('');
@@ -503,6 +507,117 @@
     return lines.join('\n');
   }
 
+  /**
+   * Chase the vessels that have never been heard from.
+   *
+   * Like the survey, this rides the live feed — nothing stopped, nothing
+   * reconnected. Five minutes, because a Class A vessel at anchor broadcasts
+   * every three and this has to be long enough that silence means something.
+   */
+  var CHASE_SECONDS = 300;
+  var cancelChase = null;
+
+  function runChase(d) {
+    var button = d.querySelector('#ais-chase');
+    var log = d.querySelector('#ais-log');
+
+    if (cancelChase) {
+      // Four minutes of watching is still four minutes of answer.
+      var partial = cancelChase();
+      cancelChase = null;
+      button.textContent = 'Chase the silent ones by name (5 minutes)';
+      log.textContent = partial
+        ? 'Stopped early.\n\n' + chaseReport(partial)
+        : 'Stopped.';
+      return;
+    }
+    if (!window.Store || window.Store.mode !== 'live') {
+      log.hidden = false;
+      log.textContent = 'This watches a live feed. Put a key in first.';
+      return;
+    }
+    var silent = (window.Store.vessels || []).filter(function (v) { return !v.firstHeardAt; });
+    if (!silent.length) {
+      log.hidden = false;
+      log.textContent = 'Every vessel in the fleet has been heard from. ' +
+        'Nothing to chase.';
+      return;
+    }
+
+    log.hidden = false;
+    log.textContent = 'Watching for ' + silent.length + ' silent vessels, by number ' +
+      'and by name. Five minutes.';
+    button.textContent = 'Stop';
+
+    cancelChase = window.Ais.chase(CHASE_SECONDS, function (p) {
+      log.textContent = 'Watching: ' + p.elapsed + ' of ' + p.seconds + ' seconds, ' +
+        p.total.toLocaleString() + ' messages. ' +
+        p.found + ' of the silent ones have turned up' +
+        (p.named ? ', and ' + p.named + ' of our names under a different number' : '') + '.';
+    }, function (r) {
+      cancelChase = null;
+      button.textContent = 'Run it again';
+      log.textContent = chaseReport(r);
+    });
+  }
+
+  function chaseReport(r) {
+    var lines = [];
+    lines.push('Watched ' + r.total.toLocaleString() + ' messages over ' +
+               r.seconds + ' seconds, for ' + r.silent + ' vessels that have ' +
+               'never been heard from.');
+    lines.push('');
+
+    /**
+     * The impostor list comes first when there is one, because it is the only
+     * finding here that names its own fix.
+     *
+     * A wrong MMSI fails silently for ever: the board tracks nobody, or tracks
+     * a stranger. Sixty-one of them were read off another site and typed in by
+     * hand, so this is not a remote possibility — it is the likeliest single
+     * explanation for one particular Class A vessel reporting every few minutes
+     * elsewhere and never once here.
+     */
+    if (r.impostors.length) {
+      lines.push('BROADCASTING UNDER A DIFFERENT NUMBER');
+      r.impostors.forEach(function (i) {
+        lines.push('  ' + i.name + ' — the feed says MMSI ' + i.feedMmsi +
+                   ', our record says ' + i.ourMmsi + ' (' + i.n + ' message' +
+                   (i.n === 1 ? '' : 's') + ')');
+      });
+      lines.push('');
+      lines.push('A vessel of that name is transmitting, and we are listening ' +
+                 'for the wrong number. Correct the MMSI in the fleet record ' +
+                 'and she will appear — but check the name is really hers ' +
+                 'first, because two boats can share one.');
+      lines.push('');
+    }
+
+    if (r.found.length) {
+      lines.push('TURNED UP AFTER ALL');
+      r.found.forEach(function (f) {
+        lines.push('  ' + f.name + ' (' + f.mmsi + ') — ' + f.n + ' message' +
+                   (f.n === 1 ? '' : 's'));
+      });
+      lines.push('');
+      lines.push('These were only silent because the feed is slow, not absent ' +
+                 'from it. They will fill in on their own.');
+      lines.push('');
+    }
+
+    var accounted = r.found.length + r.impostors.length;
+    if (!accounted) {
+      lines.push('None of them appeared, under their own number or their own ' +
+                 'name. So the numbers are not wrong — this feed simply does ' +
+                 'not carry these vessels, and that is a matter of whose ' +
+                 'receivers are where.');
+    } else if (accounted < r.silent) {
+      lines.push('The other ' + (r.silent - accounted) + ' appeared neither by ' +
+                 'number nor by name. For those, the feed does not carry them.');
+    }
+    return lines.join('\n');
+  }
+
   function runCoverage(d) {
     var button = d.querySelector('#ais-coverage');
     var log = d.querySelector('#ais-log');
@@ -636,6 +751,7 @@
   }
 
   Settings._surveyReport = surveyReport;   // for tests
+  Settings._chaseReport = chaseReport;
 
   window.Settings = Settings;
 })();
