@@ -440,9 +440,43 @@
      * because it is the difference between a fix and a provider.
      */
     var oursMid = r.ours.length ? r.ours[Math.floor(r.ours.length / 2)].n : 0;
+
+    /**
+     * The ceiling comes first, because it dominates everything else.
+     *
+     * A vessel underway broadcasts a position every 2 to 10 seconds. So on a
+     * feed carrying tens of thousands of vessels, SOMETHING should be arriving
+     * at that rate — of twenty-six thousand ships, plenty are moving. If the
+     * busiest vessel on the whole feed is far below even the slowest underway
+     * rate, then nothing is arriving as fast as it is sent, and the limit is
+     * the feed's rather than our fleet's.
+     *
+     * That is worth checking before comparing ours to the median, because when
+     * it is true the median comparison is a distinction between two numbers
+     * that are both against the ceiling.
+     */
+    var slowestUnderway = r.seconds / 10;
+    var capped = r.vessels > 500 && r.best < slowestUnderway * 0.75;
+
     if (!r.vessels) {
       lines.push('Nothing arrived at all. That is a different problem — use the ' +
                  'first test.');
+    } else if (capped) {
+      lines.push('The busiest vessel out of ' + r.vessels.toLocaleString() +
+                 ' was heard ' + r.best + ' times in ' + r.seconds + ' seconds — ' +
+                 per(r.best) + '. A vessel underway broadcasts every 2 to 10 ' +
+                 'seconds, and on a feed this size a great many of them are ' +
+                 'underway. So nothing here is arriving at the rate it is sent: ' +
+                 'the ceiling is the feed\'s, and everybody is under it.');
+      lines.push('');
+      lines.push('That is not something a key, a filter or a bounding box ' +
+                 'reaches. It is what this feed carries.');
+      lines.push('');
+      lines.push('On top of it, only ' + r.ours.length + ' of ' + r.fleet +
+                 ' of ours appeared at all in ' + (r.seconds / 60).toFixed(1) +
+                 ' minutes, so its receivers are not reaching most of this fleet ' +
+                 'either. Both point the same way: a provider with a denser ' +
+                 'network, and for yachts that means satellite.');
     } else if (oursMid >= r.median) {
       lines.push('Our vessels are heard as often as anything else on this feed, ' +
                  'or more. Nothing is singling them out: this is simply how much ' +

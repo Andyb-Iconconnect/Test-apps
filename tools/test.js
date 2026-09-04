@@ -57,13 +57,25 @@ const FLEET = window.FLEET_SAMPLE;
 const REAL_FLEET = window.FLEET;
 
 let passed = 0;
+/**
+ * Failure is the default until the run reaches its own last line.
+ *
+ * A `process.exit()` that ended up in the middle of the file — from an edit
+ * that appended after it — cut the run short, printed nothing at all, and
+ * exited 0. Every check after it simply never ran, and the suite reported
+ * success by saying nothing. Anything that stops this file early now exits
+ * non-zero with no summary, which cannot be mistaken for a pass.
+ */
+process.exitCode = 1;
+let failed = 0;
+
 function test(name, fn) {
   try {
     fn();
     passed++;
   } catch (e) {
     console.error('FAIL  ' + name + '\n      ' + e.message);
-    process.exitCode = 1;
+    failed++;
   }
 }
 const close = (a, b, tol, msg) =>
@@ -3707,13 +3719,89 @@ test('stopping a survey lets go of the feed immediately', () => {
   assert.strictEqual(window.Ais.observer, null, 'stopping twice is harmless');
 });
 
-console.log(`\n${passed} checks passed` + (process.exitCode ? ' — with failures above\n' : '\n'));
+test('a feed with a ceiling on it is called out before anything else', () => {
+  /**
+   * The real run that settled this, kept as a fixture: 56,306 messages in 233
+   * seconds from 26,482 vessels; the middle vessel heard twice, the BUSIEST
+   * heard nine times.
+   *
+   * Nine. A vessel underway broadcasts every 2 to 10 seconds, so in 233 seconds
+   * she sends between 23 and 117 positions — and out of twenty-six thousand
+   * ships, a great many are moving. A maximum of nine across all of them means
+   * nothing on the feed is arriving at the rate it is sent.
+   *
+   * The first verdict missed this entirely. It compared our median (1) against
+   * the feed's median (2), called the difference too small to matter and said
+   * "the feed itself is thin" — true, but it read the weakest number in the
+   * report and never looked at the one that settles it.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const msgs = [];
+    // 26,000 vessels heard once or twice; a handful of "busiest" heard nine
+    // times. Nothing anywhere near an underway rate.
+    for (let v = 0; v < 26000; v++) {
+      const n = v % 2 ? 1 : 2;
+      for (let k = 0; k < n; k++) msgs.push(['4' + String(v).padStart(8, '0'), 'PositionReport']);
+    }
+    for (let v = 0; v < 20; v++) {
+      for (let k = 0; k < 9; k++) msgs.push(['5' + String(v).padStart(8, '0'), 'PositionReport']);
+    }
+    // The sample fleet is eight boats, so this stands in for the real 18 of 61:
+    // a minority of ours heard once each against that ceiling.
+    FLEET.slice(0, 3).forEach((y) => msgs.push([String(y.mmsi), 'PositionReport']));
+    const r = surveyOf(msgs, 233);
 
-// Exit rather than waiting for the event loop to drain.
-//
-// A timer left running by code under test keeps node alive for ever, so the
-// suite hangs after printing its result instead of ending — which in CI is a
-// build that times out with no failure named. Found by a mutation that removed
-// a clearInterval: the check that catches it had already printed FAIL, and the
-// run hung anyway.
-process.exit(process.exitCode || 0);
+    assert.strictEqual(r.best, 9, 'the busiest vessel on the feed');
+    assert.strictEqual(r.ours.length, 3, 'and only a few of ours appeared at all');
+
+    const report = settingsModule()._surveyReport(r);
+    assert.ok(/busiest vessel out of 26,023 was heard 9 times/.test(report),
+      'the ceiling is the headline, with the numbers in it');
+    assert.ok(/every 2 to 10 seconds/.test(report),
+      'measured against what AIS actually transmits');
+    assert.ok(/ceiling is the feed/.test(report), 'and named as the feed\'s limit');
+    assert.ok(/not something a key, a filter or a bounding box reaches/.test(report),
+      'with nothing at this end left to try');
+    assert.ok(/3 of 8 of ours appeared/.test(report),
+      'and the fleet coverage stated alongside it');
+    assert.ok(/satellite/.test(report), 'pointing at what would actually change it');
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('a feed carrying vessels at their real rate is not called capped', () => {
+  // The guard against crying wolf: if something on the feed IS arriving every
+  // few seconds, the ceiling verdict must not fire, or every survey ends in
+  // "change provider" regardless of what it measured.
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const msgs = [];
+    for (let v = 0; v < 2000; v++) msgs.push(['6' + String(v).padStart(8, '0'), 'PositionReport']);
+    // One vessel underway and fully relayed: 30 positions in 233 seconds, which
+    // is what a feed carrying its traffic looks like.
+    for (let k = 0; k < 30; k++) msgs.push(['700000001', 'PositionReport']);
+    FLEET.forEach((y) => msgs.push([String(y.mmsi), 'PositionReport']));
+    const r = surveyOf(msgs, 233);
+    assert.strictEqual(r.best, 30, 'something on the feed is arriving at rate');
+
+    const report = settingsModule()._surveyReport(r);
+    assert.ok(!/ceiling is the feed/.test(report),
+      'no ceiling verdict when the feed is carrying something at rate');
+  } finally {
+    window.Store = original;
+  }
+});
+
+console.log(`\n${passed} checks passed` + (failed ? ` — ${failed} failed, above\n` : '\n'));
+
+// Reached the end, so the run is as good as its failures. Exit rather than
+// waiting for the event loop to drain: a timer left running by code under test
+// keeps node alive for ever, and the suite would hang after printing its result
+// — in CI, a build that times out with no failure named.
+process.exit(failed ? 1 : 0);
