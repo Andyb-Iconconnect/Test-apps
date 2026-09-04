@@ -3867,10 +3867,15 @@ test('a vessel broadcasting our name under another number is caught', () => {
 
     const r = cancel();
     assert.strictEqual(r.total, 4, 'every message was seen');
-    assert.strictEqual(r.impostors.length, 1, 'one name under a foreign number');
-    assert.strictEqual(r.impostors[0].feedMmsi, '999888777', 'what the feed says');
-    assert.strictEqual(r.impostors[0].ourMmsi, String(target.yacht.mmsi), 'what we have');
-    assert.strictEqual(r.impostors[0].n, 2);
+
+    // Seen, but not offered: nothing about her agrees except the name, and a
+    // bare name on a global feed is what coincidence looks like.
+    assert.strictEqual(r.leads.leads.length, 0, 'not put forward to act on');
+    assert.strictEqual(r.leads.nameOnly.length, 1, 'reported as a name match only');
+    assert.strictEqual(r.leads.nameOnly[0].feedMmsi, '999888777', 'what the feed says');
+    assert.strictEqual(r.leads.nameOnly[0].ourMmsi, String(target.yacht.mmsi),
+      'what we have');
+    assert.strictEqual(r.leads.nameOnly[0].n, 2);
     assert.strictEqual(r.found.length, 0, 'she never used our number');
   } finally {
     window.Store = original;
@@ -3892,7 +3897,8 @@ test('a vessel reporting under her own number is not called an impostor', () => 
       MetaData: { MMSI: v.yacht.mmsi, ShipName: v.yacht.name }
     }));
     const r = cancel();
-    assert.strictEqual(r.impostors.length, 0, 'nobody is impersonating anybody');
+    assert.strictEqual(r.leads.leads.length, 0, 'nobody is impersonating anybody');
+    assert.strictEqual(r.leads.nameOnly.length, 0, 'not even weakly');
     assert.strictEqual(r.found.length, s.vessels.length, 'they simply turned up');
   } finally {
     window.Store = original;
@@ -3900,33 +3906,173 @@ test('a vessel reporting under her own number is not called an impostor', () => 
   }
 });
 
-test('the chase report names the correction, and warns before you make it', () => {
-  const report = settingsModule()._chaseReport({
-    seconds: 300, total: 72000, silent: 26,
-    found: [{ mmsi: '319071900', name: 'Aviva', n: 3 }],
-    impostors: [{ name: 'Lazy Me', ourMmsi: '319508000', feedMmsi: '319508123', n: 14 }]
-  });
-  assert.ok(/BROADCASTING UNDER A DIFFERENT NUMBER/.test(report));
-  assert.ok(/Lazy Me — the feed says MMSI 319508123, our record says 319508000/.test(report),
-    'both numbers, so the correction is obvious');
-  assert.ok(/two boats can share one/.test(report),
-    'and a warning, because a name is not proof of identity');
-  assert.ok(/TURNED UP AFTER ALL/.test(report), 'the merely slow are listed apart');
-  assert.ok(/The other 24 appeared neither by number nor by name/.test(report),
-    'and the rest are accounted for');
+test('a common name is reported as noise, never as a finding', () => {
+  /**
+   * The real run, kept as a fixture. Forty-three rows came back and every one
+   * of them was almost certainly wrong: "Aurora" alone appeared under twenty
+   * different MMSIs — Dutch, American, Danish, Norwegian, Swedish, Finnish,
+   * Italian — because Aurora is one of the commonest vessel names afloat.
+   *
+   * That output looked like forty-three findings. Acting on any of them would
+   * have pointed the board at a stranger and put a client's name on her, which
+   * is the same class of error as caching demo positions and drawing them as
+   * real — the worst thing this board can do.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const raw = [];
+    // Aurora under twenty foreign numbers, as it actually came back.
+    const auroras = ['244130216', '367379320', '219018833', '368456530', '253242285',
+      '244630029', '257080590', '244060938', '368380740', '259036280', '230110440',
+      '265818840', '244180911', '368389610', '219030958', '244860651', '247225520',
+      '258125580', '503304700', '235061881'];
+    auroras.forEach((m) => raw.push({
+      name: 'Aurora', ourMmsi: '533110715', feedMmsi: m, n: 3, ourLoa: null,
+      shipType: null, loa: null, beam: null
+    }));
+    const weighed = Ais._weigh(raw);
+
+    assert.strictEqual(weighed.leads.length, 0, 'not one of them survives');
+    assert.strictEqual(weighed.common.length, 1, 'reported once, as a common name');
+    assert.strictEqual(weighed.common[0].count, 20);
+
+    const report = settingsModule()._chaseReport({
+      seconds: 314, total: 75228, silent: 23, found: [], leads: weighed
+    });
+    assert.ok(/COMMON NAMES, IGNORED/.test(report));
+    assert.ok(/Aurora \(20\)/.test(report), 'named, with its count');
+    assert.ok(!/WORTH CHECKING/.test(report), 'and nothing offered to act on');
+    assert.ok(/Nothing worth acting on/.test(report), 'the verdict is plain');
+    assert.ok(/the numbers in the fleet file are not the problem/.test(report));
+  } finally {
+    window.Store = original;
+  }
 });
 
-test('a chase that finds nothing says the numbers are right', () => {
+test('a lead is weighed on more than its name', () => {
   /**
-   * The most important verdict of the three, because it is the one that stops
-   * somebody re-checking sixty-one MMSIs by hand for nothing.
+   * Limerence: the one row out of forty-three that was worth a second look.
+   * Our record says 319230200, a Cayman number; the feed says 538072789 —
+   * Marshall Islands, and sitting immediately before Nero's 538072790, which is
+   * one of ours. MMSIs go out in blocks, so yachts under the same management
+   * are often numbered together. That is a reason to look, and it is exactly
+   * what the first version of this buried under forty-two other rows.
    */
-  const report = settingsModule()._chaseReport({
-    seconds: 300, total: 72000, silent: 26, found: [], impostors: []
-  });
-  assert.ok(/None of them appeared, under their own number or their own name/.test(report));
-  assert.ok(/the numbers are not wrong/.test(report), 'said plainly');
-  assert.ok(/whose receivers are where/.test(report), 'and the cause named');
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    // Ours flies a Cayman number; the candidate is a Marshall Islands one
+    // sitting immediately before another of our boats, exactly as Limerence
+    // sits before Nero.
+    const ours = s.vessels[0].yacht;
+    const neighbour = s.vessels[1].yacht;
+    ours.mmsi = 319230200;
+    neighbour.mmsi = 538072790;
+    neighbour.name = 'Nero';
+    window.Store.init(s.vessels.map((v) => v.yacht));
+
+    const weighed = Ais._weigh([{
+      name: ours.name, ourMmsi: '319230200', feedMmsi: '538072789',
+      n: 6, ourLoa: null, shipType: 37, loa: null, beam: null
+    }]);
+
+    assert.strictEqual(weighed.leads.length, 1);
+    const lead = weighed.leads[0];
+    const why = lead.evidence.join(' | ');
+    assert.ok(/broadcasts as a yacht/.test(why), 'ship type 37 is what a yacht sends');
+    assert.ok(/numbered next to Nero \(538072790\)/.test(why),
+      'and the block allocation is noticed — got: ' + why);
+    assert.ok(/flies Marshall Islands, our record says Cayman Islands/.test(why),
+      'with the flag difference stated rather than hidden');
+    assert.ok(lead.weight >= 6, 'which together is worth reading — got ' + lead.weight);
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('a number a digit away from our own reads as a typo, not an allocation', () => {
+  // The other way a near-miss happens, and it means something different: a
+  // transposed digit lands beside the number already in the record.
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const ours = s.vessels[0].yacht;
+    const weighed = Ais._weigh([{
+      name: ours.name, ourMmsi: String(ours.mmsi),
+      feedMmsi: String(Number(ours.mmsi) + 3),
+      n: 6, ourLoa: null, shipType: 37, loa: null, beam: null
+    }]);
+    const why = weighed.leads[0].evidence.join(' | ');
+    assert.ok(/only 3 away from the number we hold/.test(why), 'got: ' + why);
+    assert.ok(/mistyped digit/.test(why), 'and says what that looks like');
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('a cargo ship sharing a name is ruled out, not listed', () => {
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const ours = s.vessels[0].yacht;
+    const weighed = Ais._weigh([{
+      name: ours.name, ourMmsi: String(ours.mmsi), feedMmsi: '636092837',
+      n: 40, ourLoa: 45, shipType: 70, loa: 229, beam: 32
+    }]);
+    assert.strictEqual(weighed.leads.length, 0, 'not offered');
+    assert.strictEqual(weighed.ruledOut.length, 1, 'and said to have been considered');
+    assert.ok(/not a yacht/.test(weighed.ruledOut[0].ruledOut));
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('a vessel of the wrong size sharing a name is ruled out', () => {
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const ours = s.vessels[0].yacht;
+    const weighed = Ais._weigh([{
+      name: ours.name, ourMmsi: String(ours.mmsi), feedMmsi: '244000111',
+      n: 9, ourLoa: 45, shipType: 37, loa: 12, beam: 4
+    }]);
+    assert.strictEqual(weighed.leads.length, 0, 'a 12 m boat is not our 45 m one');
+    assert.ok(/12 m and ours is 45 m/.test(weighed.ruledOut[0].ruledOut));
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('the report will not let a lead be acted on without checking it', () => {
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const ours = s.vessels[0].yacht;
+    const weighed = Ais._weigh([{
+      name: ours.name, ourMmsi: String(ours.mmsi), feedMmsi: '319508123',
+      n: 14, ourLoa: null, shipType: 37, loa: null, beam: null
+    }]);
+    const report = settingsModule()._chaseReport({
+      seconds: 300, total: 72000, silent: 26,
+      found: [{ mmsi: '319071900', name: 'Aviva', n: 3 }], leads: weighed
+    });
+    assert.ok(/WORTH CHECKING/.test(report), 'offered as a lead');
+    assert.ok(/Look each of these up on MarineTraffic before touching the fleet file/
+      .test(report.replace(/\n\s*/g, ' ')), 'with the check named first');
+    assert.ok(/puts a stranger on the chart under your client's name/
+      .test(report.replace(/\n\s*/g, ' ')),
+      'and the cost of getting it wrong stated, because silence is the safer failure');
+    assert.ok(/TURNED UP AFTER ALL/.test(report), 'the merely slow are listed apart');
+  } finally {
+    window.Store = original;
+  }
 });
 
 test('the chase lets go of the feed however it ends', () => {
@@ -3936,6 +4082,91 @@ test('the chase lets go of the feed however it ends', () => {
   assert.strictEqual(window.Ais.observer, null, 'released on cancel');
   assert.ok(r && typeof r.total === 'number', 'and hands back what it had');
   assert.strictEqual(cancel(), null, 'stopping twice reports nothing twice');
+});
+
+test('a name and nothing else is not a lead', () => {
+  /**
+   * The second half of the same lesson. Cutting forty-three rows to ten by
+   * dropping common names was not enough: of those ten, nine were a yacht in
+   * the Mediterranean and a stranger under a flag we do not fly, with no ship
+   * type, no length and no other agreement. On a feed of twenty-six thousand
+   * vessels that is what coincidence looks like.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const ours = s.vessels[0].yacht;
+    ours.mmsi = 319288700;
+    window.Store.init(s.vessels.map((v) => v.yacht));
+    const weighed = Ais._weigh([{
+      name: ours.name, ourMmsi: '319288700', feedMmsi: '503200370',
+      n: 8, ourLoa: null, shipType: null, loa: null, beam: null
+    }]);
+
+    assert.strictEqual(weighed.leads.length, 0, 'not offered as a lead');
+    assert.strictEqual(weighed.nameOnly.length, 1, 'but not hidden either');
+
+    const report = settingsModule()._chaseReport({
+      seconds: 314, total: 75228, silent: 23, found: [], leads: weighed
+    });
+    assert.ok(/NAME ONLY — PROBABLY NOTHING/.test(report));
+    assert.ok(!/WORTH CHECKING/.test(report), 'and nothing above it to act on');
+    assert.ok(/what coincidence looks like/.test(report.replace(/\n\s*/g, ' ')));
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('a busy vessel is not a more likely match for being busy', () => {
+  // Message count says she is really out there, which is true of every vessel
+  // on the feed. It says nothing about whose she is, so it earns no weight.
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const ours = s.vessels[0].yacht;
+    const one = Ais._weigh([{ name: ours.name, ourMmsi: String(ours.mmsi),
+      feedMmsi: '503200370', n: 1, ourLoa: null, shipType: null, loa: null, beam: null }]);
+    const many = Ais._weigh([{ name: ours.name, ourMmsi: String(ours.mmsi),
+      feedMmsi: '503200370', n: 400, ourLoa: null, shipType: null, loa: null, beam: null }]);
+    const w = (r) => (r.leads[0] || r.nameOnly[0]).weight;
+    assert.strictEqual(w(one), w(many), 'four hundred messages weigh the same as one');
+  } finally {
+    window.Store = original;
+  }
+});
+
+test('the neighbour named is the nearest one, not the first one found', () => {
+  /**
+   * On a fleet registered together several numbers are within range at once —
+   * ours has eleven Marshall Islands boats in one block. Naming whichever came
+   * first in the file would put an arbitrary boat in the evidence, and the
+   * whole point of the line is that the number sits NEXT TO a particular one.
+   */
+  const s = freshStore();
+  const original = window.Store;
+  window.Store = s;
+  try {
+    const ours = s.vessels[0].yacht;
+    ours.mmsi = 319230200;                       // far away, a Cayman number
+    s.vessels[1].yacht.mmsi = 538072700;         // in range, 89 off
+    s.vessels[1].yacht.name = 'Rafter';
+    s.vessels[2].yacht.mmsi = 538072790;         // in range, 1 off
+    s.vessels[2].yacht.name = 'Nero';
+    window.Store.init(s.vessels.map((v) => v.yacht));
+
+    const weighed = Ais._weigh([{
+      name: ours.name, ourMmsi: '319230200', feedMmsi: '538072789',
+      n: 6, ourLoa: null, shipType: 37, loa: null, beam: null
+    }]);
+    const why = weighed.leads[0].evidence.join(' | ');
+    assert.ok(/numbered next to Nero/.test(why),
+      'the one it actually sits beside — got: ' + why);
+    assert.ok(!/Rafter/.test(why), 'not merely the first in range');
+  } finally {
+    window.Store = original;
+  }
 });
 
 /* --- end of tests. Anything new goes ABOVE this line. --------------------- */

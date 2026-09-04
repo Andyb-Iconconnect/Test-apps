@@ -445,7 +445,7 @@
     }
 
     var found = {};         // mmsi -> messages, for the silent ones
-    var impostors = {};     // ourMmsi + '|' + feedMmsi -> { name, feedMmsi, yacht, n }
+    var candidates = {};    // ourMmsi + '|' + feedMmsi -> a possible match
     var total = 0;
     var startedAt = Date.now();
     var stopped = false;
@@ -465,10 +465,26 @@
       if (window.Store.byMmsi[mmsi]) return;      // already one of ours, fine
       var yacht = byName[name];
       var k = yacht.mmsi + '|' + mmsi;
-      if (!impostors[k]) {
-        impostors[k] = { name: yacht.name, ourMmsi: String(yacht.mmsi), feedMmsi: mmsi, n: 0 };
+      if (!candidates[k]) {
+        candidates[k] = {
+          name: yacht.name, ourMmsi: String(yacht.mmsi), feedMmsi: mmsi,
+          ourLoa: yacht.loa || null, n: 0,
+          shipType: null, loa: null, beam: null
+        };
       }
-      impostors[k].n++;
+      candidates[k].n++;
+
+      // Static messages carry what a name cannot: what KIND of vessel this is,
+      // and how big. A cargo ship called Aurora is not a 45-metre yacht called
+      // Aurora, and this is the only thing on the wire that says so.
+      var m = payload.Message || {};
+      var st = m.ShipStaticData || m.ExtendedClassBPositionReport;
+      if (!st) return;
+      var c = candidates[k];
+      if (st.Type != null) c.shipType = st.Type;
+      var dim = st.Dimension;
+      if (dim && dim.A != null && dim.B != null) c.loa = dim.A + dim.B;
+      if (dim && dim.C != null && dim.D != null) c.beam = dim.C + dim.D;
     };
 
     var tick = setInterval(function () {
@@ -478,7 +494,7 @@
       if (onProgress) {
         onProgress({
           elapsed: Math.round(elapsed), seconds: seconds, total: total,
-          found: Object.keys(found).length, named: Object.keys(impostors).length
+          found: Object.keys(found).length, named: Object.keys(candidates).length
         });
       }
     }, 1000);
@@ -491,8 +507,7 @@
         found: Object.keys(found).map(function (m) {
           return { mmsi: m, name: wanted[m].name, n: found[m] };
         }),
-        impostors: Object.keys(impostors).map(function (k) { return impostors[k]; })
-          .sort(function (a, b) { return b.n - a.n; })
+        leads: weigh(Object.keys(candidates).map(function (k) { return candidates[k]; }))
       };
     }
 
@@ -517,6 +532,194 @@
       return report();
     };
   };
+
+  /**
+   * Sort the name matches into leads and noise.
+   *
+   * The first run of this printed forty-three rows and every one of them was
+   * almost certainly wrong. "Aurora" alone came back under twenty different
+   * MMSIs — Dutch, American, Danish, Norwegian, Swedish, Finnish, Italian —
+   * because Aurora is one of the commonest vessel names afloat. So are Ares,
+   * Pearl, Galaxy and Opus.
+   *
+   * That output was worse than useless. It looked like forty-three findings,
+   * and acting on any of them would have pointed the board at a stranger and
+   * labelled her with a client's name — the same class of error as caching
+   * demo positions and drawing them as real, which is the worst thing this
+   * board can do.
+   *
+   * The evidence needed to tell them apart was already in hand and simply not
+   * used:
+   *
+   *   - A name that matches SEVERAL vessels is a common name and proves
+   *     nothing about any of them. One that matches exactly one is worth a
+   *     look. This alone cuts forty-three rows to ten.
+   *   - Static messages carry ship type and dimensions. A cargo ship called
+   *     Aurora is not a yacht called Aurora, and the wire says which it is.
+   *   - The MMSI's own first three digits give the flag, so a match under a
+   *     flag we do not fly is weaker — though a reflag is exactly the kind of
+   *     change that makes a record go stale, so this counts against a lead
+   *     rather than killing it.
+   *   - A number sitting beside another of our own is a strong sign: MMSIs go
+   *     out in blocks, so a yacht managed alongside one of ours may well be
+   *     numbered alongside her too.
+   *
+   * Nothing here is proof, and the report says so. It is the difference between
+   * a list to check and a list to act on.
+   */
+  function weigh(list) {
+    // Names that came back under more than one foreign number tell us nothing.
+    var perName = {};
+    list.forEach(function (c) { perName[c.name] = (perName[c.name] || 0) + 1; });
+
+    var leads = [];
+    var common = [];
+    var seenCommon = {};
+    list.forEach(function (c) {
+      if (perName[c.name] > 1) {
+        if (!seenCommon[c.name]) {
+          seenCommon[c.name] = true;
+          common.push({ name: c.name, count: perName[c.name] });
+        }
+        return;
+      }
+      leads.push(assess(c));
+    });
+
+    var live = leads.filter(function (c) { return !c.ruledOut; })
+      .sort(function (a, b) { return b.weight - a.weight; });
+
+    return {
+      leads: live.filter(function (c) { return c.weight >= WORTH_CHECKING; }),
+      nameOnly: live.filter(function (c) { return c.weight < WORTH_CHECKING; }),
+      ruledOut: leads.filter(function (c) { return c.ruledOut; }),
+      common: common.sort(function (a, b) { return b.count - a.count; })
+    };
+  }
+
+  /**
+   * AIS ship types, as far as they matter here.
+   *
+   * 36 sailing, 37 pleasure craft — what a yacht broadcasts. 60-69 passenger,
+   * which a large yacht in commercial charter registration does use. Everything
+   * else on this list is definitely not one of ours: fishing, tugs, high-speed
+   * craft, cargo, tankers.
+   */
+  function yachtLike(type) {
+    if (type == null) return null;              // unknown, not a verdict
+    if (type === 36 || type === 37) return true;
+    if (type >= 60 && type <= 69) return true;
+    return false;
+  }
+
+  function assess(c) {
+    c.weight = 0;
+    c.evidence = [];
+    c.ruledOut = null;
+
+    var kind = yachtLike(c.shipType);
+    if (kind === false) {
+      c.ruledOut = 'she broadcasts as ship type ' + c.shipType + ', which is not a yacht';
+      return c;
+    }
+    if (kind === true) {
+      c.weight += 3;
+      c.evidence.push('broadcasts as a yacht (type ' + c.shipType + ')');
+    }
+
+    // Length, where we hold one. A twenty-metre difference is a different boat.
+    if (c.ourLoa && c.loa) {
+      var gap = Math.abs(c.ourLoa - c.loa);
+      if (gap <= 3) {
+        c.weight += 3;
+        c.evidence.push('length matches: ' + Math.round(c.loa) + ' m against our ' +
+                        Math.round(c.ourLoa) + ' m');
+      } else if (gap > 10) {
+        c.ruledOut = 'she is ' + Math.round(c.loa) + ' m and ours is ' +
+                     Math.round(c.ourLoa) + ' m';
+        return c;
+      }
+    }
+
+    var ourFlag = flagOf(c.ourMmsi);
+    var theirFlag = flagOf(c.feedMmsi);
+    c.flag = theirFlag;
+    if (ourFlag && theirFlag && ourFlag === theirFlag) {
+      c.weight += 2;
+      c.evidence.push('same flag, ' + theirFlag);
+    } else if (theirFlag) {
+      c.evidence.push('flies ' + theirFlag + ', our record says ' + (ourFlag || 'unknown'));
+    }
+
+    /**
+     * Where the number sits.
+     *
+     * Two different things, and they mean different things:
+     *
+     *   - close to the number in OUR OWN record for this vessel, which is what
+     *     a mistyped or transposed digit looks like;
+     *   - close to a DIFFERENT vessel of ours, which is what a block allocation
+     *     looks like — MMSIs go out in runs, and yachts under one management
+     *     are often registered together. Limerence at 538072789 against our
+     *     Nero at 538072790 is that case.
+     */
+    var near = nearestInFleet(c.feedMmsi, c.ourMmsi);
+    if (near && near.self) {
+      c.weight += 3;
+      c.evidence.push('only ' + near.gap + ' away from the number we hold, ' +
+                      'which is what a mistyped digit looks like');
+    } else if (near) {
+      c.weight += 3;
+      c.evidence.push('numbered next to ' + near.name + ' (' + near.mmsi + '), ' +
+                      'one of ours — MMSIs are allocated in blocks');
+    }
+
+    // Deliberately NOT weighed: how many messages she sent. That says she is
+    // really out there, which is true of every vessel on the feed, and says
+    // nothing at all about whether she is ours.
+    return c;
+  }
+
+  /**
+   * What separates a lead from a coincidence.
+   *
+   * A unique name on a feed of twenty-six thousand vessels is still a weak
+   * thing on its own — of ten names that matched exactly one vessel each, nine
+   * were a yacht in the Mediterranean and a stranger under a flag we do not
+   * fly. Something beyond the name has to agree: the ship type, the length, the
+   * flag, or the number's own neighbourhood.
+   */
+  var WORTH_CHECKING = 2;
+
+  function flagOf(mmsi) {
+    var entry = window.MID && window.MID[String(mmsi).slice(0, 3)];
+    return entry ? entry[1] : null;
+  }
+
+  // The nearest of our own numbers, within a hundred — about the width of a
+  // small allocation. Nearest rather than first: on a fleet registered together
+  // several are in range, and only the closest says anything.
+  function nearestInFleet(mmsi, ourMmsi) {
+    var n = Number(mmsi);
+    if (!isFinite(n)) return null;
+    var vessels = window.Store.vessels || [];
+    var best = null;
+    for (var i = 0; i < vessels.length; i++) {
+      var y = vessels[i].yacht;
+      var theirs = Number(y.mmsi);
+      if (theirs === n) continue;
+      var gap = Math.abs(theirs - n);
+      if (gap > 100) continue;
+      if (best && gap >= best.gap) continue;
+      best = {
+        name: y.name, mmsi: String(y.mmsi), gap: gap,
+        self: String(y.mmsi) === String(ourMmsi)
+      };
+    }
+    return best;
+  }
+
+  Ais._weigh = weigh;      // for tests
 
   /**
    * A name as it can be compared.

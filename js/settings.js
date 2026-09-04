@@ -568,28 +568,71 @@
                'never been heard from.');
     lines.push('');
 
+    var leads = r.leads || { leads: [], ruledOut: [], common: [] };
+
     /**
-     * The impostor list comes first when there is one, because it is the only
-     * finding here that names its own fix.
+     * The names that matched several vessels are reported as noise, by name and
+     * count, and never as findings.
      *
-     * A wrong MMSI fails silently for ever: the board tracks nobody, or tracks
-     * a stranger. Sixty-one of them were read off another site and typed in by
-     * hand, so this is not a remote possibility — it is the likeliest single
-     * explanation for one particular Class A vessel reporting every few minutes
-     * elsewhere and never once here.
+     * The first version of this printed every name match it found: forty-three
+     * rows, of which "Aurora" alone was twenty, because Aurora is one of the
+     * commonest vessel names afloat. Acting on any of them would have pointed
+     * the board at a stranger and put a client's name on her.
+     *
+     * Saying how many were discarded, and which names, is what makes the short
+     * list that follows worth reading.
      */
-    if (r.impostors.length) {
-      lines.push('BROADCASTING UNDER A DIFFERENT NUMBER');
-      r.impostors.forEach(function (i) {
-        lines.push('  ' + i.name + ' — the feed says MMSI ' + i.feedMmsi +
-                   ', our record says ' + i.ourMmsi + ' (' + i.n + ' message' +
-                   (i.n === 1 ? '' : 's') + ')');
+    if (leads.common.length) {
+      var total = leads.common.reduce(function (a, c) { return a + c.count; }, 0);
+      lines.push('COMMON NAMES, IGNORED');
+      lines.push('  ' + total + ' matches across ' + leads.common.length +
+                 ' names that belong to several vessels each:');
+      lines.push('  ' + leads.common.map(function (c) {
+        return c.name + ' (' + c.count + ')';
+      }).join(', '));
+      lines.push('  A name shared with half the merchant fleet says nothing ' +
+                 'about whose it is.');
+      lines.push('');
+    }
+
+    if ((leads.nameOnly || []).length) {
+      lines.push('NAME ONLY — PROBABLY NOTHING');
+      lines.push('  ' + leads.nameOnly.map(function (c) {
+        return c.name + ' (' + c.feedMmsi + ')';
+      }).join(', '));
+      lines.push('  One vessel each, and nothing but the name agrees — no ship ' +
+                 'type, no length, a flag we do not fly. On a feed carrying ' +
+                 'twenty-six thousand vessels that is roughly what coincidence ' +
+                 'looks like.');
+      lines.push('');
+    }
+
+    if (leads.ruledOut.length) {
+      lines.push('RULED OUT');
+      leads.ruledOut.forEach(function (c) {
+        lines.push('  ' + c.name + ' (' + c.feedMmsi + ') — ' + c.ruledOut);
       });
       lines.push('');
-      lines.push('A vessel of that name is transmitting, and we are listening ' +
-                 'for the wrong number. Correct the MMSI in the fleet record ' +
-                 'and she will appear — but check the name is really hers ' +
-                 'first, because two boats can share one.');
+    }
+
+    if (leads.leads.length) {
+      lines.push('WORTH CHECKING');
+      leads.leads.forEach(function (c) {
+        lines.push('  ' + c.name + ' — the feed says ' + c.feedMmsi +
+                   ', our record says ' + c.ourMmsi +
+                   ' (' + c.n + ' message' + (c.n === 1 ? '' : 's') + ')');
+        if (c.evidence.length) {
+          c.evidence.forEach(function (e) { lines.push('      · ' + e); });
+        } else {
+          lines.push('      · nothing beyond the name');
+        }
+      });
+      lines.push('');
+      lines.push('Look each of these up on MarineTraffic before touching the ' +
+                 'fleet file. A name is not proof of identity, and putting the ' +
+                 'wrong number in a record does not leave a gap — it puts a ' +
+                 'stranger on the chart under your client\'s name, which is ' +
+                 'worse than the silence it replaces.');
       lines.push('');
     }
 
@@ -605,15 +648,17 @@
       lines.push('');
     }
 
-    var accounted = r.found.length + r.impostors.length;
+    var accounted = r.found.length + leads.leads.length;
     if (!accounted) {
-      lines.push('None of them appeared, under their own number or their own ' +
-                 'name. So the numbers are not wrong — this feed simply does ' +
-                 'not carry these vessels, and that is a matter of whose ' +
-                 'receivers are where.');
+      lines.push('Nothing worth acting on. None of the silent vessels appeared ' +
+                 'under their own number, and no name match survived a second ' +
+                 'look — so the numbers in the fleet file are not the problem. ' +
+                 'This feed does not carry these vessels, and that is a matter ' +
+                 'of whose receivers are where.');
     } else if (accounted < r.silent) {
       lines.push('The other ' + (r.silent - accounted) + ' appeared neither by ' +
-                 'number nor by name. For those, the feed does not carry them.');
+                 'number nor by any name worth trusting. For those, the feed ' +
+                 'does not carry them.');
     }
     return lines.join('\n');
   }
